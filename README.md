@@ -24,6 +24,7 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Explicit ADB binary discovery and version validation primitives
 - Shell-free asynchronous ADB execution with timeouts, cancellation cleanup, and output limits
 - Device-state parsing for absent, authorized, unauthorized, offline, multiple, recovery, sideload, bootloader, and unknown states
+- Immutable capability snapshots from fixed property/package operations with explicit supported, unknown, and unsupported decisions
 - Deterministic mock ADB scenarios and safe API error envelopes
 - Device-readiness UI with forensic limitations and operator guidance
 - CI for frontend lint/type/test/build and backend Ruff/mypy/Pytest
@@ -83,4 +84,4 @@ pnpm build
 
 ## Current security boundary
 
-The Phase 0 API does not yet implement user authentication or case-level authorization and must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text from the browser. Use only controlled test devices until the authentication, case, audit, acquisition, storage, and validation phases are complete.
+The Phase 0 API does not yet implement user authentication or case-level authorization and must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property/package commands execute. Use only controlled test devices until the authentication, case, audit, acquisition, storage, and validation phases are complete.

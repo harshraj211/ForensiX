@@ -11,18 +11,20 @@
 | Controlled ADB foundation | resolver, immutable models, parsers, shell-free bounded runner, system/mock clients | 18 focused ADB tests |
 | Local detection API | FastAPI factory, request IDs, strict CORS origins, health/readiness, SQLite metadata, Alembic migration, safe error mapping | 13 API/database/migration tests |
 | Device-readiness UI | responsive shell, detection states, limitation warning, central API client, actionable errors | 4 component/integration tests plus browser interaction and overflow QA |
+| Capability assessment | serial/state revalidation, fixed property/package operations, immutable decisions, hashed-serial persistence, readiness UI | capability/API/migration tests plus end-to-end browser QA |
 
 ## Supported development behavior
 
 - Deterministic mock detection for no device, authorized, unauthorized, offline, multiple transports, and timeout.
 - Real ADB discovery from an explicit configured path or host `PATH`.
 - `adb version` and `adb devices -l` only through fixed internal operations.
+- Serial-scoped `getprop` and package listing for authorized transports only.
+- Explicit decisions for device metadata, package inventory, shared storage, private app data, and deleted-data recovery.
 - Persisted successful detection-run metadata without storing evidence content.
 
 ## Not implemented yet
 
 - Authentication, roles, cases, custody, and audit chain
-- Device property/capability assessment
 - Acquisition planning, pulling, evidence storage, hashing, and manifests
 - Artifact normalization, search, preview, and timeline
 - Report generation and exports
@@ -32,8 +34,8 @@ These omissions are visible project status, not silent product claims. Real-devi
 
 ## Next critical-path slice
 
-1. Add immutable device property and capability snapshots.
-2. Add serial-scoped, fixed operations for approved property and package metadata.
-3. Add safe evidence-root containment and streaming SHA-256 primitives.
-4. Add a durable acquisition/job state machine before any file pull operation.
-5. Start authentication and case scoping before exposing acquisition controls.
+1. Add safe evidence-root containment and streaming SHA-256 primitives.
+2. Add a durable acquisition/job state machine before any file pull operation.
+3. Start authentication and case scoping before exposing acquisition controls.
+4. Probe accessible shared-storage roots through fixed, bounded operations.
+5. Add acquisition manifests and interruption checkpoints before enabling file collection.
