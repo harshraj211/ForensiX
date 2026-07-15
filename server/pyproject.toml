@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forensix-server"
+version = "0.1.0"
+description = "Application services and persistence for ForensiX"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.17,<2",
+  "pydantic-settings>=2.12,<3",
+  "sqlalchemy>=2.0,<3"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

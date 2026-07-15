@@ -1,0 +1,26 @@
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests", "forensic/tests", "server/tests", "apps/api/tests"]
+pythonpath = ["forensic/src", "server/src", "apps/api/src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["forensic/src", "server/src", "apps/api/src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**/*.py" = ["S105", "S106", "S108"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+mypy_path = ["forensic/src", "server/src", "apps/api/src"]
+
+[[tool.mypy.overrides]]
+module = ["sqlalchemy.*"]
+ignore_missing_imports = true

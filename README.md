@@ -2,15 +2,86 @@
 
 ForensiX is a planned cross-platform Android rapid evidence triage and forensic preview platform. It runs on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
-This repository is currently in the architecture and implementation-planning phase. No production forensic capability is claimed yet.
+The implementation has started with the Phase 0 transport-validation foundation. The current build provides a typed and bounded ADB subsystem, deterministic mock-device scenarios, a local FastAPI detection endpoint, SQLite operational metadata, and a tested React device-readiness screen. No production forensic capability is claimed yet.
 
 ## Project status
 
 - Product name: **ForensiX**
 - Default operating mode: **Controlled Logical Triage Mode**
 - Target stack: React, TypeScript, FastAPI, Python, SQLite, and ADB
-- Current deliverable: [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
+- Architecture: [Implementation Plan](docs/IMPLEMENTATION_PLAN.md)
+- Current implementation: [Phase 0 Status](docs/PHASE0_STATUS.md)
 
 ## Important limitation
 
 ForensiX will not claim hardware write blocking, physical acquisition, locked-device bypass, unrestricted access to app-private data, or universal deleted-data recovery. Supported operations will depend on the device, Android version, authorization state, encryption, OEM restrictions, and available privileges. Every acquisition action and known side effect must be recorded.
+
+## Implemented now
+
+- React 19, TypeScript 6, Vite, Tailwind CSS, TanStack Query, and accessible route shell
+- FastAPI application factory with loopback-safe CORS configuration and request IDs
+- SQLite WAL/foreign-key configuration and an initial reversible Alembic migration
+- Explicit ADB binary discovery and version validation primitives
+- Shell-free asynchronous ADB execution with timeouts, cancellation cleanup, and output limits
+- Device-state parsing for absent, authorized, unauthorized, offline, multiple, recovery, sideload, bootloader, and unknown states
+- Immutable capability snapshots from fixed property/package operations with explicit supported, unknown, and unsupported decisions
+- Deterministic mock ADB scenarios and safe API error envelopes
+- Device-readiness UI with forensic limitations and operator guidance
+- CI for frontend lint/type/test/build and backend Ruff/mypy/Pytest
+
+## Local setup
+
+Requirements:
+
+- Node.js 24+
+- pnpm 11+
+- Python 3.12+
+- Android Platform Tools only when testing a real device
+
+Install the frontend:
+
+```powershell
+pnpm install
+```
+
+Create the Python environment:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+```
+
+Run the local API with the safe mock device:
+
+```powershell
+$env:FORENSIX_ADB_MODE = "mock"
+$env:FORENSIX_MOCK_ADB_SCENARIO = "authorized"
+.\.venv\Scripts\python.exe -m uvicorn forensix_api.main:app --host 127.0.0.1 --port 8765
+```
+
+In a second terminal, run the web application:
+
+```powershell
+pnpm dev
+```
+
+Open `http://127.0.0.1:5173/devices`.
+
+Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
+
+## Validation commands
+
+```powershell
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+.\.venv\Scripts\ruff.exe check .
+.\.venv\Scripts\ruff.exe format --check .
+.\.venv\Scripts\mypy.exe forensic/src server/src apps/api/src tests
+.\.venv\Scripts\pytest.exe
+```
+
+## Current security boundary
+
+The Phase 0 API does not yet implement user authentication or case-level authorization and must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property/package commands execute. Use only controlled test devices until the authentication, case, audit, acquisition, storage, and validation phases are complete.

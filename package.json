@@ -1,0 +1,17 @@
+{
+  "name": "forensix",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "dev": "pnpm --filter @forensix/web dev",
+    "build": "pnpm --filter @forensix/web build",
+    "lint": "pnpm --filter @forensix/web lint",
+    "typecheck": "pnpm --filter @forensix/web typecheck",
+    "test": "pnpm --filter @forensix/web test"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.0.0"
+  }
+}
