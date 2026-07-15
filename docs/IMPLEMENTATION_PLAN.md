@@ -1070,3 +1070,208 @@ Each item is scoped to one engineer for 1-3 working days. “Tests/docs” names
 | DOC-003 | Publish API, schema, storage, manifest, and export references | Tech writer/backend | ARCH-004, FOR-010 | 3d | P1/high | generated references/examples validate; version policy |
 | DOC-004 | Write security, privacy, custody, backup, and limitations guides | Tech writer/security | SEC-010, DEVOPS-007 | 3d | P0/high | threat/residual/legal-overclaim review; admin checklist |
 | DOC-005 | Produce demo guide and forensic validation report | Tech writer/QA | QA-007..010 | 3d | P0/critical | live/mock/seeded paths timed and reviewed; evidence hashes included |
+
+## 45. Task Dependency Graph
+
+```mermaid
+flowchart LR
+  Scope["BLOCKER: scope and ADB PoCs"] --> Repo["Repository/tooling"]
+  Scope --> ADB["ADB adapter + policy"]
+  Repo --> DB["Database + storage"]
+  Repo --> UI["UI shell"]
+  DB --> Auth["Authentication + RBAC"]
+  Auth --> Cases["Case management"]
+  ADB --> Cap["Capability assessment"]
+  Cases --> Cap
+  DB --> Jobs["Durable jobs + SSE"]
+  Cap --> Acq["Acquisition plan/state machine"]
+  Jobs --> Acq
+  DB --> Hash["Hash/storage/provenance"]
+  Acq --> Hash
+  Hash --> Norm["Artifact normalization"]
+  Norm --> Index["FTS evidence indexing"]
+  Index --> Viewer["Evidence explorer"]
+  Index --> Timeline["Timeline"]
+  Hash --> Audit["Audit chain + custody"]
+  Viewer --> Report["Report selection"]
+  Timeline --> Report
+  Audit --> Report
+  Report --> Pack["Cross-platform packaging"]
+  Pack --> Validate["Security + forensic validation"]
+  Scope -. parallel .-> UI
+  Repo -. parallel .-> CI["CI/security scanning"]
+  ADB -. parallel .-> Mock["Mock/recorded fixtures"]
+  DB -. parallel .-> Data["Known-answer dataset"]
+  CI --> Validate
+  Mock --> Validate
+  Data --> Validate
+```
+
+Hard blockers are the defensible scope/access PoCs, safe storage/database foundation, typed ADB policy, capability assessment, and durable acquisition/provenance path. Frontend shell, mock fixtures, synthetic datasets, CI, documentation, and threat-model tests can run in parallel. Reporting must not begin from ad-hoc queries before normalized evidence, hashes, timeline, audit, and custody contracts stabilize.
+
+## 46. Risk Register
+
+| ID | Category | Risk / probability / impact / severity | Detection and trigger | Mitigation / contingency | Owner |
+|---|---|---|---|---|---|
+| R-001 | Dependency | ADB missing/unsupported; M/H/H | startup validation fails | bundle/pin or approved path; mock/read-only review mode | DevOps/forensic |
+| R-002 | Device | Unauthorized device; H/M/H | `unauthorized` transport | guided on-device authorization; no bypass; mock demo | Investigator/forensic |
+| R-003 | Device | Offline/unstable USB; H/H/C | state change, timeout, byte stall | quality cable/port, bounded retry, preserve partials; restart module | Forensic |
+| R-004 | Compatibility | OEM/Android output/access variance; H/H/C | matrix mismatch/parser failure | capability gating and recorded fixtures; narrow support claim | Forensic lead |
+| R-005 | Access | Locked/encrypted device; H/H/C | readiness blocked/unknown | require lawful unlock/authorized path; metadata-only/no acquisition | Product/forensic |
+| R-006 | Scope | Private app/system data inaccessible; H/H/C | permission denied/no source | exclude MVP, import/elevated research adapters; disclose | Product owner |
+| R-007 | Recovery | Deleted recovery impossible; H/H/C | controlled PoC returns no reliable source | research-only maturity labels; omit demo promise | Forensic lead |
+| R-008 | Integrity | Source changes during pull; M/H/H | pre/post stat/hash differs | retain both observations, mark unverified, retry as new item | Forensic |
+| R-009 | Storage | Disk exhaustion; M/H/H | preflight/headroom or write 507 | safety margin/streaming; stop safely, retain sealed items, relocate/new run | Backend/ops |
+| R-010 | Security | Hostile file exploits parser/renderer; M/C/C | worker crash/scan/anomaly | isolation, caps, re-encode, updates; metadata-only/quarantine | Security |
+| R-011 | Security | Path/symlink/reparse escape; M/C/C | containment check/race test | UUID keys, exclusive handles, reject links; stop job/security alert | Security/backend |
+| R-012 | Security | ADB command injection/unsafe catalog entry; L/C/C | policy rejection/review/fuzz | typed fixed argv, no shell API, catalog approvals; disable module | Security/forensic |
+| R-013 | Parser | Parser crash/wrong result; M/H/H | crash, KAT/regression variance | preserve raw, isolate, version/validation; disable parser/rebuild derived data | Forensic/QA |
+| R-014 | Performance | Large case exceeds search/RAM target; M/M/M | benchmark p95/RSS regression | FTS/indexes/cursors/bounds; degrade facets and queue rebuild | Data/frontend |
+| R-015 | Integrity | Hash mismatch; L/C/C | verification result | quarantine state, alert/audit, stop dependent export; investigate from raw/backup | Security/supervisor |
+| R-016 | Integrity | Audit chain altered; L/C/C | startup/export verification | read-only warning, checkpoint/backup compare; incident procedure | Security/admin |
+| R-017 | Reporting | PDF renderer/package fails; M/M/M | golden/package smoke failure | fallback renderer/JSON report, pre-render demo; block release if inaccurate | Backend/QA |
+| R-018 | Packaging | OS driver/signing/permissions fail; H/M/H | clean-host matrix failure | native guides/launcher tests, signed builds later; browser dev fallback | DevOps |
+| R-019 | Delivery | Scope expansion into private/deleted/AI features; H/H/C | sprint additions/P0 churn | signed MVP exclusions/change control; defer to research backlog | Product/architect |
+| R-020 | Legal | “Read-only,” admissibility, or access overclaim; M/C/C | content/review finding | controlled-triage wording, limitation review, no legal guarantee; withdraw artifact | Product/legal liaison |
+| R-021 | Demo | Live device/cable fails; M/H/H | rehearsal/device not detected | spare cable/device, mock adapter, seeded acquisition/video, offline script | Demo owner |
+| R-022 | Privacy | Report/export exposes unnecessary PII; M/C/C | preview/redaction review failure | minimization/masking/selection/redaction; revoke and regenerate derived output | Supervisor/security |
+| R-023 | Supply chain | Dependency/build compromise; L/C/C | SCA/SBOM/signature alert | locks, reviews, isolated build/signing, provenance; block/rebuild release | DevSecOps |
+| R-024 | Data | SQLite corruption/migration loss; L/C/C | integrity/migration check | atomic backup-before-migrate, WAL/checkpoints, restore validation; open read-only recovery | Data/ops |
+
+Severity is Low/Medium/High/Critical based on probability and impact, but any evidence-integrity, authorization, or legal-overclaim failure blocks release regardless of score.
+
+## 47. Acceptance Criteria
+
+### 47.1 MVP functional and forensic checklist
+
+- [ ] A clean supported workstation starts offline without cloud access, validates configuration, and binds only to loopback.
+- [ ] First-run bootstrap creates one administrator without shipping default credentials.
+- [ ] Login, idle/absolute expiry, logout revocation, lockout, CSRF, role checks, and case-object isolation pass the security matrix.
+- [ ] A case receives a unique case number and records agency, authority reference, owner, status, timezone, and audit event.
+- [ ] Closed cases reject ordinary edits/acquisitions; an authorized reopen appends reason/audit history.
+- [ ] Device enumeration completes within 5 seconds p95 under normal conditions and distinguishes absent, authorized, unauthorized, offline, and multiple transports.
+- [ ] A readiness snapshot records exact observations, confidence, supported/unsupported/unknown modules, warnings, tool version, and invalidation conditions.
+- [ ] No REST/UI field accepts arbitrary ADB commands or investigator-supplied destination paths.
+- [ ] Every executed ADB operation is serial-scoped, catalog-approved, bounded, and recorded with timing/outcome/side-effect class.
+- [ ] The UI calls the mode Controlled Logical Triage Mode and shows limitations/operations before confirmation.
+- [ ] Every acquisition links case, device, readiness snapshot, operator, scope/plan version, modules, start/end, and final result.
+- [ ] Quick Triage reliably collects the validated accessible device/package/shared-storage categories and explicitly reports exclusions.
+- [ ] Cancellation/disconnect/backend restart preserves sealed evidence and represents the current item honestly as partial/interrupted.
+- [ ] Every sealed acquired file has size, SHA-256, source provenance, module/operation, collection timestamps, and validation status.
+- [ ] Source evidence cannot be edited or silently cascade-deleted through the application.
+- [ ] Hash re-verification records expected/observed values; a mismatch raises a persistent high-severity alert and blocks dependent output.
+- [ ] Repeated acquisitions on each supported validation cell produce explained, materially consistent manifests and outputs.
+- [ ] Normalization retains original timestamp/path/metadata values, UTC only when justified, timezone basis, confidence, parser/module versions, and parent hashes.
+- [ ] Search/filter/sort returns a stable first page in under 3 seconds p95 on the reference million-artifact dataset.
+- [ ] A quick-triage indexed preview appears within 30 seconds when the controlled target exposes an eligible small artifact.
+- [ ] Evidence preview cannot execute active content and survives the hostile/corrupt media corpus within configured limits.
+- [ ] Bookmark/tag/note actions do not change source artifacts; note correction is append-only.
+- [ ] Timeline events link to sources and label naive, ambiguous, low-confidence, and conflicting timestamps.
+- [ ] Audit-chain verification detects modification, deletion, insertion, and reorder of records; UI/report says tamper-evident, not immutable.
+- [ ] Custody corrections are amendment events; no update/delete endpoint exists.
+- [ ] Preliminary PDF includes case/device/readiness/scope/method/limitations/errors/summary/selected evidence/timeline/hashes/custody/tool versions and “Preliminary” marking.
+- [ ] JSON validates against its published schema; CSV neutralizes formula-leading content; both exports receive SHA-256 and audit/custody records.
+- [ ] An authorized trained investigator completes the supported primary workflow in under 15 minutes on the controlled demo dataset.
+- [ ] Primary workflows pass keyboard-only, contrast, zoom, live-region, and NVDA/VoiceOver review with no critical accessibility defect.
+- [ ] Ordinary triage stays below 2 GB RSS and idle CPU below 10% on documented reference hardware.
+- [ ] Windows, Linux, and macOS launcher/configuration smoke tests pass; acquisition support claims name the actually validated host/device combinations.
+- [ ] No open critical/high security or data-integrity defect remains; exceptions for dependencies have owner/rationale/expiry.
+- [ ] README, install/USB, investigator/admin, methodology, limitations, security, schemas, recovery, validation, and demo docs are reviewed and version-matched.
+
+### 47.2 Release evidence
+
+QA attaches CI run IDs, SBOM and dependency reports, signed/hash release inventory, performance results/hardware, accessibility report, security test report, device/Android/OEM matrix, three-repeat validation manifests, visual report inspection, known limitations, and final acceptance sign-off. A pass without retained evidence is not a pass.
+
+## 48. Definition of Done
+
+A task is done when code and generated contracts are reviewed; acceptance behavior is demonstrable; unit/integration/security tests cover happy, boundary, permission, and failure paths; relevant KAT/fixture is versioned; lint/type/test/build pass; audit/provenance/error behavior is implemented; accessibility is considered; no secret/real PII is added; migrations include preservation tests; and operator/developer/schema/limitation docs are updated. Forensic-output changes additionally require parser/module version change, expected-output review, repeatability comparison, and validation-impact decision.
+
+Coding standards:
+
+- Frontend: TypeScript strict/no implicit `any`, feature boundaries, generated centralized API client, typed errors, no scattered `fetch`, no domain logic in pages, accessible primitives, deterministic tests.
+- Backend: type hints, Ruff, mypy, Pydantic at boundaries, service/repository separation, routers without business logic, explicit transactions, structured domain errors, no subprocess outside ADB, no file writes outside storage.
+- Forensic: deterministic/streaming behavior, immutable inputs, versioned parsers, provenance for every output, explicit capability/side-effect declarations, bounded hostile-input processing, KATs, and no unsupported inference.
+- Database/API: forward-tested Alembic migrations, FK/index/query-plan review, no evidence cascade, versioned OpenAPI/schemas, stable error codes, idempotency for retryable mutations.
+- Git/release: small reviewed commits, protected branch, no generated drift, locked dependencies, SBOM, reproducible build metadata, signed release artifacts when production distribution begins.
+
+The MVP is not done if it works only with a live demo phone, only on one developer machine, only with network access, or only when failures are absent.
+
+## 49. Demo Strategy
+
+### 49.1 Primary 12-minute hackathon flow
+
+Use a controlled ADB-authorized test phone containing synthetic images/documents with known timestamps/hashes and sample package metadata. Rehearse from a clean case and freeze app/device/tool versions.
+
+1. State the boundary: workstation tool, Controlled Logical Triage Mode, no lock bypass/private-app promise.
+2. Login and create case `FX-DEMO-...` with lawful-context metadata.
+3. Connect/detect the phone; show serial masking, Android metadata, authorization, and readiness.
+4. Open capability report; highlight accessible shared storage and explicit unsupported private messaging data.
+5. Select Quick Triage; review frozen modules, operations, limitations, disk estimate, and side effects; confirm.
+6. Show durable live progress and command/module ledger; optionally simulate one recoverable skipped item.
+7. Open indexed evidence; filter recent images/documents and inspect a known artifact.
+8. Show original/normalized timestamps, SHA-256, parent/source path, operation, module/parser version, and limitations.
+9. Bookmark/add a note; open timeline and show source drill-down/confidence.
+10. Verify the artifact hash; show audit-chain/custody events.
+11. Generate/download Preliminary PDF plus JSON/CSV; display report/export hashes.
+12. Close with measured supported claims, excluded capabilities, and next validation work.
+
+### 49.2 Fallback ladder and recovery
+
+- **Offline:** all assets/dependencies are installed; disable networking before rehearsal and use local docs.
+- **Live device fallback:** spare tested cable/port and second controlled phone with the same synthetic dataset.
+- **Mock fallback:** scenario-driven mock emits identical authorized/readiness/acquisition/SSE flow, visibly labeled simulated.
+- **Pre-seeded fallback:** open a sealed demo case whose manifest/hashes were generated in rehearsal; show analysis/reporting without claiming a live run.
+- **Video fallback:** a short local screen recording only if launch/runtime completely fails; accompany it with hashes/version notes.
+- **Failure recovery demo:** intentionally disconnect during a mock pull, show `Interrupted`, sealed prior evidence, partial current item, and explicit restart after identity validation.
+
+Never conceal fallback use. Judges should hear: capability-gated honesty is a feature; ADB is isolated behind an allowlist; raw evidence and derivations are separated; every file is hashed/provenanced; jobs survive UI refresh; hostile evidence is bounded; audit is tamper-evident; and the tool accelerates triage without pretending to replace full laboratory acquisition or legal review.
+
+## 50. Final Recommended Build Order
+
+1. **Confirm scope and claims.** Prerequisite: SRS review. Deliver a signed FR feasibility/exclusion matrix and product terminology.
+2. **Run ADB/access PoCs.** Prerequisite: controlled devices/hosts. Deliver recorded state/property/package/storage/disconnect evidence and support matrix.
+3. **Set up monorepo/toolchains.** Prerequisite: architecture baseline. Deliver reproducible pnpm/uv workspace and import rules.
+4. **Implement configuration/platform ports.** Prerequisite: repo. Deliver validated profiles, OS paths, production guards, and adapter contracts.
+5. **Implement database/migrations.** Prerequisite: domain schema. Deliver WAL/FK/indexed baseline with preservation/migration tests.
+6. **Implement authentication/users/RBAC.** Prerequisite: security tables/middleware. Deliver bootstrap, Argon2id sessions, CSRF, roles, case scope.
+7. **Implement cases.** Prerequisite: RBAC/audit base. Deliver unique cases, membership, lifecycle, optimistic locking, no-delete policy.
+8. **Implement safe storage/hashing primitives.** Prerequisite: configured evidence root. Deliver UUID containment, atomic partial/final writes, SHA-256, reconciliation.
+9. **Implement ADB binary/runner policy.** Prerequisite: PoCs/platform port. Deliver versioned typed operation catalog, limits, cancellation, command ledger.
+10. **Implement device detection.** Prerequisite: runner. Deliver no/authorized/unauthorized/offline/multiple classification and mock/recorded adapters.
+11. **Implement capability assessment.** Prerequisite: typed metadata/package/storage probes. Deliver versioned readiness snapshot/reasons/invalidation.
+12. **Implement durable jobs/SSE.** Prerequisite: database/app factory. Deliver leases, checkpoints, persisted events, reconnect, cancellation.
+13. **Implement acquisition state machine/planner.** Prerequisite: readiness/jobs/storage. Deliver frozen reviewable plans, transitions, disk checks, acknowledgements.
+14. **Implement accessible-storage modules.** Prerequisite: acquisition runner. Deliver inventory and media/document/download pulls with bounded roots.
+15. **Implement provenance/manifests.** Prerequisite: sealed evidence/hash. Deliver per-item lineage, statuses, canonical acquisition manifest, verification.
+16. **Implement normalization.** Prerequisite: evidence/provenance model. Deliver versioned artifacts, timestamps/confidence, relationships, duplicate links.
+17. **Implement indexing/search.** Prerequisite: normalized artifacts. Deliver FTS5, filters, stable cursors, rebuild verifier, million-row benchmark.
+18. **Implement evidence viewer.** Prerequisite: artifact/search APIs. Deliver virtual list, safe preview, sensitive masking, provenance drill-down.
+19. **Implement timeline.** Prerequisite: normalized timestamps. Deliver deterministic event materialization, filters, conflicts, source links.
+20. **Implement bookmarks/tags/notes.** Prerequisite: case-scoped artifact authorization. Deliver append/amend analysis records and UI.
+21. **Implement audit and custody.** Prerequisite: canonical serialization/security review. Deliver hash chain/verifier, append-only custody/amendments.
+22. **Implement report data assembler.** Prerequisite: stable evidence/timeline/hash/custody contracts. Deliver hashed versioned report snapshot.
+23. **Implement PDF/JSON/CSV exports.** Prerequisite: assembler/storage/jobs. Deliver escaped preliminary report, schemas, CSV neutralization, output hashes.
+24. **Implement recovery/observability/backup.** Prerequisite: durable states/manifests. Deliver startup reconciliation, safe diagnostics, backup verification.
+25. **Run security and accessibility hardening.** Prerequisite: feature freeze. Deliver threat tests, hostile corpus results, role/IDOR, WCAG assessment, fixed defects.
+26. **Run forensic/cross-platform validation.** Prerequisite: release candidate and KATs. Deliver repeat manifests, supported matrix, performance and validation report.
+27. **Package and rehearse the demo.** Prerequisite: acceptance sign-off. Deliver OS launchers, hashes/SBOM, live/mock/seeded fallbacks, final documentation.
+
+### Final recommendation snapshot
+
+**Recommended MVP features:** offline local auth/RBAC; cases; one-device detection/readiness; Controlled Logical Triage Mode; accessible device/package/shared-storage media/document collection; durable progress/cancel/interruption; SHA-256/manifests/provenance; normalized evidence/FTS search/safe preview; timeline; bookmarks/tags/notes; tamper-evident audit; custody; preliminary PDF/JSON/CSV; mock device; dark/accessibility baseline; native launchers.
+
+**Excluded from MVP:** contacts/SMS/calls and OS-private records on stock devices; WhatsApp/Telegram/Signal/Messenger/Instagram/Facebook/Snapchat databases; locked-device bypass; physical acquisition; generic deleted recovery; arbitrary ADB shell; full byte resume; simultaneous acquisition; public plugins/ALEAPP; HTML/final signatures; cloud/iOS/OCR/AI; guaranteed admissibility; application-managed encryption without key policy.
+
+**First 10 tasks:** ARCH-001 scope; QA-002 validation matrix; ADB-001 binary validation; ADB-002 state parser; ADB-009 mock/recorded adapter; ARCH-002 monorepo; DEVOPS-001 bootstrap; BE-001 configuration; FOR-001 safe storage; DB-001 identity schema. Start the mock/UI skeleton in parallel after ARCH-002.
+
+**Critical PoCs:** modern non-rooted access matrix; authorization/offline/multiple-state detection; property/package variance; safe shared-storage listing/pull with Unicode/large files; disconnect/source-change behavior; Windows drivers/Linux udev/macOS behavior; atomic partial recovery; streaming hash equality; FTS5 million-row latency; WeasyPrint packaging; ALEAPP input/output feasibility (V1 only).
+
+**Critical risks:** Android/OEM access restrictions, live USB instability, evidence/path/parser hostility, disk exhaustion, source changes, hash/audit integrity failure, scope overreach, privacy leakage, cross-platform packaging, and forensic/legal overclaiming. Capability gating, preserved raw evidence, strict policies, validation evidence, and honest limitations are mandatory controls.
+
+**Recommended eight weeks:** Week 1 validation/tooling skeleton; Week 2 auth/cases/storage; Week 3 device/readiness; Week 4 jobs/acquisition/hash; Week 5 normalize/search/preview; Week 6 timeline/audit/custody; Week 7 reports/exports/recovery; Week 8 security/accessibility/cross-platform/forensic validation and demo.
+
+**Final architecture:** a localhost-only modular monolith with React/TypeScript UI, versioned FastAPI REST/SSE boundary, durable SQLite job runner, isolated Python forensic engine, typed ADB operation catalog, append-oriented evidence filesystem, SQLAlchemy metadata/FTS5, provenance/hash/audit/custody integrity services, and replaceable packaging/adapters.
+
+**Final repository structure:** `apps/web`, `apps/api`, `packages/ui`, generated `packages/api-client`, domain-oriented `server`, isolated `forensic`, future isolated `plugins`, `infrastructure`, versioned `docs`, synthetic `tests/fixtures`, and `sample-data`, with enforced one-way import boundaries.
+
+**Final technology choices:** React 19, TypeScript strict, Vite, Tailwind, Radix, React Router, TanStack Query/Table/Virtual, Zustand for UI-only state, React Hook Form/Zod, FastAPI/Pydantic/SQLAlchemy/Alembic, Python 3.12, SQLite WAL+FTS5, custom durable local runner, SSE, SHA-256 + canonical JSON, WeasyPrint/Jinja2, Pytest/Hypothesis, Vitest/RTL/Playwright/axe, Ruff/mypy, GitHub Actions/CodeQL/Semgrep/Gitleaks/Trivy, browser launcher MVP and Tauri sidecar V1.
