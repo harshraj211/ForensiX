@@ -12,6 +12,8 @@
 | Local detection API | FastAPI factory, request IDs, strict CORS origins, health/readiness, SQLite metadata, Alembic migration, safe error mapping | 13 API/database/migration tests |
 | Device-readiness UI | responsive shell, detection states, limitation warning, central API client, actionable errors | 4 component/integration tests plus browser interaction and overflow QA |
 | Capability assessment | serial/state revalidation, fixed property/package operations, immutable decisions, hashed-serial persistence, readiness UI | capability/API/migration tests plus end-to-end browser QA |
+| Evidence storage and hashing | strict portable keys, contained paths, link/reparse rejection, partial writes, atomic sealing, no overwrite, streaming SHA-256 | 15 passed; 1 Windows symlink test skipped without developer-mode permission |
+| Durable local jobs | explicit state graph, monotonic progress, cancellation, restart recovery, version-based stale-update detection, migration | 9 job tests plus migration coverage |
 
 ## Supported development behavior
 
@@ -21,11 +23,14 @@
 - Serial-scoped `getprop` and package listing for authorized transports only.
 - Explicit decisions for device metadata, package inventory, shared storage, private app data, and deleted-data recovery.
 - Persisted successful detection-run metadata without storing evidence content.
+- Evidence-root primitives that never accept investigator strings as direct paths.
+- Streaming file writes and SHA-256 calculations without loading whole evidence files in memory.
+- Durable job records that preserve interruption/error state across backend restarts.
 
 ## Not implemented yet
 
 - Authentication, roles, cases, custody, and audit chain
-- Acquisition planning, pulling, evidence storage, hashing, and manifests
+- Acquisition planning/orchestration, ADB pulling, evidence manifests, and verification records
 - Artifact normalization, search, preview, and timeline
 - Report generation and exports
 - Production packaging, signing, and forensic validation
@@ -34,8 +39,8 @@ These omissions are visible project status, not silent product claims. Real-devi
 
 ## Next critical-path slice
 
-1. Add safe evidence-root containment and streaming SHA-256 primitives.
-2. Add a durable acquisition/job state machine before any file pull operation.
-3. Start authentication and case scoping before exposing acquisition controls.
-4. Probe accessible shared-storage roots through fixed, bounded operations.
-5. Add acquisition manifests and interruption checkpoints before enabling file collection.
+1. Start authentication and case scoping before exposing acquisition controls.
+2. Probe accessible shared-storage roots through fixed, bounded operations.
+3. Connect durable jobs to an acquisition-plan model and progress event stream.
+4. Add acquisition manifests and item-level interruption checkpoints.
+5. Enable the first controlled shared-storage pull only after physical-device validation.

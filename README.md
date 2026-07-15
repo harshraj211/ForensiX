@@ -2,7 +2,7 @@
 
 ForensiX is a planned cross-platform Android rapid evidence triage and forensic preview platform. It runs on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
-The implementation has started with the Phase 0 transport-validation foundation. The current build provides a typed and bounded ADB subsystem, deterministic mock-device scenarios, a local FastAPI detection endpoint, SQLite operational metadata, and a tested React device-readiness screen. No production forensic capability is claimed yet.
+The implementation has started with the Phase 0 transport-validation foundation. The current build provides a typed and bounded ADB subsystem, deterministic mock-device scenarios, a local FastAPI detection endpoint, SQLite operational metadata, contained evidence-storage and hashing primitives, durable local-job states, and a tested React device-readiness screen. No production forensic capability is claimed yet.
 
 ## Project status
 
@@ -25,6 +25,9 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Shell-free asynchronous ADB execution with timeouts, cancellation cleanup, and output limits
 - Device-state parsing for absent, authorized, unauthorized, offline, multiple, recovery, sideload, bootloader, and unknown states
 - Immutable capability snapshots from fixed property/package operations with explicit supported, unknown, and unsupported decisions
+- Strict portable evidence-storage keys with traversal, link, and reparse-point boundary checks
+- Partial-file streaming, atomic sealing, non-overwrite behavior, and streaming SHA-256 verification
+- Durable versioned job states with validated transitions, monotonic progress, cooperative cancellation, and restart interruption recovery
 - Deterministic mock ADB scenarios and safe API error envelopes
 - Device-readiness UI with forensic limitations and operator guidance
 - CI for frontend lint/type/test/build and backend Ruff/mypy/Pytest
@@ -84,4 +87,4 @@ pnpm build
 
 ## Current security boundary
 
-The Phase 0 API does not yet implement user authentication or case-level authorization and must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property/package commands execute. Use only controlled test devices until the authentication, case, audit, acquisition, storage, and validation phases are complete.
+The Phase 0 API does not yet implement user authentication or case-level authorization and must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property/package commands execute. Storage and job primitives are not yet exposed as acquisition endpoints. Use only controlled test devices until the authentication, case, audit, acquisition, and validation phases are complete.
