@@ -341,3 +341,336 @@ flowchart LR
 ```
 
 The authenticated browser is not trusted for authorization or command construction. Device data and plugins are hostile. The localhost network boundary is still security-relevant: another local process or malicious site must not be able to drive ForensiX through CORS, DNS rebinding, guessed ports, or CSRF.
+
+## 10. Repository Structure
+
+```text
+ForensiX/
+├── apps/
+│   ├── web/                       # React/Vite application
+│   │   └── src/{app,features,components,lib,generated,styles}/
+│   └── api/                       # FastAPI composition root
+│       └── src/forensix_api/{routers,dependencies,middleware}/
+├── packages/
+│   ├── ui/                        # Accessible design-system components
+│   └── api-client/                # Generated OpenAPI TypeScript client
+├── forensic/
+│   └── src/forensix_forensic/
+│       ├── adb/                   # Adapter, runner, policy, recorded/mock clients
+│       ├── capabilities/          # Device assessment and readiness
+│       ├── acquisition/           # State machine, plans, orchestrator, checkpoints
+│       ├── modules/               # Built-in acquisition modules
+│       ├── parsers/               # Parser contracts/registry and isolated workers
+│       ├── normalization/         # Artifact/timestamp/provenance normalization
+│       ├── storage/               # Safe filesystem port and implementation
+│       ├── hashing/               # Streaming hashes/manifests/verification
+│       ├── timeline/              # Timeline materialization/correlation
+│       └── reporting/             # Data assembly and render adapters
+├── server/
+│   └── src/forensix_server/
+│       ├── auth/                  # Password, sessions, CSRF, RBAC
+│       ├── cases/                 # Domain/service/repository per feature
+│       ├── devices/
+│       ├── acquisitions/
+│       ├── artifacts/
+│       ├── reports/
+│       ├── custody/
+│       ├── audit/
+│       ├── jobs/
+│       ├── settings/
+│       ├── db/{models,migrations}/
+│       └── schemas/               # Pydantic transport contracts
+├── plugins/
+│   ├── sdk/                       # V1 versioned interfaces and manifest schema
+│   └── bundled/                   # Reviewed, pinned first-party plugins only
+├── infrastructure/
+│   ├── docker/                    # Dev/test images and Compose
+│   ├── packaging/                 # PyInstaller/Tauri/installer definitions
+│   └── scripts/                   # Bootstrap, OpenAPI generation, validation
+├── docs/
+│   ├── adr/                       # Architecture decision records
+│   ├── architecture/
+│   ├── api/
+│   ├── forensic-validation/
+│   ├── schemas/
+│   └── user-guides/
+├── tests/
+│   ├── fixtures/{adb,files,media,databases}/
+│   ├── integration/
+│   ├── security/
+│   └── e2e/
+├── sample-data/                   # Synthetic/non-sensitive demo data
+├── pyproject.toml                 # Python workspace/tool configuration
+├── pnpm-workspace.yaml
+├── package.json
+└── docker-compose.yml
+```
+
+Import rules are enforced by tests/linting: routers may import schemas and application services, never repositories/ADB directly; server services depend on forensic ports, not concrete subprocess/filesystem implementations; `forensix_forensic` does not import FastAPI/SQLAlchemy; frontend feature modules import `packages/ui`, generated API types, and shared primitives but not other feature internals. OS-specific process/path/permissions code lives behind `PlatformAdapter` in `forensic/adb/platform` and `forensic/storage/platform`.
+
+OpenAPI is the transport source of truth. CI starts the API schema generator, produces `packages/api-client`, and fails on an uncommitted generated diff. Domain models remain Python-native and are not falsely shared with TypeScript. Plugin imports are forbidden in the core process in V1; the registry launches a pinned worker protocol with a versioned JSON/Protobuf-like message schema, restricted working directory, resource limits, and no implicit network access.
+
+## 11. Frontend Architecture
+
+### 11.1 Technology choices and state ownership
+
+Use React 19 + TypeScript strict mode + Vite; React Router for route/data boundaries; TanStack Query for all server state, invalidation, retries, pagination, and SSE reconciliation; Zustand only for ephemeral cross-route UI preferences such as panel sizes and masked/unmasked display; React Hook Form + Zod for forms; TanStack Table + Virtual for large evidence grids; Radix primitives with a project-owned Tailwind design system; `react-aria` patterns where Radix does not supply the required semantics; date-fns for presentation; and Vitest/RTL/axe/Playwright for tests. Do not mirror case/evidence records into Zustand.
+
+Sessions use `Secure`, `HttpOnly`, `SameSite=Strict` cookies issued by the local API. A readable CSRF token is delivered separately and echoed on state-changing requests. The UI keeps no bearer token in localStorage. A route loader calls `/auth/me`, and server-side authorization remains definitive.
+
+### 11.2 Route and layout map
+
+```text
+/login
+/dashboard
+/cases
+/cases/new
+/cases/:caseId                       CaseLayout
+  /overview
+  /devices
+  /acquisitions
+  /acquisitions/:acquisitionId
+  /evidence
+  /evidence/:artifactId
+  /timeline
+  /reports
+  /custody
+  /audit
+/audit                               global audit; Admin/Supervisor
+/users                               Admin
+/settings                            Admin; personal subset for all users
+```
+
+`AppShell` owns skip link, top bar, role-aware navigation, connection/job indicators, theme, and global errors. `CaseLayout` owns case identity/status and tabs. Feature routes own queries, forms, and permission-specific actions. Every route has a typed error boundary; skeletons preserve layout; empty states explain prerequisites and offer one permitted next action; stale SSE reconnects fall back to polling the persisted job state.
+
+### 11.3 Screen specification
+
+Common acceptance rule: every page is keyboard operable, warnings use text/icon plus color, loading announces status, failures expose a request ID without secrets, and unauthorized actions are absent from navigation and rejected by the API.
+
+| Screen | Purpose/users | Data, actions, API | Empty/loading/error and permission acceptance |
+|---|---|---|---|
+| Login | All users authenticate | username/password; `POST /auth/login`, `GET /auth/me` | Generic failure, lockout countdown; focus moves to error; successful login redirects safely |
+| Dashboard | Assigned work and system readiness | recent cases/jobs/devices, integrity warnings; cases/jobs/health endpoints | No-cases CTA; cards skeleton; only authorized case summaries appear |
+| Cases | Search/create/reopen cases | server-paginated list, status/agency filters; cases endpoints | Empty create CTA; closed-case edits disabled by policy |
+| Case overview | Case summary and next action | metadata, members, devices, acquisitions, counts; case endpoints | Missing case -> 404; unauthorized -> generic 404; status transitions confirmed |
+| Devices | Detect, select, assess | device states, properties, capabilities/warnings; detect/assess endpoints | Explains missing/unauthorized/offline/multiple states; unsupported modules cannot be selected |
+| Acquisition wizard | Define and confirm scope | readiness snapshot, modules, side-effect classes, disk estimate; acquisitions | Confirmation records exact plan version; start disabled on stale readiness/high-risk unresolved warning |
+| Acquisition progress | Monitor/cancel/recover | job/module/item progress, command summaries, errors; acquisition/events/SSE | Refresh reconstructs state; cancellation is two-step; partial evidence remains navigable |
+| Evidence explorer | Search/filter/sort/preview | virtualized rows, categories, dates, tags, status; artifacts endpoints | URL stores filters; first page under target; preview never executes active content |
+| Artifact detail | Inspect provenance and derivations | raw/normalized metadata, hashes, relationships, preview, bookmark/tag/note | Sensitive values masked by default; source bytes read-only; download is audited |
+| Timeline | Correlate available events | virtualized events, confidence/source/timezone filters; timeline endpoint | Uncertain/conflicting time visually and textually marked; source link opens artifact |
+| Reports | Draft, generate, download, verify | templates, selection, redaction, jobs, hashes; reports endpoints | Preliminary label always visible in MVP; generation errors preserve job diagnostics |
+| Custody | Append/review custody | chronological events, amendments; custody endpoints | No edit/delete controls; correction links prior event and requires reason |
+| Case audit | Inspect case action chain | filter/export/verify chain; audit endpoints | Chain failure is a high-severity persistent banner; access limited by role |
+| Users | Administer local accounts | create/disable/reset roles; users endpoints | Cannot remove last active admin; self-demotion guarded; actions audited |
+| Settings | Paths/policy/theme/logging | validated settings and capability checks; settings endpoints | Evidence-root change requires empty/new policy or migration workflow; secrets never echoed |
+
+Evidence preview supports safe server-generated thumbnails, escaped text, metadata, and explicit download. PDFs/HTML/archives are never embedded with active content in MVP. Image decoding for thumbnails occurs in a limited worker, output is re-encoded, dimensions/pixels are capped, and failures display metadata-only.
+
+## 12. Backend Architecture
+
+`create_app(settings)` is the composition root. It initializes structured logging/request IDs, database/migrations check, storage-root validation, platform/ADB adapters, repositories, services, durable job runner, routers, security middleware, and shutdown hooks. Pydantic Settings reads defaults, OS-specific config, an optional protected config file, and environment overrides used in development; startup logs effective non-secret settings.
+
+Routers are thin: validate transport input, require permissions/case scope, call a service, and map domain errors. Services own transaction boundaries and idempotency. Repositories expose aggregate-focused operations and never return ORM entities past the service boundary. SQLAlchemy 2 models and Alembic migrations are used instead of SQLModel to keep persistence and transport schemas separate. SQLite uses foreign keys, WAL, `busy_timeout`, explicit indexes, and serialized write jobs.
+
+Use a durable custom local job runner, not FastAPI `BackgroundTasks`, Celery, RQ, or Dramatiq. A dispatcher claims persisted jobs with a lease, executes bounded async orchestration plus subprocess/thread workers, checkpoints steps, observes cancellation, and recovers abandoned leases at startup. This avoids a broker for a single workstation while retaining an upgrade path: keep `JobRepository`, `JobExecutor`, and event interfaces so a PostgreSQL/worker implementation can replace the dispatcher.
+
+Use SSE for one-way job/event progress. SSE reconnects with `Last-Event-ID`, works through ordinary HTTP, and is simpler than WebSockets because commands still use authenticated REST. Persisted events are authoritative; SSE is a delivery optimization.
+
+API prefix is `/api/v1`. OpenAPI defines tagged operations and generated clients. All list endpoints use cursor pagination where stable event/artifact ordering matters and bounded offset pagination for small admin lists. Exports stream from opened, authorized file handles and set safe filenames. Health endpoints are `/health/live` and `/health/ready`; readiness verifies database, evidence-root writability policy, runner state, and ADB availability separately without requiring a device.
+
+Security middleware enforces host/origin allowlists, CORS for the launched UI origin only, CSRF, session lookup, request/body limits, content security headers, and no-store on sensitive API responses. Rate limits target login and expensive generation endpoints; normal localhost reads are bounded by pagination/concurrency rather than a cosmetic global limiter.
+
+## 13. Forensic Engine Architecture
+
+The engine exposes typed ports: `DeviceTransport`, `CapabilityAssessor`, `AcquisitionPlanner`, `AcquisitionExecutor`, `EvidenceStorage`, `Hasher`, `ParserRegistry`, `ArtifactSink`, `TimelineBuilder`, and `ReportDataAssembler`. Each operation receives an immutable `OperationContext` containing case/device/acquisition/operator IDs, plan/readiness versions, cancellation token, storage capability, clock, and audit sink.
+
+Execution stages are plan -> acquire to `.partial` -> fsync/atomic finalize -> hash -> provenance record -> parse derived output -> normalize -> index/timeline -> verify manifest -> seal result. A failure after finalization does not delete prior evidence; it records stage, error code, retryability, and validation status. Parsers never rewrite raw files. Derived output contains parent hashes and tool/parser versions.
+
+The MVP modules are `device_metadata`, `package_inventory`, `shared_storage_inventory`, `image_files`, `video_files`, `audio_files`, `document_files`, `downloads_files`, `exif_metadata`, and `generic_file_metadata`. The recovery manager exists only as an interface and maturity registry in MVP; it must not label an artifact recovered without a validated recovery method.
+
+## 14. ADB Communication Design
+
+### 14.1 Interfaces and operation policy
+
+```python
+class AdbClient(Protocol):
+    async def server_info(self) -> AdbServerInfo: ...
+    async def list_transports(self) -> tuple[AdbTransport, ...]: ...
+    async def get_properties(self, serial: DeviceSerial) -> DeviceProperties: ...
+    async def list_packages(self, serial: DeviceSerial, options: PackageListOptions) -> PackageResult: ...
+    async def list_files(self, serial: DeviceSerial, request: RemoteListRequest) -> RemoteListResult: ...
+    async def pull_file(self, serial: DeviceSerial, request: PullRequest, sink: BinarySink) -> PullResult: ...
+    async def stat_file(self, serial: DeviceSerial, path: ApprovedRemotePath) -> RemoteStat: ...
+    async def cancel(self, operation_id: UUID) -> CancelResult: ...
+```
+
+There is intentionally no public `shell(serial, string)`. Built-in operations may use an internal runner only after the `OperationCatalog` resolves an operation ID to an executable, fixed argument template, typed parameters, timeout/output limits, allowed states/paths, and side-effect classification. Remote paths are opaque typed values validated against module-declared roots; serials must match an enumerated transport exactly; subprocess invocation always uses an argument array with `shell=False`.
+
+ADB discovery order is explicit setting -> bundled signed/pinned Platform Tools -> PATH. Validate executable identity, `adb version`, supported version range, and file hash for bundled binaries. The service may start the ADB server, but records that side effect. Every device command includes `-s <serial>`. Multiple transports without an explicit serial cause a safe error.
+
+Runner behavior: platform-specific hidden process group; monotonic timeout; cooperative cancellation followed by bounded process-tree termination; separate bounded stdout/stderr capture; streaming for pulls; exit-code and known-error classification; no retry for authorization/policy failures; at most one jittered retry for proven transient transport errors; reconnect requires identity/readiness revalidation. Output truncation is recorded, never silently accepted for evidence-producing commands.
+
+Each command ledger entry stores operation/command ID, catalog version, case/device/acquisition/operator, sanitized argv, start/end wall and monotonic times, exit code/signal, byte counts, result/error summary, retry number, device state before/after when observable, and side-effect class (`none_observed`, `transport`, `read_like_with_possible_os_side_effect`, `device_mutating`, `prohibited`). MVP catalogs no `device_mutating` operations.
+
+### 14.2 Capability assessment
+
+`DeviceCapabilitySnapshot` stores serial, manufacturer/model, Android/API version, fingerprint, patch level, transport/authorization state, observed screen/unlock indicators with confidence, `adbd` privilege, `su` observation, accessible storage roots, package-list access, deprecated backup-command observation, encryption indicators, module decisions, warnings, evidence commands, assessment time, and assessor version.
+
+Each module decision is `supported`, `unsupported`, `unknown`, or `blocked`, with reason code, required state, confidence, and evidence. The UI renders this snapshot and cannot enable a module unless the current plan references the same unexpired snapshot. Device reconnect, serial/fingerprint mismatch, authorization change, or configurable age invalidates it.
+
+Example reasons include `ADB_UNAUTHORIZED`, `DEVICE_OFFLINE`, `SCREEN_UNLOCK_REQUIRED`, `REMOTE_ROOT_UNREADABLE`, `PRIVATE_APP_DATA_INACCESSIBLE`, `ELEVATED_ACCESS_REQUIRED`, and `MODULE_NOT_VALIDATED_FOR_API_LEVEL`. “Unknown” is never treated as supported.
+
+### 14.3 Mock and recorded adapters
+
+`MockAdbClient` is scenario-driven and deterministic: no device, authorized, unauthorized, offline, multiple devices, timeout, disconnect at byte N, corrupt output, changing remote file, and low disk. `RecordedAdbClient` replays redacted command outputs with fixture version/schema and expected parser results. Neither fixture may contain real personal data or stable real-device identifiers.
+
+## 15. Artifact Extraction Framework
+
+```python
+class AcquisitionModule(Protocol):
+    descriptor: ModuleDescriptor
+    def evaluate(self, capabilities: DeviceCapabilitySnapshot) -> ModuleDecision: ...
+    def plan(self, context: PlanningContext) -> tuple[PlannedOperation, ...]: ...
+    async def acquire(self, context: OperationContext, operation: PlannedOperation) -> AsyncIterator[AcquiredItem]: ...
+    async def validate(self, item: AcquiredItem) -> ValidationResult: ...
+    async def derive(self, item: AcquiredItem) -> AsyncIterator[DerivedArtifact]: ...
+```
+
+`ModuleDescriptor` declares ID/name/version, categories, required capabilities/access, supported API/OEM evidence, input roots, operation IDs (not raw commands), outputs, parser IDs, time/size limits, risk/side effects, validation method, fixture set/version, maturity, and known limitations. `plan` is pure and produces a reviewable frozen operation plan. Cleanup only removes module-owned temporary/partial files after their state is recorded; it cannot delete sealed raw evidence.
+
+| MVP module | Acquisition and output | Validation |
+|---|---|---|
+| Device metadata | Fixed `getprop`/transport observations -> JSON snapshot | Required properties parsed; raw output hash retained |
+| Package inventory | Fixed package-manager listing -> package artifacts | Count/format checks; raw listing retained; visibility limitation reported |
+| Shared-storage inventory | Bounded traversal of approved roots -> remote file candidates | Root/readability, path/type/size, duplicate identity checks |
+| Images/videos/audio/documents | Pull selected candidates through streaming sink | Destination size, transfer status, SHA-256, optional source hash if safe/available |
+| Downloads | Same engine with Downloads roots and category tag | Root mapping, file metadata/hash |
+| EXIF metadata | Parse a sealed local copy in constrained worker | Parser success, bounded fields, parent SHA-256/version |
+| Generic metadata | MIME sniffing, size, local timestamps, remote stat | Original/raw values preserved; contradictions flagged |
+
+Research modules for contacts, SMS/MMS, calls, Wi-Fi, Bluetooth, browsers, notifications, calendar, notes, location, and named messaging/social apps begin with an acquisition-source study, legal/access assumptions, versioned fixture corpus, parser KATs, false-positive/negative measurement, and an explicit decision. A parser for an imported database does not imply ForensiX can acquire that database from a stock phone.
+
+## 16. Evidence Normalization Model
+
+`Artifact` fields: UUID, case/device/acquisition IDs, category/subtype, title/summary/content text, source URI/path, evidence-file ID, original filename, detected/declared MIME, size, created/modified/accessed/event timestamp values, original timestamp strings, timestamp source, UTC value, offset/timezone basis, confidence, active/deleted/recovered/partial/corrupted/unverified status, parser/module ID and version, primary SHA-256, provenance ID, tags/bookmark projections, metadata JSON, schema version, and created time.
+
+Provenance is a graph, not a free-text field. A provenance node records source device/path, operation and command-ledger IDs, acquisition time, raw evidence hash, transformation/parser/tool versions, input parent hashes, output hash, operator/job, and validation status. Artifact relationships model parent-child, attachment, conversation membership, duplicate-of, derived-from, and temporal correlation.
+
+Timestamp rules: retain integer/text source exactly; parse with overflow/range checks; store UTC only when a timezone/offset is known or a documented case assumption is explicitly applied; store naive values separately; record precision; do not invent seconds; conflicting sources create separate values and a conflict flag. Presentation can use case/local timezone without rewriting stored values.
+
+Duplicate detection uses SHA-256 for identical acquired bytes. A remote path/size/mtime tuple may optimize planning but never proves identity. Cross-acquisition duplicates remain distinct provenance instances linked to a canonical content object. FTS indexes only normalized/escaped searchable text and selected metadata, not secrets excluded by policy.
+
+## 17. Database Design
+
+IDs are UUIDv7 text (time-sortable without exposing case numbers). Timestamps are RFC 3339 UTC text plus source-specific fields where needed. Enumerations use checked text values. JSON is reserved for versioned, non-relational extension metadata; searchable/authorized fields are columns. Foreign keys are `RESTRICT` for evidence/case lineage. Evidence has no cascade delete. Soft deletion means an administrative tombstone request, never hidden row removal; actual purge is a separate policy workflow excluded from MVP.
+
+| Table | Purpose and principal columns | Constraints and indexes |
+|---|---|---|
+| `users` | id, username, display_name, password_hash, active, failed_count, locked_until, created/updated | unique normalized username; last-admin guard in service |
+| `roles` / `user_roles` | role code/description; user_id, role_id | unique role code and user-role pair |
+| `sessions` | id hash, user_id, CSRF hash, issued/expires/last_seen/revoked, client metadata | index user/expiry; never store raw token |
+| `cases` | id, case_number, title, agency, authority_ref, description, status, presentation_tz, owner, opened/closed, version | unique case number; status/updated indexes |
+| `case_members` | case_id, user_id, case_role, added_by/at, removed_at | unique active membership; object authorization index |
+| `devices` | id, case_id, stable display label, serial protected/display hash, manufacturer/model, first/last seen | case FK restrict; case/serial-hash index |
+| `device_capabilities` | id, device_id, snapshot/version/assessed_by/at, transport/fingerprint/API, result JSON, invalidated_at | device/time index; immutable snapshots |
+| `acquisitions` | id, case/device/operator, scope/plan versions, state, readiness_id, started/ended, progress, error, manifest_file_id, version | state/updated, case/time indexes; optimistic version |
+| `acquisition_modules` | id, acquisition_id, module/version, order, state/progress, checkpoint JSON, result/error | unique acquisition/module/order |
+| `acquisition_events` | id sequence, acquisition/job, type, payload JSON, created | unique job sequence; acquisition/time index |
+| `command_records` | id, acquisition/module/operation/catalog, sanitized argv JSON, timings, exit/bytes/results, side_effect | acquisition/time; append-only service |
+| `evidence_files` | id, case/device/acquisition, storage key, source path, name, size, status, sealed_at, primary_hash_id | unique storage key; source/acquisition indexes; no cascade |
+| `artifacts` | normalized fields described in section 16, evidence_file_id, metadata JSON | case/category/event-time, acquisition, status, parser indexes |
+| `artifact_relationships` | from_id, to_id, relationship, confidence, provenance | unique triple; both-direction indexes |
+| `tags` / `artifact_tags` | case-scoped tag; artifact/tag/actor/time | unique normalized tag per case and pair |
+| `bookmarks` | artifact_id, user_id, reason, created/removed | unique active user/artifact; case via artifact |
+| `analyst_notes` | id, artifact/case, author, body, created, supersedes_id, withdrawn_at | append/amend; artifact/time index |
+| `timeline_events` | id, case/artifact/acquisition, category, UTC/original time, source, confidence, conflict_group, summary | case/time/category compound indexes |
+| `hashes` | id, object_type/id, algorithm, value, size, tool/version, calculated_at | unique object/algorithm/value; hash lookup |
+| `hash_verifications` | id, hash_id, verifier, observed_value, result, verified_at, tool/version | hash/time index; append-only |
+| `jobs` | id, type/state, owner, case/acquisition, progress/step/module, lease, cancel, resume, result/error, timestamps, version | state/lease/updated indexes |
+| `reports` | id, case, creator, template/version, state, selection/redaction JSON, file_id, SHA-256, preliminary, created/completed | case/time/state; immutable completed versions |
+| `report_artifacts` | report_id, artifact_id, inclusion reason/order | unique pair; restrict deletes |
+| `custody_events` | id, case, object refs, event type, actor/time/location/purpose/from/to/notes, acknowledgement, amendment_of, audit_id | case/time; no update/delete |
+| `audit_logs` | sequence, event_id, case/user/action/outcome, canonical payload, previous_hash, entry_hash, created | unique sequence/event/hash; append-only |
+| `settings` | scope/key, typed value JSON, schema version, updated_by/at | unique scope/key; secrets are references, not values |
+| `parser_registry` | parser/module ID/version, manifest hash, status, validation level, installed/enabled info | unique ID/version; enabled/version index |
+| `export_jobs` | job/report/case, format/schema version, file_id/hash/state | case/time; file restrict |
+| `system_events` | id, severity/type, request/job, safe detail, created | severity/time/type indexes; retention policy |
+
+FTS5 uses an external-content `artifact_search` table keyed by artifact rowid with title, summary, content, source name, and tags. Application code updates it transactionally through one indexing service; a rebuild command verifies counts. Start with prefix-enabled Unicode tokenizer; record tokenizer/schema version. Migrations create identity/security, cases/members, devices/capabilities, acquisitions/jobs/events, evidence/hashes, artifacts/FTS/timeline, reports/custody/audit, then settings/registry. Every migration has upgrade, downgrade where safe, fixture migration, and copy-and-verify backup for destructive SQLite changes. PostgreSQL migration later replaces UUID/timestamp/JSON types and FTS implementation behind repositories; do not use SQLite-specific SQL outside adapters.
+
+## 18. API Design
+
+### 18.1 Conventions
+
+All responses include `request_id`; errors use `{error:{code,message,details,request_id}}`, with `details` allowlisted. Validation is 422, unauthenticated 401, unauthorized case access is usually 404 to reduce enumeration, conflict/stale version is 409, policy refusal 403, storage exhaustion 507, dependency unavailable 503. Mutation requests accept `Idempotency-Key` where retries could duplicate work; persisted responses are scoped to user+route+body hash. Lists use `limit<=200`, stable sort allowlists, and opaque cursors. Every mutation and every sensitive read/download emits an audit action and outcome.
+
+### 18.2 Endpoint catalog
+
+Abbreviations: A administrator, I investigator, N analyst, S supervisor, R reviewer; case membership and object permission always apply.
+
+| Method/path | Roles | Request -> response | Validation, errors, audit, idempotency, acceptance |
+|---|---|---|---|
+| POST `/auth/login` | public | credentials -> user/session | bounded fields; generic `AUTH_FAILED`/423; audit success/fail; idempotency N/A; cookie+CSRF issued |
+| POST `/auth/logout` | all | CSRF -> 204 | revoke current session; audit; repeat is 204 |
+| GET `/auth/me` | all | - -> user/roles/session expiry | 401 if expired; no sensitive profile fields |
+| POST `/auth/refresh` | all | CSRF -> renewed session | rotation/revocation checks; audit anomalies; old token unusable |
+| GET/POST `/cases` | all / A,I | filters or create schema -> page/case | unique case number, authority fields; audit create; POST idempotent; membership filtering proven |
+| GET/PATCH `/cases/{id}` | members / A,I | versioned patch -> case | field/status permission; 404/409; audit changed fields, not secrets; idempotency key; stale update rejected |
+| POST `/cases/{id}/close` | A,I,S | version/reason -> case | active-job/custody policy; 409; audit; duplicate returns same closed version |
+| POST `/devices/detect` | A,I | optional timeout<=5 -> observed transports | runner availability/multiple states; 503; audit invocation; short-lived idempotency; states correctly classified |
+| GET `/devices` | case members | case cursor/filter -> page | case required; safe serial display; read audit by policy |
+| GET `/devices/{id}` | case members | - -> device/latest assessment | object auth; no raw secrets; 404 concealment |
+| POST `/devices/{id}/assess` | A,I | expected transport -> job/snapshot ref | case/device state; 409/503; audit; idempotent; unsupported remains disabled |
+| POST `/acquisitions` | A,I | case/device/scope -> draft plan | snapshot current, modules supported; 409; audit; idempotent; returns operations/warnings |
+| POST `/acquisitions/{id}/start` | A,I | plan version/confirmation -> job | exact readiness/plan, disk check; 409/507; audit; idempotent; one execution only |
+| POST `/acquisitions/{id}/cancel` | A,I | reason/version -> accepted state | terminal-state handling; audit; idempotent; partials preserved |
+| POST `/acquisitions/{id}/resume` | A,I | checkpoint/version -> job | V1 capability/source identity; 409; audit; idempotent |
+| GET `/acquisitions/{id}` | members | - -> state/progress/summary | object auth; reconstructs after refresh |
+| GET `/acquisitions/{id}/events` | members | cursor -> event page or SSE | cursor/Last-Event-ID; heartbeat; reconnect no gaps |
+| GET `/artifacts` | members | case, query, filters, sort, cursor -> page/facets | allowlists/date parsing; 422; sensitive query audit; target latency met |
+| GET `/artifacts/{id}` | members | - -> artifact/provenance/relations | object auth; preview URLs short-lived/session-bound |
+| POST/DELETE `/artifacts/{id}/bookmark` | I,N,S | reason / - -> bookmark/204 | append/remove marker; audit; idempotent |
+| POST `/artifacts/{id}/notes` | I,N,S | body/supersedes -> note | length/content, no source change; audit; idempotent; amendments linked |
+| POST `/artifacts/{id}/tags` | I,N,S | tag IDs/names -> tags | case-scoped normalization; audit; idempotent set semantics |
+| GET `/cases/{id}/timeline` | members | filters/cursor -> events/facets | ambiguous timezone filter; source links valid; target latency |
+| POST `/hashes/verify` | A,I,N,S | object IDs -> job/result | case auth/file containment; audit; idempotent; mismatch raises system event |
+| POST/GET `/reports` | I,N,S / members | case/template/selection/redaction -> job; filters -> page | valid artifact set/template; audit; POST idempotent; preliminary enforced |
+| GET `/reports/{id}` | members | - -> metadata/status/hash | reviewer only if approved/shared policy; object auth |
+| GET `/reports/{id}/download` | members | - -> stream | file containment/hash state; download audit; safe disposition/name |
+| GET/POST `/cases/{id}/custody` | members / A,I,S | cursor or event schema -> page/event | event types/actor/transfer fields; no update/delete; audit; idempotent |
+| GET `/audit-logs` | A,S; case I by policy | case/action/time/cursor -> entries | payload redaction; access audited; chain status included |
+| GET/POST `/users` | A | filters or user/roles -> page/user | password/role policy, unique name; audit; idempotent create; no hash returned |
+| PATCH `/users/{id}` | A | versioned status/roles/reset -> user | last-admin/self-lockout guards; 409; audit; idempotent |
+| GET/PATCH `/settings` | A; personal subset all | keys or versioned values -> settings | schema/path probes; secrets masked; audit; 409 stale; atomic application |
+| GET `/health/live` | launcher/local | - -> status | no sensitive details; process liveness only |
+| GET `/health/ready` | authenticated/launcher token | - -> dependency states | DB/storage/runner/ADB distinct; 503 when core not ready |
+
+Generated OpenAPI examples include all state/error variants. Contract tests assert role matrix, case isolation, pagination stability, idempotency replay/mismatch, request IDs, and that no endpoint accepts ADB command text or raw filesystem destination paths.
+
+## 19. Authentication and RBAC
+
+Passwords use Argon2id with parameters calibrated to roughly 250-500 ms and bounded memory on recommended hardware; store algorithm/parameters in the encoded hash and rehash after successful login when policy changes. Minimum 12 characters, reject known-compromised/common passwords using an offline bundled list/filter, allow long passphrases, do not impose composition rules, and never truncate silently.
+
+Sessions use 256-bit random opaque tokens; store only a keyed hash, rotate on login/refresh/privilege change, expire after 30 minutes idle and 8 hours absolute by default, and revoke on logout, disable, password reset, or role change. Five failed attempts trigger escalating time-based lockout without revealing account existence. First launch requires an interactive bootstrap secret and creates exactly one admin; the secret is invalidated. Offline reset uses a local recovery procedure requiring OS-level access plus a recorded recovery event; it never exposes the old password.
+
+| Permission | Admin | Investigator | Analyst | Supervisor | Reviewer |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Manage users/system policy | Yes | No | No | No | No |
+| Create/manage assigned case | Policy/all | Yes | No | Review | No |
+| Detect/assess/start/cancel acquisition | Policy | Yes | No | Optional policy | No |
+| Search/view assigned evidence | Policy | Yes | Yes | Yes | Selected only |
+| Bookmark/tag/note | Policy | Yes | Yes | Yes | No |
+| Verify hashes | Yes | Yes | Yes | Yes | Read result |
+| Draft report/export | Yes | Yes | Yes | Yes | No |
+| Finalize report (V1) | Policy | No | No | Yes | No |
+| Append custody event | Yes | Yes | No | Yes | No |
+| View global audit | Yes | No | No | Yes | No |
+
+Permissions are checked as `(role capability) AND (active case membership/object policy) AND (case state allows action)`. UI guards improve usability only. Repository queries require a `PrincipalScope` so accidental unscoped reads are difficult. Authentication events record username hash/display-safe identifier, outcome/reason class, time, request/session IDs, and local client metadata without passwords/tokens.
+
+## 20. Case Management Design
+
+A case aggregate contains immutable internal ID and case number, title/description, agency and lawful-authority reference, owner/members, status, presentation timezone, retention classification, devices/acquisitions, and optimistic version. Suggested states are `open`, `suspended`, `under_review`, and `closed`; closed cases are read-only except custody, audit, verification, and supervisor-approved reopen. Reopen records reason and creates audit/custody events.
+
+Case number generation is configurable, defaulting to `FX-YYYY-NNNNNN`, allocated transactionally with a unique constraint. User-supplied case numbers remain metadata and never become paths. Linking a device creates a case-scoped device record; observed serial/fingerprint changes require explicit confirmation and never merge evidence automatically. MVP queues acquisitions globally, so multiple cases/devices do not race ADB/disk resources. Case deletion is not exposed. Export/backup produces a manifest-hashed package; restore/import is V1 after collision and trust rules are specified.
