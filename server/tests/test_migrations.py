@@ -20,6 +20,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "alembic_version",
         "device_capability_runs",
         "device_detection_runs",
+        "jobs",
         "system_events",
     } <= tables
 
@@ -30,5 +31,6 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
 
     assert "device_detection_runs" not in downgraded_tables
     assert "device_capability_runs" not in downgraded_tables
+    assert "jobs" not in downgraded_tables
     assert "system_events" not in downgraded_tables
     downgraded_engine.dispose()
