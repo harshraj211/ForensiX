@@ -1,0 +1,33 @@
+# JavaScript
+node_modules/
+dist/
+coverage/
+.vite/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# ForensiX runtime data
+data/
+*.db
+*.db-shm
+*.db-wal
+logs/
+tmp/
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
