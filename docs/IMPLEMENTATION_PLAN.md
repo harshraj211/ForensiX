@@ -674,3 +674,242 @@ Permissions are checked as `(role capability) AND (active case membership/object
 A case aggregate contains immutable internal ID and case number, title/description, agency and lawful-authority reference, owner/members, status, presentation timezone, retention classification, devices/acquisitions, and optimistic version. Suggested states are `open`, `suspended`, `under_review`, and `closed`; closed cases are read-only except custody, audit, verification, and supervisor-approved reopen. Reopen records reason and creates audit/custody events.
 
 Case number generation is configurable, defaulting to `FX-YYYY-NNNNNN`, allocated transactionally with a unique constraint. User-supplied case numbers remain metadata and never become paths. Linking a device creates a case-scoped device record; observed serial/fingerprint changes require explicit confirmation and never merge evidence automatically. MVP queues acquisitions globally, so multiple cases/devices do not race ADB/disk resources. Case deletion is not exposed. Export/backup produces a manifest-hashed package; restore/import is V1 after collision and trust rules are specified.
+
+## 21. Acquisition Workflow
+
+### 21.1 State machine
+
+```mermaid
+stateDiagram-v2
+  [*] --> Created
+  Created --> Validating
+  Validating --> Ready: capabilities and storage pass
+  Validating --> Failed: non-recoverable validation error
+  Ready --> Running: operator confirms exact plan
+  Running --> Paused: safe module checkpoint
+  Paused --> Running: source identity revalidated
+  Running --> Cancelling: cancellation requested
+  Cancelling --> Cancelled: current operation stopped and partials recorded
+  Running --> Interrupted: device/backend/host interruption
+  Interrupted --> Validating: restart/resume requested
+  Running --> Failed: non-recoverable execution error
+  Running --> Completed: all planned modules terminal
+  Completed --> Verifying
+  Verifying --> Verified: manifest and required hashes pass
+  Verifying --> Failed: verification fails
+  Cancelled --> [*]
+  Failed --> [*]
+  Verified --> [*]
+```
+
+`Completed` means acquisition stages ended; `Verified` means required manifest/file checks passed. An acquisition with optional module failures may be `Verified` with result `partial_success`, provided every failure/exclusion is in the sealed manifest. `Paused` is only permitted at a durable checkpoint; MVP generally uses `Interrupted` and restart-incomplete-item semantics rather than pretending arbitrary ADB pulls pause cleanly.
+
+### 21.2 Scope plans and execution
+
+- **Quick Triage:** device/package metadata, shared-storage inventory, policy-bounded recent media/documents/download files, basic metadata/timeline.
+- **Media:** accessible images, videos, audio, EXIF, generic metadata.
+- **Documents:** accessible documents/downloads; archives are collected as opaque evidence and not recursively extracted by default.
+- **Expanded logical:** all approved accessible shared-storage roots and enabled validated modules, with disk estimate/warning.
+- **Custom:** operator selects only capability-supported modules; the plan records exclusions.
+
+Before start, freeze the capability snapshot, module/catalog versions, approved roots, selection filters, estimates, warnings, and operator acknowledgement into a canonical plan. Recalculate disk headroom using known sizes plus configurable safety margin (max of 10 GB or 15%). On execution, each file has a stable item ID, remote source metadata, `.partial` destination, byte count, hash state, and checkpoint. A disconnect marks the current item partial and the acquisition interrupted. Restart re-stats the source; if identity cannot be established, it restarts into a new item version and retains the old partial.
+
+Every acquired item receives case/device/acquisition/module/operation IDs, source path and raw stat, command ledger reference, collection start/end, operator/job, destination storage key, byte count, SHA-256, validation status, tool/module versions, and limitations. The final manifest lists collected, skipped, failed, changed, partial, and excluded items.
+
+## 22. Evidence Preview Design
+
+The evidence explorer is a three-pane desktop-first experience: filter/navigation rail, virtualized results, and detail/provenance panel. The URL encodes query/filter/sort/cursor-safe state for review reproducibility; opening detail does not lose the list position. Category counts are computed from the current authorized case and filter set.
+
+Preview tiers are metadata-only, generated thumbnail/text excerpt, and explicit audited download. Server workers cap input bytes, decoded pixels, output dimensions, CPU time, and memory. They re-encode image thumbnails to a safe format, escape text, and never render scripts, external URLs, macros, embedded media, or archive contents. Unsupported/corrupt files show hashes, source, type evidence, and parser error without repeatedly crashing the worker. Sensitive content is masked by default; unmasking is session-local, permission checked, visually obvious, and optionally audited by agency policy.
+
+Source evidence has no edit/delete UI. Bookmarks, tags, and notes are separate records. Note correction appends a replacement linked to the earlier version. Any derived artifact names its parent hash and parser/tool version. Acceptance target: a user can move from a search result to raw provenance, hash, source timestamps, parser limitations, and related timeline events in no more than two actions.
+
+## 23. Search and Filtering Design
+
+Use SQLite FTS5 with an external-content index for text plus ordinary indexed columns for structured filters. `LIKE` is only a fallback for tiny administrative lists. The search service compiles a typed query AST; it never concatenates raw FTS/SQL. Phrase/prefix syntax is deliberately limited and documented. Invalid syntax returns a safe 422 with the position, not a database error.
+
+Filters cover case (mandatory), device, acquisition, category/subtype, event/source date range, detected MIME/file extension, source root/module/parser, status, bookmark, tags, parser validation level, and timestamp confidence. Sort allowlist is relevance, event time, collected time, category, source name, and size, each with UUID tie-breaker for stable cursor pagination. Facets are bounded and can be computed asynchronously on very large cases.
+
+Performance dataset: one million artifact rows, at least 250,000 searchable text rows, realistic tag/timeline relationships, and skewed categories. Target is first page in under 3 seconds at p95 on the reference workstation with a warm local database; query plan tests prevent full scans for common filters. Reindexing is a durable job that builds a new index, verifies count/checksum samples, then swaps atomically.
+
+## 24. Timeline Design
+
+Timeline events are materialized from artifact timestamp claims rather than overwriting artifacts. Each event has category (`device`, `file`, `media`, `communication`, `application`, `location`, `system`, `acquisition`, `custody`), source artifact, timestamp type, UTC/naive value, original value, timezone basis, precision, confidence, parser/module, and conflict group.
+
+Rules: invalid dates are preserved as parser warnings but not placed chronologically; missing timezone stays naive unless the source format has a documented default; case timezone conversion is display-only; filesystem created/modified/accessed times are separate events; EXIF offset is preferred over case assumption; DST ambiguity reduces confidence; materially different claims for the same semantic event are grouped and flagged, never averaged. Clicking an event opens the source artifact/provenance. Timeline rebuild is deterministic for the same normalized inputs and engine version, and records build version/hash.
+
+## 25. Hashing and Integrity Design
+
+Use streaming SHA-256 with 1-8 MiB buffers and no requirement to load files into memory. Hash acquired files immediately after atomic finalization (or incrementally during write with a post-finalize verification for high-risk paths), evidence bundles, manifest JSON, JSON/CSV exports, report bytes, and report data snapshots. Store algorithm, lowercase hex value, object type/ID, storage key, size, calculated time, implementation/tool version, and validation state.
+
+The canonical acquisition manifest is UTF-8 JSON using RFC 8785-style JSON canonicalization, integer byte counts, RFC 3339 UTC timestamps, sorted arrays by stable item ID, and no floating-point values where exactness matters. Each item contains source/destination storage key (not unsafe absolute path in portable exports), size, SHA-256, times, module/operation, status, error code, provenance ID, and limitations. Verification opens files through contained storage keys, recomputes size/hash, appends a verification record, raises a high-severity system/audit event on mismatch, and never overwrites the expected value.
+
+Completed report generation order is data snapshot -> render temporary -> finalize -> compute SHA-256 -> persist report row/hash -> emit audit/custody event. Displayed report hash is therefore metadata beside the PDF, not text inside the same hashed bytes.
+
+## 26. Audit Logging Design
+
+Audit entries are append-only through one service and contain sequence, event UUID, actor/session/request, case/object, action, outcome, canonical safe payload, previous hash, entry hash, and UTC time. The genesis entry uses a documented zero hash and instance ID. `entry_hash = SHA256(previous_hash || canonical_entry_without_hash_fields)`. Canonical bytes use the same fixed JSON canonicalization as manifests.
+
+Database triggers deny updates/deletes by the application database role/connection path; service tests ensure no update API exists. This is tamper-evident, not immutable: a host administrator can replace database and chain together. Mitigation is periodic signed or externally stored checkpoint export in V1, OS permissions, backups, chain verification at startup/export, and prominent failure alerts. Chain verification checks sequence continuity, previous hash, canonical rehash, and checkpoint matches; it produces a non-destructive verification report.
+
+Application operational logs are separate and can rotate; audit records follow case retention. Audit payloads exclude passwords, tokens, raw private content, and unsanitized commands. Security-sensitive reads such as report/evidence download are audited, while high-volume ordinary list reads can use policy-configurable summary events to avoid unusable noise.
+
+## 27. Chain-of-Custody Design
+
+Custody event types include evidence/device registered or received, case opened/reopened/closed, device connected, acquisition started/completed/interrupted, evidence exported/transferred, hash verified/mismatch, report generated/approved, and amendment. Fields are event/case IDs, device/evidence/report reference, actor, timestamp, location, purpose, from/to custodian, notes, related file/hash, digital acknowledgement method, and audit event ID.
+
+Events are never edited or deleted. A correction is an `amendment` event referencing the original, explaining the error, and supplying corrected assertions; UI shows both. Transfers require both custodian identities and purpose; MVP acknowledgement is authenticated actor confirmation, not a cryptographic signature. Report approval/digital countersignature is V1. A custody export includes ordered events, linked object hashes, audit references, schema/tool versions, and its own manifest hash.
+
+## 28. Reporting System
+
+Separate `ReportDataAssembler` from renderers. The assembler creates a versioned, canonical, authorization-filtered snapshot containing cover/preliminary warning, case/investigator metadata, device and capability snapshot, acquisition scope/times/modules/command summaries, limitations/exclusions/errors, evidence/category summary, selected artifacts, timeline summary, hash manifest, custody summary, methodology, and tool/parser versions. The snapshot is retained and hashed so a renderer can be reproduced.
+
+Use WeasyPrint for MVP PDF generation from controlled Jinja2 HTML/CSS because it supports page layout, headers/footers, tables, and cross-platform Python packaging better than hand-drawing complex reports. Keep ReportLab as a fallback only if packaging validation rejects WeasyPrint. JSON uses a published JSON Schema; CSV uses one table per category or a documented flattened schema and prefixes formula-leading cells (`=`, `+`, `-`, `@`, tab, CR) with an apostrophe. HTML export is V1 and self-contained with scripts disabled.
+
+Templates have ID, semantic version, compatible data-schema range, source hash, change log, and validation snapshots. User-controlled values are escaped; images are re-encoded/capped; large evidence tables become summaries plus appendices/structured attachments; redaction produces a new snapshot/report and never changes evidence. Names use `ForensiX_<case-number-safe-display>_<report-type>_<UTC>_<short-id>.pdf`, while the filesystem path uses UUID storage keys. Page numbers, confidentiality marking, preliminary label, limitations, generation time, and tool version appear consistently. Generation is a durable cancellable job; failed temporary output is quarantined/cleaned by policy and never presented as a report.
+
+## 29. Deleted-Data Recovery Strategy
+
+MVP exposes status vocabulary and recovery provenance but no generic recovery button. Maturity states are `not_available`, `experimental`, `controlled_dataset_validated`, `rooted_device_validated`, and `production_validated`. UI/report eligibility follows maturity and access source.
+
+Research order: imported SQLite databases -> WAL/journal parsing -> thumbnail/application caches -> lawfully obtained backup/filesystem images -> rooted controlled devices -> shared-storage remnants. For each, measure known inserted/deleted records, false positives/negatives, overwrite/TRIM/FBE effects, schema versions, confidence rules, and repeatability. Unallocated flash recovery is generally unavailable through ordinary ADB because the shell lacks block access and flash translation/TRIM/encryption destroy useful assumptions.
+
+Recovered artifacts must include recovery method/version, source image/database/hash/offset/page, active/deleted/recovered/partial/corrupted/unverified classification, confidence with documented basis, parser, limitations, validation status, and parent provenance. Fragments are stored separately and never merged silently with active evidence.
+
+## 30. Security Architecture
+
+### 30.1 Threat model
+
+| Threat/scenario | Impact / likelihood | Prevention and detection | Required test / residual risk |
+|---|---|---|---|
+| Unauthorized local user opens cases | Critical / medium | OS permissions, Argon2id, session/RBAC/case scope, idle expiry | Role/case isolation; privileged OS user remains residual |
+| Malicious website drives localhost API | High / medium | random port, launcher token/bootstrap, Host/Origin/CORS/CSRF, SameSite cookies | DNS rebinding/CSRF suite; local malware residual |
+| ADB command/argument injection | Critical / medium | no shell API, fixed catalog, typed argv, `shell=False`, serial/path validation | metacharacter/fuzz tests; ADB defects residual |
+| Unsafe ADB operation alters device | High / medium | approved catalog, side-effect classification, frozen plan/confirmation, ledger | catalog review/device diff test; unavoidable OS effects residual |
+| Path traversal/absolute/UNC/reparse escape | Critical / high | UUID storage keys, canonical containment, no user paths, symlink/reparse rejection | traversal/race corpus; filesystem race residual |
+| Malicious media/parser exploit | Critical / medium | worker process, caps/timeouts, re-encode, patched libs, no active embed | malformed corpus/crash isolation; decoder zero-day residual |
+| Archive/zip bomb | High / high | collect opaque by default; bounded safe extraction V1, ratio/count/depth limits | bomb/symlink archive suite; novel formats residual |
+| CSV formula injection | High / medium | neutralize dangerous prefixes, schema/version warning | spreadsheet payload tests; consumer behavior residual |
+| HTML/PDF template injection | High / medium | autoescape, no remote resources/scripts, controlled CSS, re-encoded images | injection corpus; renderer bugs residual |
+| Evidence overwrite/tamper | Critical / medium | append-only storage policy, atomic writes, hashes/manifests, verification alerts | modify/swap/truncate tests; host admin residual |
+| Audit/custody rewrite | Critical / medium | append-only service, hash chain, checkpoints/backups | mutation/chain tests; local chain recreation residual |
+| Session/credential theft | High / medium | HttpOnly/SameSite, token hashes/rotation, CSRF, secret-free logs | fixation/replay/logout tests; host malware residual |
+| Privilege/case escalation | Critical / medium | centralized permission service, scoped repositories, deny by default | endpoint matrix/IDOR tests; policy bugs residual |
+| Malicious/untrusted plugin | Critical / high | disabled MVP; signed manifest, pinned version, subprocess isolation V1 | malicious plugin suite; sandbox escape residual |
+| Dependency/supply-chain compromise | Critical / medium | lockfiles/hashes, SBOM, CodeQL/Semgrep, Dependabot review, signed artifacts | build provenance/scans; upstream compromise residual |
+| Secret/PII in logs/errors | High / medium | structured allowlists, redaction, safe error codes, output limits | canary-secret scan; operator notes residual |
+| Insecure temporary files | High / medium | private temp root, random names, exclusive create, cleanup ledger, no shared temp | permission/symlink/crash tests; disk remanence residual |
+| Disk exhaustion/partial write | High / high | preflight/headroom, quotas, streaming, atomic partial state, 507 | fault-injected full disk; unexpected growth residual |
+| Hash/report/export substitution | Critical / low | contained handles, post-render hash, object binding, download verification | swap/race tests; host admin residual |
+| Backup/export disclosure | Critical / medium | explicit scope/redaction, manifest, restricted destination, encryption policy | unauthorized export tests; removable-media handling residual |
+
+### 30.2 Security controls
+
+Default bind is loopback only; no “listen on LAN” setting in MVP. Apply CSP, `X-Content-Type-Options: nosniff`, frame denial, restrictive referrer policy, and no-cache sensitive responses. Validate declared and sniffed MIME separately; a mismatch is evidence metadata, not an automatic rename. Size limits exist at HTTP, ADB output, file, thumbnail, parser, report, and export layers. Storage directories use owner-only permissions where the OS supports them; Windows ACL, macOS/Linux modes, and network/removable filesystem caveats are startup checks.
+
+Application-managed encryption at rest is not improvised for MVP. Require/document BitLocker, FileVault, or LUKS for production-like use. V1 encryption design must include key generation, OS keychain integration, agency escrow/recovery, backup/rotation, memory exposure, and corruption recovery before implementation.
+
+## 31. Privacy and Data Protection
+
+Apply data minimization: show case labels instead of evidence snippets on global pages; mask device serials, phone numbers, message text, GPS, and account identifiers by default; scope previews/exports by case membership; never send telemetry or content off-host in MVP. Reports require an explicit artifact selection policy, preview of included sensitive fields, and a limitations/redaction summary. Redaction creates derived output with an audit event and hash.
+
+Retention, legal hold, purge authority, and cross-border/storage-location rules are agency policy inputs, not hard-coded legal claims. MVP supports no evidence deletion. Backups and exports inherit sensitivity, hashes, custody, and access warnings. Test/demo fixtures are synthetic; bug reports/log bundles exclude evidence by default and require operator review.
+
+## 32. Error Handling
+
+Domain errors have stable codes, safe messages, retryability, severity, and optional operator guidance. Examples: `ADB_NOT_FOUND`, `ADB_UNSUPPORTED_VERSION`, `NO_DEVICE`, `MULTIPLE_DEVICES`, `DEVICE_UNAUTHORIZED`, `DEVICE_OFFLINE`, `CAPABILITY_STALE`, `MODULE_UNSUPPORTED`, `COMMAND_TIMEOUT`, `DEVICE_DISCONNECTED`, `SOURCE_CHANGED`, `PATH_POLICY_VIOLATION`, `DISK_SPACE_LOW`, `STORAGE_FULL`, `PARSER_FAILED`, `HASH_MISMATCH`, `AUDIT_CHAIN_INVALID`, `REPORT_RENDER_FAILED`, `JOB_CONFLICT`, and `CASE_ACCESS_DENIED`.
+
+The API maps errors consistently and includes request/job IDs. UI guidance never suggests bypassing a lock or security control. Full command stdout, exception traces, paths, and evidence content stay out of responses; protected diagnostic logs may contain sanitized summaries. A single item/parser failure can produce partial success; policy/integrity/storage failures stop the acquisition. Every caught failure records stage, object/module, safe context, disposition, and preservation action.
+
+## 33. Background Jobs and Progress Tracking
+
+Jobs cover assessment, acquisition, parsing, indexing, hashing, timeline, report, export, and verification. Fields are ID/type/state, owner/case/object, progress basis points, current step/module/item-safe-label, timestamps, lease owner/expiry, heartbeat, cancellation request, resume capability/checkpoint, result reference, error code/message, and optimistic version.
+
+The runner has one acquisition lane in MVP plus bounded CPU/IO lanes for thumbnails/report/indexing so expensive derivation cannot starve device collection. Progress is weighted by planned bytes where known and module weights otherwise; it never reports 100% before terminal verification. Events are persisted with sequence before SSE publication. Browser refresh/reconnect resumes from `Last-Event-ID`; if delivery gaps are compacted, client fetches the current snapshot.
+
+| Failure/event | Required behavior |
+|---|---|
+| Backend restarts | Expired running leases become `interrupted`; startup recovery offers eligible restart after integrity/storage checks |
+| Device disconnects | Stop new commands, terminate bounded current process, mark item partial, preserve prior items, require identity/readiness revalidation |
+| Disk full | Abort writes safely, record 507/storage event, retain valid sealed files and `.partial` ledger; never claim completion |
+| ADB hangs | Timeout, terminate process tree, classify/retry once only if transient policy allows |
+| Parser crashes | Worker failure recorded; raw evidence remains sealed; continue independent parsers/modules when safe |
+| User cancels | Set durable cancel flag, stop at safe point, finalize statuses/manifest; cancellation itself is audited |
+| Hash mismatch | Quarantine object state, high-severity alert, stop dependent export/report; retain expected/observed values |
+
+## 34. Session Recovery
+
+On startup, acquire a single-instance lock, verify database migration state and audit chain, scan expired job leases, reconcile `.partial`/sealed files against metadata, and create a recovery summary. Do not auto-resume ADB operations. The operator opens the original case, reviews last checkpoint/device identity/source changes, and explicitly restarts or abandons the incomplete module. Both decisions are audited.
+
+Recovery is idempotent: it may add reconciliation events but never duplicate sealed evidence. Orphan files are quarantined under acquisition recovery storage and not indexed until provenance is resolved. Missing sealed files or hash mismatches place the case in integrity-warning state. Browser/session expiry does not stop an authorized already-running job; job ownership and action authorization were frozen at start, while later cancel/view requires a current permitted session.
+
+## 35. Cross-Platform Packaging
+
+MVP: browser frontend, local FastAPI process, and OS-specific launcher script/executable. This is easiest to debug and validates the architecture without a desktop-shell schedule risk. Polished V1: Tauri shell with the FastAPI/Python application packaged as a managed sidecar. Prefer Tauri over Electron for smaller distribution and a tighter native shell, while accepting sidecar/process/update complexity.
+
+Bundle a pinned Android Platform Tools build per OS only after license review; verify its hash at startup. Allow an administrator-approved external path. Windows guidance covers OEM/Google USB drivers, WinUSB conflicts, hidden backend process, ACLs, and signed MSIX/installer. Linux covers udev rules/groups and AppImage/deb/rpm permissions. macOS covers notarization, quarantine/Gatekeeper, USB prompts, app bundle paths, and universal binaries. Use OS application-data directories for metadata/config/logs and a separately configured evidence root.
+
+Launcher chooses a free loopback port through an inherited socket/handshake, passes a one-time bootstrap secret to the UI, monitors backend lifecycle, avoids duplicate instances, and collects sanitized diagnostics. Signed updates are V1 and cannot run during acquisition. Code signing/notarization and SBOM/provenance are release gates, not optional polish.
+
+## 36. Docker and Environment Setup
+
+Docker Compose provides API/web development, lint/test parity, mock ADB, and synthetic data; it does not promise reliable USB acquisition on Docker Desktop. Native developer scripts install pinned Python (3.12 target), Node LTS, pnpm, Platform Tools, pre-commit hooks, and create local config. Lock Python with `uv.lock` and JS with `pnpm-lock.yaml`; record supported tool versions.
+
+Services: `api`, `web`, optional `mock-adb`, and test-only `mail` is unnecessary because the product is offline. Mount synthetic fixtures only. Never mount a real evidence root into a general development container by default. Configuration profiles are dev/test/production; production rejects debug, wildcard origin/host, world-writable storage, default credentials, and unsigned plugin settings.
+
+## 37. Testing Strategy
+
+| Layer | Tools and scope | Fixtures/CI and pass criteria |
+|---|---|---|
+| Frontend unit/component | Vitest, RTL, MSW, axe | role/state/error/keyboard fixtures on every PR; no critical axe violation and deterministic tests |
+| Frontend E2E | Playwright | mock ADB + seeded case; Chromium each PR, Firefox/WebKit nightly; complete primary flow |
+| Backend unit/API | Pytest, AnyIO, httpx, Hypothesis | temporary SQLite/storage, role matrix, validation/idempotency/errors; all protected routes deny by default |
+| Repository/migrations | Pytest/Alembic | empty and prior-version fixtures; upgrade preserves counts/hashes/FKs; downgrade only where declared safe |
+| ADB | mock/recorded client, subprocess fakes | no/one/unauthorized/offline/multiple, timeout, disconnect, output cap, source change; no unapproved argv |
+| Forensic modules | known-answer corpus | exact hashes/provenance/timestamps/parser outputs; repeat runs materially identical |
+| Storage/hash | Pytest/Hypothesis | traversal/symlink/reparse/long/Unicode names, full disk, atomicity, NIST hash vectors; no containment escape |
+| Reports/exports | JSON Schema, snapshot/text extraction, PDF render | golden structured data and rendered page QA; hash/reproducibility, escaping, CSV neutralization |
+| Security | Semgrep/CodeQL plus targeted Pytest/Playwright | injection, IDOR, CSRF, session, archive/media, secrets, permissions; no open critical/high finding |
+| Performance | Locust/custom benchmark, Playwright traces | one-million-artifact fixture; SRS p95 targets on recorded reference hardware |
+
+The E2E acceptance path is login -> create case -> detect mock device -> assess -> confirm scope -> acquire with SSE -> review/filter -> bookmark/note -> timeline -> verify -> custody -> preliminary report/export -> close. Negative E2E paths cover unauthorized device, disconnect, stale readiness, cancel, storage full, parser crash, hash mismatch, and forbidden role.
+
+## 38. Forensic Validation Strategy
+
+Maintain controlled devices across Android 10, 12, 14, and 16 where available, at least Pixel plus Samsung and one additional OEM, with rooted devices isolated to research. Matrix states include locked/unlocked, debugging disabled/enabled, unauthorized/authorized/offline, work profile, encrypted default, low storage, and cable disconnect. Record exact build fingerprint, patch, ADB/tool/module/parser versions, cable/host OS, settings, and dataset version.
+
+Known datasets contain generated media/documents with hashes, Unicode/edge filenames, known UTC/offset/naive timestamps, EXIF variants, duplicate files, corrupt media, package expectations, and controlled deletions only for recovery research. Perform three repeat acquisitions per supported configuration, compare manifests/artifact counts/hashes/timestamp claims, and explain all variance. Measure parser true/false positives/negatives on labeled corpora; no parser graduates without thresholds approved in its validation protocol.
+
+Validation report template: objective/scope, tool/build hashes, team/reviewer, environment/device matrix, source dataset/hash, procedure/commands/side-effect observations, expected vs observed results, repeatability, false-positive/negative metrics, performance, deviations, limitations, defects, supported claim, unsupported claim, evidence attachments/hashes, reviewer decision, and expiry/revalidation triggers. Any Platform Tools, Android/OEM, module/parser, storage, or normalization change triggers impact-based revalidation.
+
+## 39. DevSecOps Plan
+
+GitHub Actions workflows:
+
+- `frontend.yml`: pnpm frozen install, ESLint (correctness/a11y rules), Prettier check, TypeScript strict check, Vitest/coverage, production build.
+- `backend.yml`: uv locked sync, Ruff format/lint, mypy, Pytest/coverage, Alembic upgrade from empty/prior fixture.
+- `contracts.yml`: export OpenAPI, regenerate client, fail on diff, validate JSON export schemas.
+- `e2e.yml`: launch mock stack and run Playwright primary/negative flows with artifacts on failure.
+- `security.yml`: Gitleaks secret scan, pip-audit/pnpm audit with reviewed exception file, Bandit for Python patterns, Semgrep project rules, CodeQL, and Trivy image/filesystem/SBOM scan.
+- `package-matrix.yml`: Windows/Linux/macOS sidecar/launcher builds and smoke tests; nightly until release phase.
+- `release.yml`: tagged, approved build; tests; SBOM; artifact hashes; code signing/notarization; provenance attestation; draft release.
+
+Ruff replaces Black/isort to reduce overlapping formatters; mypy enforces typed boundaries; Bandit complements semantic review but is not treated as proof of security. Dependency exceptions require owner, rationale, exploitability assessment, expiry, and tracking issue. Branch protection requires review, signed/verified commits where feasible, all required checks, and no direct release from an unreviewed workstation.
+
+## 40. Observability and Logging
+
+Use structured JSON logs with UTC timestamp, level, event code, service/module, request/job/acquisition IDs, safe case/object IDs, duration, outcome, retry, and sanitized error code. Keep application, job/forensic command ledger, security, and audit streams logically distinct. Never log tokens, password fields, raw evidence content, unsanitized device output, or full serials by default.
+
+Local dashboards expose health, runner queues, current job, ADB availability/version, storage free space, database/FTS state, last backup/chain verification, and parser worker failures. No external telemetry is enabled. Configurable rotation defaults to size + retention; audit/custody are database records and not rotated as logs. A support bundle requires user preview/consent, redacts identifiers/paths, includes versions/config schema and safe recent errors, and excludes evidence/database by default.
+
+## 41. Performance Plan
+
+Budgets: device enumeration p95 <=5 s; readiness p95 <=10 s excluding authorization wait; quick-triage first indexed preview <=30 s when an eligible small artifact is accessible; search first page p95 <=3 s on the reference million-row case; idle CPU <10%; ordinary triage RSS <2 GB. Report targets are size-dependent and displayed as jobs rather than synchronous API timeouts.
+
+Optimize by streaming pulls/hashes/exports, bounded queues/backpressure, thumbnail caching by parent hash+renderer version, FTS5 and compound indexes, cursor pagination, row virtualization, avoiding ORM N+1, incremental timeline/index batches, and one SQLite writer. Collect per-stage timings/bytes/queue depth locally. Benchmarks pin hardware, OS, dataset, cache state, and tool versions; regressions over 15% require explanation or correction.
+
+## 42. Accessibility Plan
+
+Target WCAG 2.2 AA for primary workflows. Requirements include semantic landmarks/headings, skip link, visible focus, complete keyboard operation, logical tab order, accessible dialogs, no color-only status, 4.5:1 text contrast, reflow at 200% zoom, reduced-motion support, scalable text, accessible names for icons, and live-region announcements that throttle progress changes.
+
+Evidence tables use a documented grid pattern with row/column semantics, keyboard navigation, non-virtualized accessible fallback where necessary, and a detail view that exposes the same data. Timeline has a chronological list alternative to visual plotting. Dark/light themes both pass contrast. Automated axe checks run on components/routes, while manual tests cover screen readers (NVDA on Windows plus VoiceOver on macOS), keyboard-only acquisition/report flows, zoom, and high-contrast mode before MVP sign-off.
