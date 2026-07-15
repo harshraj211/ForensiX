@@ -11,6 +11,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -271,3 +272,87 @@ class CaseEventRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, index=True
     )
+
+
+class CaseDeviceRecord(Base):
+    """Stable, case-scoped identity for an assessed Android device."""
+
+    __tablename__ = "case_devices"
+    __table_args__ = (
+        UniqueConstraint("case_id", "serial_hash", name="uq_case_devices_case_serial_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    serial_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    serial_suffix: Mapped[str] = mapped_column(String(8), nullable=False)
+    manufacturer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    android_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sdk_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    build_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    security_patch: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    registered_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class CaseDeviceDetectionRecord(Base):
+    """Append-only record that a case-scoped ADB enumeration occurred."""
+
+    __tablename__ = "case_device_detections"
+    __table_args__ = (
+        CheckConstraint("device_count >= 0", name="ck_case_device_detections_count"),
+        CheckConstraint(
+            "result IN ('no_devices', 'single_device', 'multiple_devices')",
+            name="ck_case_device_detections_result",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    operator_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+    adb_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    device_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    result: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+
+
+class CaseDeviceAssessmentRecord(Base):
+    """Immutable readiness snapshot for a device at a point in time."""
+
+    __tablename__ = "case_device_assessments"
+    __table_args__ = (
+        CheckConstraint("package_count >= 0", name="ck_case_device_assessments_packages"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("case_devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    assessed_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    assessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+    package_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    assessor_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)

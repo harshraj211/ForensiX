@@ -21,6 +21,9 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "auth_events",
         "auth_sessions",
         "case_events",
+        "case_device_assessments",
+        "case_device_detections",
+        "case_devices",
         "case_members",
         "cases",
         "device_capability_runs",
@@ -48,5 +51,8 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     assert "cases" not in downgraded_tables
     assert "case_members" not in downgraded_tables
     assert "case_events" not in downgraded_tables
+    assert "case_device_assessments" not in downgraded_tables
+    assert "case_device_detections" not in downgraded_tables
+    assert "case_devices" not in downgraded_tables
     assert "system_events" not in downgraded_tables
     downgraded_engine.dispose()

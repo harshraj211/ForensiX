@@ -59,6 +59,13 @@ function mockResponse(body: unknown, status = 200, requestId = "req-test") {
   );
 }
 
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 afterEach(() => {
   rememberCsrfToken(null);
   vi.unstubAllGlobals();
@@ -321,5 +328,122 @@ describe("device readiness", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("ADB was not found");
     expect(screen.getByText("Request req-missing-adb")).toBeInTheDocument();
+  });
+
+  it("persists readiness inside the selected case and refreshes its device registry", async () => {
+    let assessed = false;
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-CASE0001",
+            title: "Scoped readiness case",
+            description: null,
+            legal_authority: "Controlled validation",
+            status: "open",
+            created_by: "user-1",
+            created_at: "2026-07-15T09:00:00Z",
+            updated_at: "2026-07-15T09:00:00Z",
+            closed_at: null,
+            version: 1,
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/devices") {
+        return Promise.resolve(
+          jsonResponse(
+            assessed
+              ? [
+                  {
+                    id: "device-1",
+                    case_id: "case-1",
+                    serial_suffix: "O-001",
+                    manufacturer: "ForensiX Labs",
+                    model: "Controlled Test Device",
+                    android_version: "14",
+                    sdk_level: 34,
+                    build_fingerprint: "forensix/demo",
+                    security_patch: "2026-07-01",
+                    registered_by: "user-1",
+                    first_seen_at: "2026-07-15T09:01:00Z",
+                    last_seen_at: "2026-07-15T09:01:00Z",
+                  },
+                ]
+              : [],
+          ),
+        );
+      }
+      if (url === "/api/v1/devices/detect?case_id=case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            detection_id: "detect-case-1",
+            case_id: "case-1",
+            observed_at: "2026-07-15T09:00:00Z",
+            result: "single_device",
+            adb: { version: "1.0.41", executable_path: "mock://adb" },
+            devices: [
+              {
+                serial: "FX-DEMO-001",
+                state: "authorized",
+                raw_state: "device",
+                product: "forensix_demo",
+                model: "Controlled_Test_Device",
+                device: "fx_virtual",
+                transport_id: "1",
+                usb: "1-1",
+              },
+            ],
+          }),
+        );
+      }
+      if (url === "/api/v1/devices/assess") {
+        assessed = true;
+        return Promise.resolve(
+          jsonResponse({
+            assessment_id: "assessment-case-1",
+            case_id: "case-1",
+            case_device_id: "device-1",
+            assessed_at: "2026-07-15T09:01:00Z",
+            serial: "FX-DEMO-001",
+            manufacturer: "ForensiX Labs",
+            model: "Controlled Test Device",
+            android_version: "14",
+            sdk_level: 34,
+            build_fingerprint: "forensix/demo",
+            security_patch: "2026-07-01",
+            package_count: 3,
+            capabilities: {
+              device_metadata: {
+                status: "supported",
+                reason_code: "ADB_PROPERTY_ACCESS",
+                explanation: "Core properties were retrieved.",
+              },
+            },
+            warnings: ["Capability results can become stale."],
+            assessor_version: "0.1.0",
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderApp("/cases/case-1/devices");
+
+    expect(await screen.findByText("FX-2026-CASE0001")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Detect Android devices" }));
+    await user.click(await screen.findByRole("button", { name: "Assess capabilities" }));
+
+    expect(await screen.findByText(/Snapshot saved to this case's device history/i)).toBeInTheDocument();
+    expect(await screen.findByText("1 linked")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/devices/assess",
+      expect.objectContaining({
+        body: JSON.stringify({ serial: "FX-DEMO-001", case_id: "case-1" }),
+      }),
+    );
   });
 });

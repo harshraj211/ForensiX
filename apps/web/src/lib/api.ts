@@ -20,6 +20,7 @@ export interface DeviceTransport {
 
 export interface DeviceDetection {
   detection_id: string;
+  case_id: string | null;
   observed_at: string;
   result: "no_devices" | "single_device" | "multiple_devices";
   adb: { version: string; executable_path: string };
@@ -36,6 +37,8 @@ export interface CapabilityDecision {
 
 export interface DeviceCapabilityAssessment {
   assessment_id: string;
+  case_id: string | null;
+  case_device_id: string | null;
   assessed_at: string;
   serial: string;
   manufacturer: string | null;
@@ -89,6 +92,39 @@ export interface CaseList {
   total: number;
   offset: number;
   limit: number;
+}
+
+export interface CaseDevice {
+  id: string;
+  case_id: string;
+  serial_suffix: string;
+  manufacturer: string | null;
+  model: string | null;
+  android_version: string | null;
+  sdk_level: number | null;
+  build_fingerprint: string | null;
+  security_patch: string | null;
+  registered_by: string;
+  first_seen_at: string;
+  last_seen_at: string;
+}
+
+export interface CaseDeviceAssessment {
+  id: string;
+  case_id: string;
+  device_id: string;
+  assessed_by: string;
+  assessed_at: string;
+  manufacturer: string | null;
+  model: string | null;
+  android_version: string | null;
+  sdk_level: number | null;
+  build_fingerprint: string | null;
+  security_patch: string | null;
+  package_count: number;
+  capabilities: Record<string, CapabilityDecision>;
+  warnings: string[];
+  assessor_version: string;
 }
 
 interface ErrorEnvelope {
@@ -185,18 +221,38 @@ export function transitionCase(
   });
 }
 
-export async function detectDevices(signal?: AbortSignal): Promise<DeviceDetection> {
-  return apiRequest("/api/v1/devices/detect", {
+export async function detectDevices(
+  caseId?: string,
+  signal?: AbortSignal,
+): Promise<DeviceDetection> {
+  const query = caseId ? `?case_id=${encodeURIComponent(caseId)}` : "";
+  return apiRequest(`/api/v1/devices/detect${query}`, {
     method: "POST",
     signal,
   });
 }
 
-export async function assessDevice(serial: string): Promise<DeviceCapabilityAssessment> {
+export async function assessDevice(
+  serial: string,
+  caseId?: string,
+): Promise<DeviceCapabilityAssessment> {
   return apiRequest("/api/v1/devices/assess", {
     method: "POST",
-    body: JSON.stringify({ serial }),
+    body: JSON.stringify({ serial, ...(caseId ? { case_id: caseId } : {}) }),
   });
+}
+
+export function listCaseDevices(caseId: string): Promise<CaseDevice[]> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/devices`);
+}
+
+export function listCaseDeviceAssessments(
+  caseId: string,
+  deviceId: string,
+): Promise<CaseDeviceAssessment[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/assessments`,
+  );
 }
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {

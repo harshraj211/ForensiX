@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Cable,
@@ -14,11 +14,16 @@ import {
   Usb,
   XCircle,
 } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
 
+import { caseKeys } from "../cases/caseKeys";
 import {
   ApiError,
   assessDevice,
   detectDevices,
+  getCase,
+  listCaseDevices,
+  type CaseDevice,
   type CapabilityDecision,
   type CapabilityStatus,
   type DeviceCapabilityAssessment,
@@ -68,22 +73,52 @@ const stateCopy: Record<
 };
 
 export function DeviceDetectionPage() {
-  const detection = useMutation({ mutationFn: () => detectDevices() });
-  const assessment = useMutation({ mutationFn: (serial: string) => assessDevice(serial) });
+  const { caseId } = useParams();
+  const queryClient = useQueryClient();
+  const caseQuery = useQuery({
+    queryKey: caseKeys.detail(caseId ?? "global"),
+    queryFn: () => getCase(caseId ?? ""),
+    enabled: Boolean(caseId),
+  });
+  const linkedDevices = useQuery({
+    queryKey: caseKeys.devices(caseId ?? "global"),
+    queryFn: () => listCaseDevices(caseId ?? ""),
+    enabled: Boolean(caseId),
+  });
+  const detection = useMutation({ mutationFn: () => detectDevices(caseId) });
+  const assessment = useMutation({
+    mutationFn: (serial: string) => assessDevice(serial, caseId),
+    onSuccess: () => {
+      if (caseId) {
+        void queryClient.invalidateQueries({ queryKey: caseKeys.devices(caseId) });
+      }
+    },
+  });
 
   return (
     <div className="mx-auto max-w-6xl">
+      {caseId && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <Link to={`/cases/${caseId}`} className="text-slate-500 transition hover:text-cyan-200">
+            ← Back to case
+          </Link>
+          <span className="font-mono text-xs text-cyan-300/60">
+            {caseQuery.data?.case_number ?? "Loading case context…"}
+          </span>
+        </div>
+      )}
       <div className="flex flex-col justify-between gap-6 border-b border-white/8 pb-8 md:flex-row md:items-end">
         <div className="min-w-0">
           <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">
-            Phase 0 · Transport validation
+            {caseId ? "Case-scoped readiness" : "Phase 0 · Transport validation"}
           </p>
           <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
             Device readiness
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
-            Detect connected Android transports and classify their authorization state before any
-            case-linked acquisition is allowed.
+            {caseId
+              ? "Detect and assess an Android device inside this authorized case. Successful assessments become immutable readiness history."
+              : "Detect connected Android transports and classify their authorization state before any case-linked acquisition is allowed."}
           </p>
         </div>
         <button
@@ -161,7 +196,73 @@ export function DeviceDetectionPage() {
           </div>
         </aside>
       </div>
+      {caseId && (
+        <LinkedDevices
+          devices={linkedDevices.data ?? []}
+          isPending={linkedDevices.isPending}
+          error={linkedDevices.error}
+        />
+      )}
     </div>
+  );
+}
+
+function LinkedDevices({
+  devices,
+  isPending,
+  error,
+}: {
+  devices: CaseDevice[];
+  isPending: boolean;
+  error: Error | null;
+}) {
+  return (
+    <section className="mt-8 rounded-xl border border-white/8 bg-white/[0.02] p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+            Case device registry
+          </p>
+          <h2 className="mt-2 text-lg font-semibold text-white">Assessed Android devices</h2>
+        </div>
+        <span className="rounded-full border border-white/10 px-3 py-1 text-xs text-slate-500">
+          {devices.length} linked
+        </span>
+      </div>
+      {isPending && <p role="status" className="mt-5 text-sm text-slate-500">Loading device history…</p>}
+      {error && <div className="mt-5"><ErrorState error={error} /></div>}
+      {!isPending && !error && devices.length === 0 && (
+        <p className="mt-5 text-sm leading-6 text-slate-500">
+          No device has been registered yet. Assess an authorized transport to create the first
+          readiness snapshot.
+        </p>
+      )}
+      {devices.length > 0 && (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          {devices.map((device) => (
+            <article key={device.id} className="rounded-lg border border-white/8 bg-black/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-slate-100">
+                    {[device.manufacturer, device.model].filter(Boolean).join(" ") || "Android device"}
+                  </h3>
+                  <p className="mt-1 font-mono text-xs text-slate-600">
+                    Serial ending {device.serial_suffix}
+                  </p>
+                </div>
+                <ShieldCheck aria-hidden="true" size={17} className="text-emerald-300" />
+              </div>
+              <p className="mt-4 text-xs text-slate-500">
+                Android {device.android_version ?? "unknown"} · API {device.sdk_level ?? "unknown"}
+              </p>
+              <p className="mt-2 text-xs text-slate-600">
+                Last assessed {new Date(device.last_seen_at).toLocaleString()}
+              </p>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -379,6 +480,11 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
           ))}
         </ul>
       </div>
+      {assessment.case_device_id && (
+        <p className="mt-4 flex items-center gap-2 text-xs font-medium text-emerald-200/75">
+          <CheckCircle2 size={14} aria-hidden="true" /> Snapshot saved to this case's device history.
+        </p>
+      )}
     </section>
   );
 }

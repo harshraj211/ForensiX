@@ -47,6 +47,7 @@ class DeviceTransportResponse(BaseModel):
 
 class DeviceDetectionResponse(BaseModel):
     detection_id: str
+    case_id: str | None = None
     observed_at: datetime
     result: Literal["no_devices", "single_device", "multiple_devices"]
     adb: AdbInfoResponse
@@ -55,12 +56,50 @@ class DeviceDetectionResponse(BaseModel):
 
 class DeviceAssessmentRequest(BaseModel):
     serial: str = Field(min_length=1, max_length=255)
+    case_id: str | None = Field(default=None, min_length=36, max_length=36)
 
 
 class DeviceCapabilityAssessmentResponse(BaseModel):
     assessment_id: str
+    case_id: str | None = None
+    case_device_id: str | None = None
     assessed_at: datetime
     serial: str
+    manufacturer: str | None
+    model: str | None
+    android_version: str | None
+    sdk_level: int | None
+    build_fingerprint: str | None
+    security_patch: str | None
+    package_count: int
+    capabilities: dict[str, CapabilityDecision]
+    warnings: list[str]
+    assessor_version: str
+
+
+class CaseDeviceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    case_id: str
+    serial_suffix: str
+    manufacturer: str | None
+    model: str | None
+    android_version: str | None
+    sdk_level: int | None
+    build_fingerprint: str | None
+    security_patch: str | None
+    registered_by: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class CaseDeviceAssessmentResponse(BaseModel):
+    id: str
+    case_id: str
+    device_id: str
+    assessed_by: str
+    assessed_at: datetime
     manufacturer: str | None
     model: str | None
     android_version: str | None

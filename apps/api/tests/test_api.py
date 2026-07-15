@@ -9,6 +9,9 @@ from forensix_forensic.adb import MockAdbClient, MockAdbScenario
 from forensix_server.auth import RoleName
 from forensix_server.config import Settings
 from forensix_server.db import (
+    CaseDeviceAssessmentRecord,
+    CaseDeviceDetectionRecord,
+    CaseDeviceRecord,
     DeviceCapabilityRun,
     RoleRecord,
     UserRecord,
@@ -392,3 +395,66 @@ def test_case_management_enforces_role_permissions(tmp_path: Path) -> None:
     assert readable.status_code == 200
     assert denied.status_code == 403
     assert denied.json()["error"]["code"] == "CASE_ACCESS_DENIED"
+
+
+def test_case_scoped_detection_assessment_and_history(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Readiness history"}
+        ).json()
+        case_id = case["id"]
+
+        detection = client.post(f"/api/v1/devices/detect?case_id={case_id}", headers=headers)
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case_id},
+        )
+        devices = client.get(f"/api/v1/cases/{case_id}/devices")
+        device_id = devices.json()[0]["id"]
+        snapshots = client.get(f"/api/v1/cases/{case_id}/devices/{device_id}/assessments")
+        events = client.get(f"/api/v1/cases/{case_id}/events")
+
+    assert detection.status_code == 200
+    assert detection.json()["case_id"] == case_id
+    assert assessment.status_code == 200
+    assert assessment.json()["case_id"] == case_id
+    assert assessment.json()["case_device_id"] == device_id
+    assert devices.status_code == 200
+    assert devices.json()[0]["serial_suffix"] == "O-001"
+    assert snapshots.status_code == 200
+    assert snapshots.json()[0]["device_id"] == device_id
+    assert snapshots.json()[0]["capabilities"]["device_metadata"]["status"] == "supported"
+    assert {event["event_type"] for event in events.json()} >= {
+        "device_detection_run",
+        "device_assessed",
+    }
+    with app.state.database.session() as session:
+        persisted_device = session.execute(select(CaseDeviceRecord)).scalar_one()
+        persisted_detection = session.execute(select(CaseDeviceDetectionRecord)).scalar_one()
+        persisted_assessment = session.execute(select(CaseDeviceAssessmentRecord)).scalar_one()
+    assert persisted_device.case_id == case_id
+    assert persisted_detection.case_id == case_id
+    assert persisted_assessment.case_id == case_id
+    assert "FX-DEMO-001" not in persisted_assessment.snapshot_json
+
+
+def test_closed_case_rejects_case_scoped_device_operation(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Closed readiness"}
+        ).json()
+        closed = client.post(
+            f"/api/v1/cases/{case['id']}/transition",
+            headers=headers,
+            json={"expected_version": case["version"], "status": "closed"},
+        )
+        detection = client.post(f"/api/v1/devices/detect?case_id={case['id']}", headers=headers)
+
+    assert closed.status_code == 200
+    assert detection.status_code == 409
+    assert detection.json()["error"]["code"] == "CASE_INVALID_STATE"

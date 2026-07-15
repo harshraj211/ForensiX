@@ -1,5 +1,6 @@
 """Case lifecycle and membership endpoints."""
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -12,6 +13,8 @@ from forensix_api.dependencies import (
 from forensix_api.schemas import (
     ApiErrorResponse,
     CaseCreateRequest,
+    CaseDeviceAssessmentResponse,
+    CaseDeviceResponse,
     CaseEventResponse,
     CaseListResponse,
     CaseMemberRequest,
@@ -21,6 +24,7 @@ from forensix_api.schemas import (
     CaseUpdateRequest,
 )
 from forensix_server.auth import AuthenticatedSession
+from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseService, CaseStatus
 from forensix_server.db import Database
 
@@ -209,3 +213,54 @@ def list_case_events(
     with database.session() as session:
         events = CaseService().list_events(session, authenticated.principal, case_id)
         return [CaseEventResponse.model_validate(event) for event in events]
+
+
+@router.get("/{case_id}/devices", response_model=list[CaseDeviceResponse])
+def list_case_devices(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[CaseDeviceResponse]:
+    with database.session() as session:
+        devices = CaseDeviceService().list_devices(session, authenticated.principal, case_id)
+        return [CaseDeviceResponse.model_validate(device) for device in devices]
+
+
+@router.get("/{case_id}/devices/{device_id}", response_model=CaseDeviceResponse)
+def get_case_device(
+    case_id: str,
+    device_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> CaseDeviceResponse:
+    with database.session() as session:
+        device = CaseDeviceService().get_device(
+            session, authenticated.principal, case_id, device_id
+        )
+        return CaseDeviceResponse.model_validate(device)
+
+
+@router.get(
+    "/{case_id}/devices/{device_id}/assessments",
+    response_model=list[CaseDeviceAssessmentResponse],
+)
+def list_case_device_assessments(
+    case_id: str,
+    device_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[CaseDeviceAssessmentResponse]:
+    with database.session() as session:
+        assessments = CaseDeviceService().list_assessments(
+            session, authenticated.principal, case_id, device_id
+        )
+        return [
+            CaseDeviceAssessmentResponse(
+                id=assessment.id,
+                case_id=assessment.case_id,
+                device_id=assessment.device_id,
+                assessed_by=assessment.assessed_by,
+                **json.loads(assessment.snapshot_json),
+            )
+            for assessment in assessments
+        ]

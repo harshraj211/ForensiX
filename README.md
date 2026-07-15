@@ -2,7 +2,7 @@
 
 ForensiX is a planned cross-platform Android rapid evidence triage and forensic preview platform. It runs on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
-The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, a typed and bounded ADB subsystem, deterministic mock-device scenarios, protected FastAPI endpoints, SQLite operational metadata, contained evidence-storage and hashing primitives, durable local-job states, and tested React authentication/case/device-readiness screens. No production forensic capability is claimed yet.
+The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, a typed and bounded ADB subsystem, deterministic mock-device scenarios, protected FastAPI endpoints, SQLite operational metadata, contained evidence-storage and hashing primitives, durable local-job states, and tested React authentication/case/device-readiness screens. No production forensic capability is claimed yet.
 
 ## Project status
 
@@ -23,6 +23,7 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - SQLite WAL/foreign-key configuration and an initial reversible Alembic migration
 - One-time local administrator bootstrap, Argon2id credentials, opaque hashed sessions, lockout, session rotation/revocation, CSRF validation, and explicit RBAC permissions
 - Unique case numbers, creator ownership, memberships, lifecycle transitions, optimistic versions, append-only case events, protected case APIs, and Cases UI
+- Case-scoped device detection, hashed device identity, immutable readiness snapshots, closed-case blocking, device history APIs, and case registry UI
 - Explicit ADB binary discovery and version validation primitives
 - Shell-free asynchronous ADB execution with timeouts, cancellation cleanup, and output limits
 - Device-state parsing for absent, authorized, unauthorized, offline, multiple, recovery, sideload, bootloader, and unknown states
@@ -89,4 +90,4 @@ pnpm build
 
 ## Current security boundary
 
-The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property/package commands execute. Storage and job primitives are not yet exposed as acquisition endpoints. Use only controlled test devices until the audit, acquisition, and validation phases are complete.
+The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property/package commands execute. Case-linked records persist only a serial hash and masked suffix; raw serials remain transient at this stage. Storage and job primitives are not yet exposed as acquisition endpoints. Use only controlled test devices until the audit, acquisition, and validation phases are complete.

@@ -14,6 +14,7 @@ export function App() {
           <Route path="/devices" element={<DeviceDetectionPage />} />
           <Route path="/cases" element={<CasesPage />} />
           <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+          <Route path="/cases/:caseId/devices" element={<DeviceDetectionPage />} />
           <Route path="*" element={<Navigate to="/devices" replace />} />
         </Route>
       </Route>

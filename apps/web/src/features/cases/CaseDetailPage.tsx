@@ -1,8 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, LoaderCircle } from "lucide-react";
+import { ArrowLeft, LoaderCircle, Plus, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
-import { getCase, transitionCase, type CaseStatus } from "../../lib/api";
+import {
+  getCase,
+  listCaseDevices,
+  transitionCase,
+  type CaseDevice,
+  type CaseStatus,
+} from "../../lib/api";
 import { CaseError, StatusBadge } from "./CasesPage";
 import { caseKeys } from "./caseKeys";
 
@@ -12,6 +18,11 @@ export function CaseDetailPage() {
   const caseQuery = useQuery({
     queryKey: caseKeys.detail(caseId),
     queryFn: () => getCase(caseId),
+    enabled: Boolean(caseId),
+  });
+  const devicesQuery = useQuery({
+    queryKey: caseKeys.devices(caseId),
+    queryFn: () => listCaseDevices(caseId),
     enabled: Boolean(caseId),
   });
   const transition = useMutation({
@@ -83,6 +94,74 @@ export function CaseDetailPage() {
         )}
         {transition.isError && <CaseError error={transition.error} />}
       </div>
+      <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:p-8">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">
+              Device registry
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-white">Case-linked Android devices</h2>
+          </div>
+          {!new Set<CaseStatus>(["closed", "archived"]).has(item.status) && (
+            <Link
+              to={`/cases/${caseId}/devices`}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-cyan-300 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"
+            >
+              <Plus size={16} aria-hidden="true" /> Detect and assess device
+            </Link>
+          )}
+        </div>
+        <CaseDevices devices={devicesQuery.data ?? []} isPending={devicesQuery.isPending} error={devicesQuery.error} />
+      </section>
+    </div>
+  );
+}
+
+function CaseDevices({
+  devices,
+  isPending,
+  error,
+}: {
+  devices: CaseDevice[];
+  isPending: boolean;
+  error: Error | null;
+}) {
+  if (isPending) {
+    return <p role="status" className="mt-6 text-sm text-slate-500">Loading case devices…</p>;
+  }
+  if (error) return <div className="mt-6"><CaseError error={error} /></div>;
+  if (devices.length === 0) {
+    return (
+      <div className="mt-6 rounded-xl border border-dashed border-white/10 p-6 text-center">
+        <Smartphone className="mx-auto text-slate-600" size={24} aria-hidden="true" />
+        <p className="mt-3 text-sm font-medium text-slate-300">No assessed devices</p>
+        <p className="mt-1 text-xs leading-5 text-slate-600">
+          Device records appear only after an authorized readiness assessment succeeds.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+      {devices.map((device) => (
+        <article key={device.id} className="rounded-xl border border-white/8 bg-black/10 p-5">
+          <div className="flex gap-3">
+            <Smartphone className="mt-0.5 shrink-0 text-cyan-300" size={19} aria-hidden="true" />
+            <div>
+              <h3 className="font-semibold text-white">
+                {[device.manufacturer, device.model].filter(Boolean).join(" ") || "Android device"}
+              </h3>
+              <p className="mt-1 font-mono text-xs text-slate-600">Serial ending {device.serial_suffix}</p>
+            </div>
+          </div>
+          <p className="mt-4 text-xs text-slate-500">
+            Android {device.android_version ?? "unknown"} · API {device.sdk_level ?? "unknown"}
+          </p>
+          <p className="mt-2 text-xs text-slate-600">
+            Last readiness snapshot {new Date(device.last_seen_at).toLocaleString()}
+          </p>
+        </article>
+      ))}
     </div>
   );
 }

@@ -16,6 +16,7 @@
 | Durable local jobs | explicit state graph, monotonic progress, cancellation, restart recovery, version-based stale-update detection, migration | 9 job tests plus migration coverage |
 | Authentication and RBAC | one-time administrator bootstrap, Argon2id, lockout, hashed opaque sessions, CSRF, rotation/revocation, five roles, protected device operations, React setup/login | service/API/component tests plus reversible migration |
 | Case management | unique case numbers, ownership/memberships, object authorization, lifecycle graph, optimistic versions, append-only events, REST API, Cases UI | service/API/component tests plus reversible migration |
+| Case-linked devices | case-authorized detection, hashed stable identity, immutable readiness history, closed-case blocking, history APIs, case device registry UI | 96 backend tests passed, 1 Windows symlink-permission skip, 10 frontend tests passed |
 
 ## Supported development behavior
 
@@ -30,6 +31,8 @@
 - Durable job records that preserve interruption/error state across backend restarts.
 - Local administrator bootstrap and session-protected device operations without browser-stored access tokens.
 - Case-scoped access rules and lifecycle history that cannot be bypassed by frontend navigation.
+- Case-linked device observations that retain a masked serial suffix and SHA-256 identity but never persist the raw ADB serial.
+- Immutable readiness snapshots and append-only case events for detection and assessment operations.
 
 ## Not implemented yet
 
@@ -44,7 +47,7 @@ These omissions are visible project status, not silent product claims. Real-devi
 ## Next critical-path slice
 
 1. Probe accessible shared-storage roots through fixed, bounded operations.
-2. Persist devices and link readiness snapshots to authorized cases.
-3. Connect durable jobs to an acquisition-plan model and progress event stream.
-4. Add acquisition manifests and item-level interruption checkpoints.
+2. Persist a capability-gated acquisition-plan model against a case device.
+3. Connect durable jobs to acquisition progress events and interruption checkpoints.
+4. Add acquisition manifests and item-level SHA-256 verification records.
 5. Enable the first controlled shared-storage pull only after physical-device validation.
