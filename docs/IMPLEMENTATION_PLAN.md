@@ -913,3 +913,160 @@ Optimize by streaming pulls/hashes/exports, bounded queues/backpressure, thumbna
 Target WCAG 2.2 AA for primary workflows. Requirements include semantic landmarks/headings, skip link, visible focus, complete keyboard operation, logical tab order, accessible dialogs, no color-only status, 4.5:1 text contrast, reflow at 200% zoom, reduced-motion support, scalable text, accessible names for icons, and live-region announcements that throttle progress changes.
 
 Evidence tables use a documented grid pattern with row/column semantics, keyboard navigation, non-virtualized accessible fallback where necessary, and a detail view that exposes the same data. Timeline has a chronological list alternative to visual plotting. Dark/light themes both pass contrast. Automated axe checks run on components/routes, while manual tests cover screen readers (NVDA on Windows plus VoiceOver on macOS), keyboard-only acquisition/report flows, zoom, and high-contrast mode before MVP sign-off.
+
+## 43. Milestones and Development Phases
+
+### 43.1 Release milestones
+
+| Milestone | Duration | Outcome and exit gate |
+|---|---:|---|
+| Phase 0 - technical validation | Week 1 | Recorded ADB/access matrix on target OS/Android versions, mock scenarios, path/hash/disconnect PoCs, architecture ADRs; unsupported assumptions removed from MVP |
+| Phase 1A - product foundation | Weeks 2-3 | Auth/RBAC, cases, database/storage, device detection/readiness, UI shell; API/security tests pass |
+| Phase 1B - acquisition/evidence | Weeks 4-5 | Frozen plans, durable runner/SSE, accessible-storage collection, hashes/provenance, indexing/preview; interruption preserves evidence |
+| Phase 1C - analysis/integrity | Week 6 | Search, timeline, notes/tags/bookmarks, audit chain, custody and verification; known-answer tests pass |
+| Phase 1D - reporting/release | Weeks 7-8 | Preliminary PDF/JSON/CSV, cross-platform launcher, threat tests, validation report, demo fallbacks and documentation; MVP checklist passes |
+| Phase 2 - Version 1 | 12-20 additional weeks | Tauri/signed packaging, ALEAPP, resume/concurrency, redaction/HTML/finalization, isolated plugin SDK, migration/validation campaign |
+| Phase 3 - research | Evidence-driven backlog | Imported/rooted/image parsers, deleted-data studies, OCR/AI/iOS/cloud only after separate ethics, privacy, security, and validation gates |
+
+### 43.2 Critical staffing and ownership
+
+For a three-person team, assign one frontend/full-stack engineer, one backend/data/security engineer, and one forensic/ADB/QA engineer, with architecture/product responsibilities shared and code review crossing roles. With five people, separate QA/validation and DevSecOps/packaging. No engineer validates their own forensic parser alone; known-answer expectations and results require peer review.
+
+### 43.3 Architecture Decision Records
+
+| ADR | Decision | Alternatives and consequences | Security / migration |
+|---|---|---|---|
+| ADR-001 Monorepo | pnpm + Python workspace in one repo | Split repos add contract/release overhead; monorepo needs ownership rules | CODEOWNERS; packages can split later |
+| ADR-002 React architecture | Feature routes + generated client + TanStack Query | Global Redux rejected for mostly server state | Central auth/error client; features remain extractable |
+| ADR-003 FastAPI architecture | Layered modular monolith | Microservices add offline deployment failure modes | Central policy enforcement; modules can become workers later |
+| ADR-004 SQLite MVP | WAL, FK, single writer, evidence outside DB | PostgreSQL unnecessary locally; flat JSON lacks integrity/querying | Repository boundary enables PostgreSQL migration |
+| ADR-005 Local job runner | Durable SQLite leases/checkpoints | BackgroundTasks not durable; Celery/RQ require broker | Bounded lanes/permissions; interface supports external worker later |
+| ADR-006 SSE | Persisted events + SSE delivery | WebSockets unnecessary for one-way progress; polling less responsive | Same auth/origin controls; polling fallback |
+| ADR-007 Evidence layout | UUID storage keys, append-oriented raw/derived separation | Case-title paths unsafe; content-address-only loses acquisition layout | Containment/atomicity; bundle adapter later |
+| ADR-008 ADB policy | Typed operation catalog; no public shell | Raw shell flexible but unacceptable injection/side-effect risk | Catalog review/versioning; new operations added explicitly |
+| ADR-009 Plugin architecture | No third-party plugins MVP; isolated signed workers V1 | In-process imports simpler but risk full compromise | Versioned worker protocol permits future sandbox upgrades |
+| ADR-010 Authentication | Local Argon2id + opaque HttpOnly sessions | JWT/localStorage rejected; external IdP breaks offline bootstrap | Optional enterprise identity adapter later |
+| ADR-011 Audit design | Canonical SHA-256 chain + exported checkpoints | Plain logs undetectable; “immutable SQLite” false | Tamper-evident only; external signing/checkpoint V1 |
+| ADR-012 Packaging | Native launcher/browser MVP, Tauri sidecar V1 | Electron larger; Docker USB unreliable | Loopback handshake/signing; shell swap does not change API |
+| ADR-013 Search | SQLite FTS5 + structured indexes | LIKE too slow; Elasticsearch violates simple offline goal | Search adapter enables PostgreSQL FTS later |
+| ADR-014 Reporting | Versioned data snapshot + WeasyPrint renderer | Direct ReportLab harder to template; browser print less reproducible | Escape/no remote resources; renderer replaceable |
+| ADR-015 Deletion | No evidence deletion API; amendments/tombstone policy | Cascades/soft-hide undermine lineage | Approved purge workflow can be separately designed |
+
+Each ADR file uses status, context, decision, considered options, consequences, security/forensic implications, validation evidence, and supersession/migration path. ADR changes that alter forensic output trigger validation-impact review.
+
+### 43.4 Documentation deliverables
+
+Required before MVP: root README, architecture overview/diagrams, developer setup, Windows/Linux/macOS install notes, USB debugging/authorization guide, investigator and administrator guides, forensic methodology, known limitations/support matrix, API/OpenAPI guide, evidence storage and JSON/CSV schemas, security/threat model, custody workflow, validation report, demo guide, backup/recovery guide, and troubleshooting/support-bundle guide. V1 adds parser/plugin development, redaction/report approval, signed release/update, encryption/key recovery, ALEAPP/downstream integration, and incident-response documentation.
+
+## 44. Sprint-by-Sprint Implementation Plan
+
+### 44.1 Eight-week execution schedule
+
+| Sprint/time | Goal and deliverables | Work by discipline | Dependencies, risks, demo, exit |
+|---|---|---|---|
+| S0, days 1-3 | Scope freeze, repo/tooling, ADRs, synthetic fixtures | FE shell spike; BE composition/config; forensic ADB/version/device PoCs; DB/storage spike; security threat baseline; QA matrix; docs setup | Physical devices/host OS access; demo recorded device states; exit when access claims are evidence-backed |
+| S1, days 4-5 | Executable vertical skeleton | FE login/app shell; BE health/auth skeleton; DB initial migration; mock ADB endpoint; CI lint/type/test; bootstrap docs | S0 architecture; risk packaging/tool mismatch; demo login + mock device; all CI green |
+| S2, week 2 | Auth, roles, cases, storage root | FE case pages/forms; BE session/RBAC/case services; DB users/cases/audit; security CSRF/IDOR; QA role matrix; user docs | S1; risk last-admin/authorization bugs; demo create/reopen case; isolation tests pass |
+| S3, week 3 | Device detection and capability readiness | FE device states/warnings; BE device/assessment APIs; forensic typed runner/catalog/mock/recorded; DB snapshots/commands; QA OS/state matrix | Real ADB/tooling; risk OEM variance; demo authorized/unauthorized/offline; no raw command API |
+| S4, week 4 | Durable acquisition and accessible collection | FE wizard/progress/cancel; BE jobs/SSE/state machine; forensic inventory/pull/hash/storage; DB jobs/acquisitions/evidence; security path/process limits; QA disconnect/full-disk | S3 readiness/storage; USB/disks risk; demo interrupted quick triage; sealed partial results verified |
+| S5, week 5 | Normalize, index, and preview | FE virtual grid/detail/thumbnail; BE artifact/search endpoints; forensic metadata/EXIF/normalizer/indexer; DB artifacts/FTS/relations; security hostile-file worker; QA KAT/performance seed | S4 evidence; parser/memory risk; demo filter recent images and provenance; million-row query baseline |
+| S6, week 6 | Analysis and integrity | FE timeline/bookmarks/notes/custody/audit; BE services; forensic timeline/hash verification/audit chain; DB related tables; security mutation tests; QA repeatability | S5 normalized model; timezone/audit claims risk; demo correlation and tamper detection; KATs pass |
+| S7, week 7 | Reports, exports, backup, recovery | FE report selection/jobs/download; BE assembler/render/export; forensic manifests; DB reports/export; security injection/redaction; QA render/schema/session recovery; docs | S6 integrity; PDF packaging risk; demo preliminary PDF+CSV/JSON hash; golden outputs pass |
+| S8, week 8 | Release hardening and forensic validation | FE a11y/perf polish; BE error/observability; forensic device repeats; DevOps native launchers/packages; security full threat suite; QA E2E/matrix; all guides/demo fallbacks | Feature freeze; device/package risks; final live and mock demo; MVP acceptance/validation sign-off |
+
+### 44.2 Actionable engineering backlog
+
+Each item is scoped to one engineer for 1-3 working days. “Tests/docs” names the minimum evidence required in the same pull request; project Definition of Done still applies.
+
+| ID | Epic / concrete output | Owner | Dependencies | Effort | Priority / risk | Acceptance, tests, and documentation |
+|---|---|---|---:|---:|---|---|
+| ARCH-001 | Record MVP scope and unsupported Android claims | Architect/forensic | - | 1d | P0/high | Signed scope table maps FR-1..100; peer review; known-limitations page |
+| ARCH-002 | Create monorepo workspace and import-boundary rules | Architect/full-stack | ARCH-001 | 2d | P0/medium | Web/API/forensic packages install; boundary lint test; structure doc |
+| ARCH-003 | Write ADR-001..015 files | Architect | ARCH-001 | 3d | P0/medium | All decisions/options/security/migration recorded; review checklist |
+| ARCH-004 | Define OpenAPI/error/pagination/idempotency conventions | Backend architect | ARCH-002 | 2d | P0/high | Example routes/client compile; contract tests; API guide |
+| ARCH-005 | Define module/parser/provenance contracts | Forensic architect | ARCH-001 | 3d | P0/high | Typed interfaces and sample descriptor; type/unit tests; parser guide draft |
+| ARCH-006 | Define OS platform/storage/transport ports | Architect | ARCH-002 | 2d | P1/medium | Windows/Linux/macOS adapter stubs pass contract suite; ADR links |
+| FE-001 | Bootstrap strict React/Vite/Tailwind app | Frontend | ARCH-002 | 1d | P0/low | Build/type/lint test; developer setup |
+| FE-002 | Implement accessible AppShell and route guards | Frontend | FE-001, BE-002 | 2d | P0/medium | Keyboard/nav/role tests and axe pass; route map doc |
+| FE-003 | Implement login/session-expiry UI | Frontend | FE-001, BE-003 | 2d | P0/high | Generic errors/lockout/redirect tested; auth help |
+| FE-004 | Implement case list/create/edit workspace | Frontend | FE-002, BE-005 | 3d | P0/medium | Empty/loading/error/version conflict tests; user guide |
+| FE-005 | Implement device detection/state screen | Frontend | FE-002, BE-007 | 3d | P0/high | All five transport states via MSW; USB guide links |
+| FE-006 | Implement capability/readiness report | Frontend | FE-005, BE-008 | 2d | P0/high | supported/blocked/unknown reasons accessible; limitations help |
+| FE-007 | Implement acquisition scope/confirmation wizard | Frontend | FE-006, BE-010 | 3d | P0/high | stale plan/warnings/disk/capability guards tested; methodology link |
+| FE-008 | Implement SSE progress/cancel/reconnect view | Frontend | FE-007, BE-011 | 3d | P0/high | reconnect/gap/cancel/partial tests; recovery guidance |
+| FE-009 | Implement virtual evidence explorer/filter URL state | Frontend | FE-002, BE-013 | 3d | P0/medium | million-row mocked navigation, keyboard and query tests; search guide |
+| FE-010 | Implement safe artifact detail/thumbnail/provenance | Frontend | FE-009, BE-014 | 3d | P0/high | masking/unsupported/corrupt/download audit tests; preview limits doc |
+| FE-011 | Implement timeline, bookmark, note, tag, custody views | Frontend | FE-010, BE-015 | 3d | P1/medium | conflict/amendment/source-link/a11y tests; analyst guide |
+| FE-012 | Implement report selection/job/download/verify UI | Frontend | FE-010, BE-017 | 3d | P0/high | preliminary/redaction/error/hash states tested; report guide |
+| BE-001 | Implement settings/config validation and production guards | Backend | ARCH-002 | 2d | P0/high | profile/path/origin/debug tests; config reference |
+| BE-002 | Implement FastAPI factory, middleware, health endpoints | Backend | BE-001, ARCH-004 | 2d | P0/medium | startup/shutdown/request-ID/health tests; operations doc |
+| BE-003 | Implement Argon2id bootstrap/login/session/CSRF | Backend/security | BE-002, DB-001 | 3d | P0/high | rotation/expiry/lockout/replay tests; auth runbook |
+| BE-004 | Implement permission and case-scope service | Backend/security | BE-003, DB-002 | 2d | P0/critical | complete role/IDOR matrix denies by default; policy doc |
+| BE-005 | Implement case service/repository/API | Backend | BE-004, DB-002 | 3d | P0/medium | unique ID/status/version/membership tests; OpenAPI examples |
+| BE-006 | Implement safe error mapping and idempotency store | Backend | BE-002, ARCH-004 | 2d | P0/high | replay/body mismatch/no-leak tests; error catalog |
+| BE-007 | Implement device detect service/API | Backend | BE-006, ADB-005, DB-003 | 2d | P0/high | state/multi/timeout tests; API doc |
+| BE-008 | Implement capability assessment service/API | Backend | BE-007, ADB-008 | 3d | P0/high | snapshot invalidation/reasons tests; readiness schema |
+| BE-009 | Implement durable leased job repository/dispatcher | Backend | DB-004, BE-002 | 3d | P0/critical | claim/heartbeat/restart/cancel/concurrency tests; runner design |
+| BE-010 | Implement acquisition draft/start/cancel services | Backend | BE-008, BE-009, FOR-003 | 3d | P0/critical | stale plan/idempotency/transitions tested; API examples |
+| BE-011 | Implement persisted job events and authenticated SSE | Backend | BE-009 | 2d | P0/high | Last-Event-ID/gap/expiry tests; event schema |
+| BE-012 | Implement contained file/preview/export streaming | Backend/security | FOR-002, DB-005 | 3d | P0/critical | traversal/race/auth/range/filename tests; storage API doc |
+| DB-001 | Create user/role/session migrations | Data/backend | ARCH-002 | 2d | P0/high | upgrade/FK/index/fixture tests; schema notes |
+| DB-002 | Create case/member/audit base migrations | Data/backend | DB-001 | 2d | P0/high | no cascade and unique/status tests; ER update |
+| DB-003 | Create device/capability/command migrations | Data/backend | DB-002 | 2d | P0/medium | immutable snapshot/index tests; dictionary |
+| DB-004 | Create acquisition/module/job/event migrations | Data/backend | DB-003 | 2d | P0/high | lease/state/FK/index tests; state mapping |
+| DB-005 | Create evidence/hash/provenance migrations | Data/backend | DB-004 | 3d | P0/critical | restrict/no cascade/hash uniqueness tests; schema doc |
+| DB-006 | Create artifact/relation/tag/note/bookmark/FTS migrations | Data/backend | DB-005 | 3d | P0/high | FTS sync/rebuild/filter plan tests; search schema |
+| DB-007 | Create timeline/report/custody/export migrations | Data/backend | DB-006 | 3d | P1/high | append/version/restrict tests; dictionary |
+| DB-008 | Build backup-before-migrate and schema compatibility checks | Data/backend | DB-007 | 2d | P1/high | corrupt/prior/current migration tests; recovery runbook |
+| ADB-001 | Detect configured/bundled/PATH ADB and verify version/hash | Forensic | ARCH-006 | 2d | P0/high | missing/invalid/unsupported fixtures; install guide |
+| ADB-002 | Parse `adb devices -l` into typed transport states | Forensic | ADB-001 | 2d | P0/high | no/authorized/unauthorized/offline/multiple/odd output KATs; format notes |
+| ADB-003 | Implement serial and approved-remote-path value objects | Forensic/security | ARCH-005 | 2d | P0/critical | fuzz/metacharacter/Unicode tests; policy spec |
+| ADB-004 | Implement subprocess runner with timeout/cancel/output caps | Forensic | ADB-001, ADB-003 | 3d | P0/critical | process-tree/timeout/truncation tests on OS matrix; runner doc |
+| ADB-005 | Implement typed operation catalog and policy rejection | Forensic/security | ADB-004 | 3d | P0/critical | every argv mapped; arbitrary shell impossible; catalog review guide |
+| ADB-006 | Implement property retrieval/parser | Forensic | ADB-005 | 2d | P0/medium | malformed/missing property KATs; provenance mapping |
+| ADB-007 | Implement package inventory operation/parser | Forensic | ADB-005 | 2d | P0/medium | package visibility/format KATs; limitation text |
+| ADB-008 | Implement capability assessor and reason codes | Forensic | ADB-002, ADB-006, ADB-007 | 3d | P0/critical | Android/state decision table tests; supported matrix |
+| ADB-009 | Implement scenario-based mock and recorded adapters | Forensic/QA | ADB-002, ARCH-005 | 3d | P0/high | required scenarios deterministic; fixture authoring guide |
+| ADB-010 | Implement disconnect/source-change/retry classification | Forensic | ADB-004 | 2d | P0/high | injected disconnect/change/retry tests; operator guidance |
+| FOR-001 | Implement UUID-contained case storage layout/permissions | Forensic/security | ARCH-006 | 3d | P0/critical | traversal/symlink/reparse/ACL tests; layout spec |
+| FOR-002 | Implement atomic partial/final writer and reconciliation | Forensic | FOR-001 | 3d | P0/critical | crash/full-disk/fsync/orphan tests; recovery notes |
+| FOR-003 | Implement acquisition state machine/frozen plan/checkpoints | Forensic | ARCH-005, ADB-008 | 3d | P0/critical | transition/property tests; state diagram |
+| FOR-004 | Implement shared-storage inventory with bounded roots | Forensic | ADB-005, FOR-003 | 3d | P0/high | path/size/limit/permission fixtures; module descriptor |
+| FOR-005 | Implement streaming pull for media/document categories | Forensic | FOR-002, FOR-004 | 3d | P0/critical | bytes/hash/disconnect/large-file KATs; module docs |
+| FOR-006 | Implement streaming SHA-256/manifests/verification | Forensic | FOR-002, DB-005 | 3d | P0/critical | NIST/tamper/canonicalization tests; manifest schema |
+| FOR-007 | Implement generic metadata/MIME and isolated EXIF worker | Forensic/security | FOR-005 | 3d | P0/high | malformed/bomb/pixel/time limits; parser validation note |
+| FOR-008 | Implement normalizer/provenance graph/duplicate links | Forensic/data | FOR-006, DB-006 | 3d | P0/critical | timestamp/parent/version/dedup KATs; model schema |
+| FOR-009 | Implement FTS indexer and deterministic timeline builder | Forensic/data | FOR-008, DB-006 | 3d | P1/high | rebuild/count/timezone/conflict/repeat tests; rules doc |
+| FOR-010 | Implement report data assembler and PDF/JSON/CSV renderers | Forensic | FOR-006, FOR-009, DB-007 | 3d | P0/high | golden render/schema/injection/hash tests; template guide |
+| SEC-001 | Formalize threat model and data-flow boundaries | Security | ARCH-001 | 2d | P0/high | reviewed assets/threats/residuals; threat doc |
+| SEC-002 | Implement Host/Origin/CORS/CSP/CSRF security middleware | Security/backend | BE-002, BE-003 | 2d | P0/critical | malicious-origin/DNS-rebind/CSRF tests; header doc |
+| SEC-003 | Implement storage path/symlink/reparse race test corpus | Security/QA | FOR-001 | 2d | P0/critical | zero escape across OS matrix; corpus README |
+| SEC-004 | Implement command injection/fuzz security suite | Security/QA | ADB-005 | 2d | P0/critical | shell metacharacter/property fuzz all rejected; findings note |
+| SEC-005 | Implement malicious media/archive/parser corpus and limits | Security/forensic | FOR-007 | 3d | P0/high | worker survives/crashes isolated; corpus provenance doc |
+| SEC-006 | Implement CSV/HTML/PDF output injection defenses | Security | FOR-010 | 2d | P0/high | formula/script/resource payload tests; export warning doc |
+| SEC-007 | Implement audit hash chain and verifier | Security/backend | DB-002, FOR-006 | 3d | P0/critical | insert/mutate/delete/reorder/checkpoint tests; limitation doc |
+| SEC-008 | Add secret/PII-safe logging and support-bundle redaction | Security/backend | BE-002 | 2d | P1/high | seeded canary never appears; logging policy |
+| SEC-009 | Configure dependency/secret/SAST/SBOM scans | Security/DevOps | ARCH-002 | 2d | P1/high | CI blocks unexcepted critical/high/secret; exception policy |
+| SEC-010 | Conduct release threat-model verification and abuse tests | Security | SEC-001..009 | 3d | P0/critical | residual risk sign-off/no open critical/high; release report |
+| QA-001 | Build synthetic known-answer media/document dataset | QA/forensic | ARCH-001 | 3d | P0/high | published generator, hashes, times, labels; dataset README |
+| QA-002 | Build Android/OEM/host/state validation matrix | QA/forensic | ADB-008 | 2d | P0/high | devices/builds/states/owners scheduled; protocol |
+| QA-003 | Implement backend role/case/API contract suite | QA/backend | BE-004, ARCH-004 | 3d | P0/critical | every route/role/object/error/idempotency covered; matrix report |
+| QA-004 | Implement Playwright primary workflow | QA/frontend | FE-012, ADB-009 | 3d | P0/high | complete workflow repeatable offline; demo script |
+| QA-005 | Implement Playwright negative/recovery workflows | QA/frontend | FE-008, BE-011 | 3d | P0/high | unauthorized/disconnect/cancel/full-disk/hash cases; recovery guide |
+| QA-006 | Build million-artifact performance fixture/benchmarks | QA/data | DB-006, FOR-009 | 3d | P1/medium | reproducible seed and p95 report; hardware spec |
+| QA-007 | Run three-repeat forensic acquisitions per supported cell | QA/forensic | FOR-009, QA-001, QA-002 | 3d/cell | P0/critical | variance explained and manifests retained; validation report |
+| QA-008 | Validate PDF/JSON/CSV reproducibility and visual layout | QA | FOR-010 | 3d | P0/high | rendered pages inspected, schemas/hashes checked; golden update process |
+| QA-009 | Conduct accessibility manual/automated assessment | QA/frontend | FE-012 | 2d | P1/high | WCAG primary-flow checklist, NVDA/VoiceOver results; a11y report |
+| QA-010 | Execute MVP acceptance and defect triage | QA/product | all MVP tasks | 3d | P0/critical | all P0 criteria pass, no critical/high defect; signed release checklist |
+| DEVOPS-001 | Configure pnpm/uv lockfiles and local bootstrap | DevOps | ARCH-002 | 2d | P0/medium | clean Windows/Linux/macOS setup smoke; setup guide |
+| DEVOPS-002 | Add frontend/backend/contracts CI | DevOps | DEVOPS-001 | 2d | P0/medium | required checks pass/fail correctly; CI doc |
+| DEVOPS-003 | Add E2E/security/package matrix workflows | DevOps | DEVOPS-002, SEC-009 | 3d | P1/high | mock E2E/scans/OS smoke artifacts; workflow runbook |
+| DEVOPS-004 | Create mock-only Docker Compose environment | DevOps | BE-002, FE-001, ADB-009 | 2d | P1/medium | one command offline demo; no real evidence mount; compose doc |
+| DEVOPS-005 | Build MVP native launchers and single-instance handshake | DevOps/backend | BE-002 | 3d | P0/high | random loopback port/lifecycle/duplicate tests on OS matrix; launcher guide |
+| DEVOPS-006 | Produce signed-hash release artifacts and SBOM | DevOps/security | DEVOPS-003, DEVOPS-005 | 3d | P0/high | hashes/SBOM/provenance attached; release procedure |
+| DEVOPS-007 | Implement backup/support-bundle/recovery utilities | DevOps/backend | DB-008, SEC-008 | 3d | P1/high | corrupt/interrupted/redaction tests; admin runbook |
+| DOC-001 | Write investigator quick-start and Controlled Logical Triage method | Tech writer/forensic | ARCH-001, ADB-008 | 2d | P0/high | accurate supported/unsupported flow reviewed; screenshots |
+| DOC-002 | Write cross-platform install/USB troubleshooting guides | Tech writer/DevOps | DEVOPS-005, QA-002 | 2d | P0/medium | clean-host walkthroughs validated; driver/udev/Gatekeeper notes |
+| DOC-003 | Publish API, schema, storage, manifest, and export references | Tech writer/backend | ARCH-004, FOR-010 | 3d | P1/high | generated references/examples validate; version policy |
+| DOC-004 | Write security, privacy, custody, backup, and limitations guides | Tech writer/security | SEC-010, DEVOPS-007 | 3d | P0/high | threat/residual/legal-overclaim review; admin checklist |
+| DOC-005 | Produce demo guide and forensic validation report | Tech writer/QA | QA-007..010 | 3d | P0/critical | live/mock/seeded paths timed and reviewed; evidence hashes included |
