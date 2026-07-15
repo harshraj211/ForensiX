@@ -2,6 +2,26 @@
 
 from .base import Base
 from .database import Database
-from .models import DeviceCapabilityRun, DeviceDetectionRun, SystemEvent
+from .models import (
+    AuthEventRecord,
+    AuthSessionRecord,
+    DeviceCapabilityRun,
+    DeviceDetectionRun,
+    RoleRecord,
+    SystemEvent,
+    UserRecord,
+    UserRoleRecord,
+)
 
-__all__ = ["Base", "Database", "DeviceCapabilityRun", "DeviceDetectionRun", "SystemEvent"]
+__all__ = [
+    "AuthEventRecord",
+    "AuthSessionRecord",
+    "Base",
+    "Database",
+    "DeviceCapabilityRun",
+    "DeviceDetectionRun",
+    "RoleRecord",
+    "SystemEvent",
+    "UserRecord",
+    "UserRoleRecord",
+]

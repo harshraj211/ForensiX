@@ -9,6 +9,7 @@ description = "Application services and persistence for ForensiX"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.17,<2",
+  "argon2-cffi>=25.1,<26",
   "pydantic-settings>=2.12,<3",
   "sqlalchemy>=2.0,<3"
 ]

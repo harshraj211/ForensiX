@@ -70,3 +70,32 @@ class DeviceCapabilityAssessmentResponse(BaseModel):
     capabilities: dict[str, CapabilityDecision]
     warnings: list[str]
     assessor_version: str
+
+
+class AuthBootstrapStatusResponse(BaseModel):
+    bootstrap_required: bool
+
+
+class AuthBootstrapRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=64)
+    display_name: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=12, max_length=128)
+
+
+class AuthLoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AuthUserResponse(BaseModel):
+    user_id: str
+    username: str
+    display_name: str
+    roles: list[str]
+    permissions: list[str]
+
+
+class AuthSessionResponse(BaseModel):
+    user: AuthUserResponse
+    expires_at: datetime
+    csrf_token: str

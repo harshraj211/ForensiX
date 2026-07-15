@@ -7,10 +7,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from forensix_api import __version__
-from forensix_api.errors import adb_error_handler
+from forensix_api.errors import ApiSecurityError, adb_error_handler, security_error_handler
 from forensix_api.middleware import request_id_middleware
-from forensix_api.routers import devices, health
+from forensix_api.routers import auth, devices, health
 from forensix_forensic.adb import AdbClient, AdbError
+from forensix_server.auth import AuthService
 from forensix_server.config import Settings
 from forensix_server.db import Database
 
@@ -25,10 +26,13 @@ def create_app(
         effective_settings.resolved_database_url,
         effective_settings.resolved_data_dir,
     )
+    auth_service = AuthService(effective_settings)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         database.initialize()
+        with database.session() as session:
+            auth_service.ensure_roles(session)
         yield
         database.dispose()
 
@@ -42,6 +46,7 @@ def create_app(
     )
     app.state.settings = effective_settings
     app.state.database = database
+    app.state.auth_service = auth_service
     app.state.adb_client = adb_client
     app.middleware("http")(request_id_middleware)
     app.add_middleware(
@@ -49,10 +54,12 @@ def create_app(
         allow_origins=list(effective_settings.allowed_origins),
         allow_credentials=True,
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type", "X-Request-ID"],
+        allow_headers=["Content-Type", "X-CSRF-Token", "X-Request-ID"],
     )
     app.add_exception_handler(AdbError, adb_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(ApiSecurityError, security_error_handler)  # type: ignore[arg-type]
     app.include_router(health.router)
+    app.include_router(auth.router)
     app.include_router(devices.router)
     return app
 

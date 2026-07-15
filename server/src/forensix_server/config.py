@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     allowed_origins: tuple[str, ...] = ("http://127.0.0.1:5173",)
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8765, ge=1024, le=65535)
+    session_ttl_minutes: int = Field(default=480, ge=15, le=1440)
+    login_max_failures: int = Field(default=5, ge=3, le=20)
+    login_lockout_minutes: int = Field(default=15, ge=1, le=1440)
 
     @field_validator("allowed_origins")
     @classmethod
@@ -43,3 +46,7 @@ class Settings(BaseSettings):
         if self.database_url:
             return self.database_url
         return f"sqlite:///{(self.resolved_data_dir / 'forensix.db').as_posix()}"
+
+    @property
+    def secure_cookies(self) -> bool:
+        return self.environment == "production"

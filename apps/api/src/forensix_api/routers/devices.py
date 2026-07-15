@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, status
 
-from forensix_api.dependencies import get_adb_client, get_database
+from forensix_api.dependencies import get_adb_client, get_database, require_device_operator
 from forensix_api.schemas import (
     AdbInfoResponse,
     ApiErrorResponse,
@@ -15,6 +15,7 @@ from forensix_api.schemas import (
 )
 from forensix_forensic.adb import AdbClient
 from forensix_forensic.capabilities import DeviceCapabilityAssessor
+from forensix_server.auth import AuthenticatedSession
 from forensix_server.db import Database, DeviceCapabilityRun, DeviceDetectionRun
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
@@ -31,6 +32,7 @@ router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
     },
 )
 async def detect_devices(
+    _authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
     adb_client: Annotated[AdbClient, Depends(get_adb_client)],
     database: Annotated[Database, Depends(get_database)],
 ) -> DeviceDetectionResponse:
@@ -79,6 +81,7 @@ async def detect_devices(
 )
 async def assess_device(
     request: DeviceAssessmentRequest,
+    _authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
     adb_client: Annotated[AdbClient, Depends(get_adb_client)],
     database: Annotated[Database, Depends(get_database)],
 ) -> DeviceCapabilityAssessmentResponse:

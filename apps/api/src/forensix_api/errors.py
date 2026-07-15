@@ -1,4 +1,4 @@
-"""Safe API error mapping for controlled ADB failures."""
+"""Safe API error mapping for controlled ADB and security failures."""
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -12,6 +12,28 @@ from forensix_forensic.adb import (
     AdbOutputLimitError,
     AdbTimeoutError,
 )
+
+
+class ApiSecurityError(RuntimeError):
+    def __init__(self, status_code: int, code: str, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+
+
+async def security_error_handler(request: Request, error: ApiSecurityError) -> JSONResponse:
+    return JSONResponse(
+        status_code=error.status_code,
+        content={
+            "error": {
+                "code": error.code,
+                "message": str(error),
+                "details": {},
+                "request_id": request.state.request_id,
+            }
+        },
+        headers={"X-Request-ID": request.state.request_id},
+    )
 
 
 async def adb_error_handler(request: Request, error: AdbError) -> JSONResponse:

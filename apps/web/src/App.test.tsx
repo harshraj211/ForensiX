@@ -5,8 +5,36 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { rememberCsrfToken } from "./lib/api";
+
+const AUTH_USER = {
+  user_id: "user-1",
+  username: "admin.user",
+  display_name: "Test Administrator",
+  roles: ["administrator"],
+  permissions: ["devices:operate"],
+};
 
 function renderApp() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { retry: false, staleTime: Infinity },
+    },
+  });
+  queryClient.setQueryData(["auth", "bootstrap"], { bootstrap_required: false });
+  queryClient.setQueryData(["auth", "me"], AUTH_USER);
+  rememberCsrfToken("csrf-test");
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={["/devices"]}>
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function renderFreshApp() {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -32,7 +60,57 @@ function mockResponse(body: unknown, status = 200, requestId = "req-test") {
 }
 
 afterEach(() => {
+  rememberCsrfToken(null);
   vi.unstubAllGlobals();
+});
+
+describe("local authentication", () => {
+  it("shows one-time administrator bootstrap on a fresh workstation", async () => {
+    mockResponse({ bootstrap_required: true });
+
+    renderFreshApp();
+
+    expect(
+      await screen.findByRole("heading", { name: "Create the first administrator" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Confirm password")).toHaveAttribute(
+      "autocomplete",
+      "new-password",
+    );
+  });
+
+  it("shows login when bootstrap is complete and no session exists", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ bootstrap_required: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "AUTHENTICATION_REQUIRED",
+              message: "A valid local ForensiX session is required.",
+              details: {},
+              request_id: "auth-1",
+            },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderFreshApp();
+
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "autocomplete",
+      "current-password",
+    );
+  });
 });
 
 describe("device readiness", () => {

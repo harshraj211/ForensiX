@@ -50,6 +50,24 @@ export interface DeviceCapabilityAssessment {
   assessor_version: string;
 }
 
+export interface AuthUser {
+  user_id: string;
+  username: string;
+  display_name: string;
+  roles: string[];
+  permissions: string[];
+}
+
+export interface AuthSession {
+  user: AuthUser;
+  expires_at: string;
+  csrf_token: string;
+}
+
+export interface BootstrapStatus {
+  bootstrap_required: boolean;
+}
+
 interface ErrorEnvelope {
   error?: {
     code?: string;
@@ -70,42 +88,102 @@ export class ApiError extends Error {
   }
 }
 
-export async function detectDevices(signal?: AbortSignal): Promise<DeviceDetection> {
-  const response = await fetch("/api/v1/devices/detect", {
+let inMemoryCsrfToken: string | null = null;
+
+export function rememberCsrfToken(token: string | null) {
+  inMemoryCsrfToken = token;
+}
+
+export function getBootstrapStatus(): Promise<BootstrapStatus> {
+  return apiRequest("/api/v1/auth/bootstrap-status");
+}
+
+export function getCurrentUser(): Promise<AuthUser> {
+  return apiRequest("/api/v1/auth/me");
+}
+
+export async function bootstrapAdministrator(input: {
+  username: string;
+  display_name: string;
+  password: string;
+}): Promise<AuthSession> {
+  const session = await apiRequest<AuthSession>("/api/v1/auth/bootstrap", {
     method: "POST",
-    credentials: "same-origin",
-    headers: { Accept: "application/json" },
+    body: JSON.stringify(input),
+  });
+  rememberCsrfToken(session.csrf_token);
+  return session;
+}
+
+export async function login(input: {
+  username: string;
+  password: string;
+}): Promise<AuthSession> {
+  const session = await apiRequest<AuthSession>("/api/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  rememberCsrfToken(session.csrf_token);
+  return session;
+}
+
+export async function logout(): Promise<void> {
+  await apiRequest<undefined>("/api/v1/auth/logout", { method: "POST" });
+  rememberCsrfToken(null);
+}
+
+export async function detectDevices(signal?: AbortSignal): Promise<DeviceDetection> {
+  return apiRequest("/api/v1/devices/detect", {
+    method: "POST",
     signal,
   });
-  const body = (await response.json()) as DeviceDetection | ErrorEnvelope;
-  if (!response.ok) {
-    const envelope = body as ErrorEnvelope;
-    throw new ApiError(
-      envelope.error?.message ?? "ForensiX could not complete device detection.",
-      envelope.error?.code ?? "DEVICE_DETECTION_FAILED",
-      envelope.error?.request_id ?? response.headers.get("X-Request-ID") ?? "unknown",
-      response.status,
-    );
-  }
-  return body as DeviceDetection;
 }
 
 export async function assessDevice(serial: string): Promise<DeviceCapabilityAssessment> {
-  const response = await fetch("/api/v1/devices/assess", {
+  return apiRequest("/api/v1/devices/assess", {
     method: "POST",
-    credentials: "same-origin",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
     body: JSON.stringify({ serial }),
   });
-  const body = (await response.json()) as DeviceCapabilityAssessment | ErrorEnvelope;
+}
+
+async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const method = options.method?.toUpperCase() ?? "GET";
+  const headers = new Headers(options.headers);
+  headers.set("Accept", "application/json");
+  if (options.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (!new Set(["GET", "HEAD", "OPTIONS"]).has(method)) {
+    const csrfToken = inMemoryCsrfToken ?? readCookie("forensix_csrf");
+    if (csrfToken) {
+      headers.set("X-CSRF-Token", csrfToken);
+    }
+  }
+
+  const response = await fetch(path, {
+    ...options,
+    method,
+    credentials: "same-origin",
+    headers,
+  });
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const body = (await response.json()) as T | ErrorEnvelope;
   if (!response.ok) {
     const envelope = body as ErrorEnvelope;
     throw new ApiError(
-      envelope.error?.message ?? "ForensiX could not assess this device.",
-      envelope.error?.code ?? "DEVICE_ASSESSMENT_FAILED",
+      envelope.error?.message ?? "ForensiX could not complete the local request.",
+      envelope.error?.code ?? "API_REQUEST_FAILED",
       envelope.error?.request_id ?? response.headers.get("X-Request-ID") ?? "unknown",
       response.status,
     );
   }
-  return body as DeviceCapabilityAssessment;
+  return body as T;
+}
+
+function readCookie(name: string): string | null {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const entry = document.cookie.split("; ").find((cookie) => cookie.startsWith(prefix));
+  return entry ? decodeURIComponent(entry.slice(prefix.length)) : null;
 }

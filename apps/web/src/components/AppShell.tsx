@@ -1,5 +1,9 @@
-import { Activity, BookOpenText, Boxes, ShieldCheck } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity, BookOpenText, Boxes, LogOut, ShieldCheck } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
+
+import { authKeys } from "../features/auth/authKeys";
+import { getCurrentUser, logout } from "../lib/api";
 
 const navigation = [
   { label: "Device readiness", to: "/devices", icon: Activity },
@@ -9,6 +13,14 @@ const navigation = [
 ];
 
 export function AppShell() {
+  const queryClient = useQueryClient();
+  const currentUser = useQuery({ queryKey: authKeys.me, queryFn: getCurrentUser, retry: false });
+  const logoutMutation = useMutation({
+    mutationFn: logout,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: authKeys.me });
+    },
+  });
   return (
     <div className="min-h-screen bg-[#071016] text-slate-100">
       <a
@@ -28,9 +40,24 @@ export function AppShell() {
               <p className="text-xs text-slate-500">Android forensic triage workstation</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-emerald-300/15 bg-emerald-300/6 px-3 py-1.5 text-xs font-medium text-emerald-300">
-            <span className="size-1.5 rounded-full bg-emerald-300" aria-hidden="true" />
-            Local-only mode
+          <div className="flex items-center gap-3">
+            <div className="hidden text-right sm:block">
+              <p className="text-xs font-medium text-slate-300">
+                {currentUser.data?.display_name ?? "Local user"}
+              </p>
+              <p className="text-[11px] text-slate-600">Local-only session</p>
+            </div>
+            <button
+              type="button"
+              disabled={logoutMutation.isPending}
+              onClick={() => {
+                logoutMutation.mutate();
+              }}
+              className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/3 px-3 text-xs font-medium text-slate-400 transition hover:bg-white/6 hover:text-slate-200 disabled:cursor-wait disabled:opacity-50"
+            >
+              <LogOut aria-hidden="true" size={14} />
+              Sign out
+            </button>
           </div>
         </div>
       </header>
