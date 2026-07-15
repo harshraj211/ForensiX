@@ -11,6 +11,9 @@ from forensix_api.dependencies import (
     require_csrf_session,
 )
 from forensix_api.schemas import (
+    AcquisitionPlanCreateRequest,
+    AcquisitionPlanListResponse,
+    AcquisitionPlanResponse,
     ApiErrorResponse,
     CaseCreateRequest,
     CaseDeviceAssessmentResponse,
@@ -23,10 +26,17 @@ from forensix_api.schemas import (
     CaseTransitionRequest,
     CaseUpdateRequest,
 )
+from forensix_server.acquisitions import (
+    AcquisitionModule,
+    AcquisitionPlanService,
+    AcquisitionScope,
+    plan_limitations,
+    plan_modules,
+)
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseService, CaseStatus
-from forensix_server.db import Database
+from forensix_server.db import AcquisitionPlanRecord, Database
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
 
@@ -264,3 +274,91 @@ def list_case_device_assessments(
             )
             for assessment in assessments
         ]
+
+
+@router.get(
+    "/{case_id}/acquisition-plans",
+    response_model=AcquisitionPlanListResponse,
+)
+def list_acquisition_plans(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> AcquisitionPlanListResponse:
+    with database.session() as session:
+        plans, total = AcquisitionPlanService().list_for_case(
+            session,
+            authenticated.principal,
+            case_id,
+            offset=offset,
+            limit=limit,
+        )
+        items = [_plan_response(plan) for plan in plans]
+    return AcquisitionPlanListResponse(
+        items=items,
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
+
+
+@router.post(
+    "/{case_id}/acquisition-plans",
+    response_model=AcquisitionPlanResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_acquisition_plan(
+    case_id: str,
+    request: AcquisitionPlanCreateRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> AcquisitionPlanResponse:
+    with database.session() as session:
+        plan = AcquisitionPlanService().create(
+            session,
+            authenticated.principal,
+            case_id,
+            device_id=request.device_id,
+            assessment_id=request.assessment_id,
+            scope=request.scope,
+            requested_modules=tuple(request.modules),
+            limitations_acknowledged=request.limitations_acknowledged,
+        )
+        return _plan_response(plan)
+
+
+@router.get(
+    "/{case_id}/acquisition-plans/{plan_id}",
+    response_model=AcquisitionPlanResponse,
+)
+def get_acquisition_plan(
+    case_id: str,
+    plan_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> AcquisitionPlanResponse:
+    with database.session() as session:
+        plan = AcquisitionPlanService().get(session, authenticated.principal, case_id, plan_id)
+        return _plan_response(plan)
+
+
+def _plan_response(plan: AcquisitionPlanRecord) -> AcquisitionPlanResponse:
+    return AcquisitionPlanResponse(
+        id=plan.id,
+        case_id=plan.case_id,
+        device_id=plan.device_id,
+        assessment_id=plan.assessment_id,
+        created_by=plan.created_by,
+        scope=AcquisitionScope(plan.scope),
+        status="ready",
+        modules=[AcquisitionModule(module) for module in plan_modules(plan)],
+        limitations=plan_limitations(plan),
+        snapshot_hash=plan.snapshot_hash,
+        plan_hash=plan.plan_hash,
+        schema_version=plan.schema_version,
+        readiness_assessed_at=plan.readiness_assessed_at,
+        readiness_expires_at=plan.readiness_expires_at,
+        created_at=plan.created_at,
+    )

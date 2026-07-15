@@ -469,3 +469,140 @@ describe("device readiness", () => {
     );
   });
 });
+
+describe("acquisition planning", () => {
+  it("creates a frozen plan without starting acquisition", async () => {
+    let created = false;
+    const assessedAt = new Date().toISOString();
+    const plan = {
+      id: "plan-1",
+      case_id: "case-1",
+      device_id: "device-1",
+      assessment_id: "assessment-1",
+      created_by: "user-1",
+      scope: "quick_triage",
+      status: "ready",
+      modules: ["device_metadata", "package_inventory", "shared_storage_inventory"],
+      limitations: ["Controlled Logical Triage Mode is not hardware write blocking."],
+      snapshot_hash: "a".repeat(64),
+      plan_hash: "b".repeat(64),
+      schema_version: "1.0.0",
+      readiness_assessed_at: assessedAt,
+      readiness_expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      created_at: assessedAt,
+    };
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-PLAN0001",
+            title: "Planning case",
+            description: null,
+            legal_authority: "Controlled validation",
+            status: "open",
+            created_by: "user-1",
+            created_at: assessedAt,
+            updated_at: assessedAt,
+            closed_at: null,
+            version: 1,
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/devices") {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              id: "device-1",
+              case_id: "case-1",
+              serial_suffix: "O-001",
+              manufacturer: "ForensiX Labs",
+              model: "Controlled Test Device",
+              android_version: "14",
+              sdk_level: 34,
+              build_fingerprint: "forensix/demo",
+              security_patch: "2026-07-01",
+              registered_by: "user-1",
+              first_seen_at: assessedAt,
+              last_seen_at: assessedAt,
+            },
+          ]),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/devices/device-1/assessments") {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              id: "assessment-1",
+              case_id: "case-1",
+              device_id: "device-1",
+              assessed_by: "user-1",
+              assessed_at: assessedAt,
+              manufacturer: "ForensiX Labs",
+              model: "Controlled Test Device",
+              android_version: "14",
+              sdk_level: 34,
+              build_fingerprint: "forensix/demo",
+              security_patch: "2026-07-01",
+              package_count: 3,
+              storage_roots: [
+                {
+                  root_id: "primary_alias",
+                  display_path: "/sdcard",
+                  status: "accessible",
+                  exists: true,
+                  readable: true,
+                  reason_code: "ROOT_READABLE",
+                },
+              ],
+              capabilities: {
+                device_metadata: { status: "supported" },
+                package_inventory: { status: "supported" },
+                shared_storage: { status: "supported" },
+              },
+              warnings: [],
+              assessor_version: "0.2.0",
+            },
+          ]),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/acquisition-plans?offset=0&limit=50") {
+        return Promise.resolve(
+          jsonResponse({ items: created ? [plan] : [], total: created ? 1 : 0, offset: 0, limit: 50 }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/acquisition-plans" && init?.method === "POST") {
+        created = true;
+        return Promise.resolve(jsonResponse(plan, 201));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderApp("/cases/case-1/acquisitions");
+
+    expect(await screen.findByRole("heading", { name: "Acquisition planning" })).toBeInTheDocument();
+    expect(await screen.findByText("The latest readiness snapshot supports this scope.")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /I acknowledge/i }));
+    await user.click(screen.getByRole("button", { name: "Create frozen plan" }));
+
+    expect(await screen.findByText("Plan created without starting acquisition.")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Quick triage", level: 3 }),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/cases/case-1/acquisition-plans",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          device_id: "device-1",
+          assessment_id: "assessment-1",
+          scope: "quick_triage",
+          limitations_acknowledged: true,
+        }),
+      }),
+    );
+  });
+});

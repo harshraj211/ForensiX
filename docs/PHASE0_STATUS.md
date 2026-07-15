@@ -18,6 +18,7 @@
 | Case management | unique case numbers, ownership/memberships, object authorization, lifecycle graph, optimistic versions, append-only events, REST API, Cases UI | service/API/component tests plus reversible migration |
 | Case-linked devices | case-authorized detection, hashed stable identity, immutable readiness history, closed-case blocking, history APIs, case device registry UI | 96 backend tests passed, 1 Windows symlink-permission skip, 10 frontend tests passed |
 | Shared-storage root probe | formal typed ADB catalog, fixed `/sdcard` and `/storage/emulated/0` directory/readability predicates, explicit supported/blocked decisions, persisted/UI root results | 105 backend tests passed, 1 Windows symlink-permission skip, 10 frontend tests passed |
+| Immutable acquisition planning | exact readiness-snapshot binding, freshness/capability gates, preset and custom scopes, canonical plan/snapshot hashes, limitation acknowledgement, REST API and planning history UI | service/API/migration coverage plus 11 frontend tests |
 
 ## Supported development behavior
 
@@ -35,11 +36,13 @@
 - Case-scoped access rules and lifecycle history that cannot be bypassed by frontend navigation.
 - Case-linked device observations that retain a masked serial suffix and SHA-256 identity but never persist the raw ADB serial.
 - Immutable readiness snapshots and append-only case events for detection and assessment operations.
+- Immutable acquisition plans that bind the selected modules to an exact readiness snapshot and operator acknowledgement.
+- Server-side rejection of stale, unsupported, cross-case, closed-case, and underprivileged planning requests.
 
 ## Not implemented yet
 
 - Custody and tamper-evident audit chain
-- Acquisition planning/orchestration, ADB pulling, evidence manifests, and verification records
+- Acquisition execution/orchestration, ADB pulling, evidence manifests, and verification records
 - Artifact normalization, search, preview, and timeline
 - Report generation and exports
 - Production packaging, signing, and forensic validation
@@ -48,8 +51,8 @@ These omissions are visible project status, not silent product claims. Real-devi
 
 ## Next critical-path slice
 
-1. Persist a capability-gated acquisition-plan model against a case device and readiness snapshot.
-2. Connect durable jobs to acquisition progress events and interruption checkpoints.
-3. Implement a bounded, metadata-only inventory for approved readable roots.
-4. Add acquisition manifests and item-level SHA-256 verification records.
+1. Connect immutable plans to durable acquisition jobs, progress events, and interruption checkpoints.
+2. Implement a bounded, metadata-only inventory for approved readable roots.
+3. Add acquisition manifests and item-level SHA-256 verification records.
+4. Add revalidation immediately before execution and preserve partial results on interruption.
 5. Enable the first controlled shared-storage pull only after physical-device validation.

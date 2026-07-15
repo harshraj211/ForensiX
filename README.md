@@ -2,7 +2,7 @@
 
 ForensiX is a planned cross-platform Android rapid evidence triage and forensic preview platform. It runs on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
-The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, a typed and bounded ADB subsystem, deterministic mock-device scenarios, protected FastAPI endpoints, SQLite operational metadata, contained evidence-storage and hashing primitives, durable local-job states, and tested React authentication/case/device-readiness screens. No production forensic capability is claimed yet.
+The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, immutable capability-gated acquisition plans, a typed and bounded ADB subsystem, deterministic mock-device scenarios, protected FastAPI endpoints, SQLite operational metadata, contained evidence-storage and hashing primitives, durable local-job states, and tested React authentication/case/device-readiness/planning screens. No production forensic capability is claimed yet.
 
 ## Project status
 
@@ -29,6 +29,9 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Shell-free asynchronous ADB execution with timeouts, cancellation cleanup, and output limits
 - Device-state parsing for absent, authorized, unauthorized, offline, multiple, recovery, sideload, bootloader, and unknown states
 - Immutable capability snapshots from fixed property/package operations and content-free shared-storage root checks with explicit supported, blocked, unknown, and unsupported decisions
+- Immutable acquisition plans bound to an exact case, device, operator, and readiness snapshot, with a 30-minute freshness gate
+- Metadata-only, quick-triage, shared-storage-inventory, and custom scopes with server-enforced module capability checks
+- Canonical SHA-256 plan and readiness-snapshot hashes, recorded limitation acknowledgement, protected planning APIs, and plan-history UI
 - Strict portable evidence-storage keys with traversal, link, and reparse-point boundary checks
 - Partial-file streaming, atomic sealing, non-overwrite behavior, and streaming SHA-256 verification
 - Durable versioned job states with validated transitions, monotonic progress, cooperative cancellation, and restart interruption recovery
@@ -91,4 +94,4 @@ pnpm build
 
 ## Current security boundary
 
-The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text or remote path from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property, package, and storage-root test commands execute. Storage probing uses content-free directory/readability predicates; it does not list filenames, copy files, or prove evidence completeness. Case-linked records persist only a serial hash and masked suffix; raw serials remain transient at this stage. Storage and job primitives are not yet exposed as acquisition endpoints. Use only controlled test devices until the audit, acquisition, and validation phases are complete.
+The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text or remote path from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property, package, and storage-root test commands execute. Storage probing uses content-free directory/readability predicates; it does not list filenames, copy files, or prove evidence completeness. Case-linked records persist only a serial hash and masked suffix; raw serials remain transient at this stage. Creating an acquisition plan does not create a job, run ADB, list files, or acquire evidence. Use only controlled test devices until the audit, acquisition, and validation phases are complete.

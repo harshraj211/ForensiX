@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
+import { AcquisitionPlanningPage } from "./features/acquisitions/AcquisitionPlanningPage";
 import { AuthBoundary } from "./features/auth/AuthBoundary";
 import { CaseDetailPage } from "./features/cases/CaseDetailPage";
 import { CasesPage } from "./features/cases/CasesPage";
@@ -15,6 +16,7 @@ export function App() {
           <Route path="/cases" element={<CasesPage />} />
           <Route path="/cases/:caseId" element={<CaseDetailPage />} />
           <Route path="/cases/:caseId/devices" element={<DeviceDetectionPage />} />
+          <Route path="/cases/:caseId/acquisitions" element={<AcquisitionPlanningPage />} />
           <Route path="*" element={<Navigate to="/devices" replace />} />
         </Route>
       </Route>

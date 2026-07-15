@@ -140,6 +140,42 @@ export interface CaseDeviceAssessment {
   assessor_version: string;
 }
 
+export type AcquisitionScope =
+  | "metadata_only"
+  | "quick_triage"
+  | "shared_storage_inventory"
+  | "custom";
+
+export type AcquisitionModule =
+  | "device_metadata"
+  | "package_inventory"
+  | "shared_storage_inventory";
+
+export interface AcquisitionPlan {
+  id: string;
+  case_id: string;
+  device_id: string;
+  assessment_id: string;
+  created_by: string;
+  scope: AcquisitionScope;
+  status: "ready";
+  modules: AcquisitionModule[];
+  limitations: string[];
+  snapshot_hash: string;
+  plan_hash: string;
+  schema_version: string;
+  readiness_assessed_at: string;
+  readiness_expires_at: string;
+  created_at: string;
+}
+
+export interface AcquisitionPlanList {
+  items: AcquisitionPlan[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 interface ErrorEnvelope {
   error?: {
     code?: string;
@@ -266,6 +302,28 @@ export function listCaseDeviceAssessments(
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/assessments`,
   );
+}
+
+export function listAcquisitionPlans(caseId: string): Promise<AcquisitionPlanList> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisition-plans?offset=0&limit=50`,
+  );
+}
+
+export function createAcquisitionPlan(
+  caseId: string,
+  input: {
+    device_id: string;
+    assessment_id: string;
+    scope: AcquisitionScope;
+    modules?: AcquisitionModule[];
+    limitations_acknowledged: true;
+  },
+): Promise<AcquisitionPlan> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/acquisition-plans`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {

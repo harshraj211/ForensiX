@@ -18,6 +18,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
 
     assert {
         "alembic_version",
+        "acquisition_plans",
         "auth_events",
         "auth_sessions",
         "case_events",
@@ -41,6 +42,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     downgraded_tables = set(inspect(downgraded_engine).get_table_names())
 
     assert "device_detection_runs" not in downgraded_tables
+    assert "acquisition_plans" not in downgraded_tables
     assert "device_capability_runs" not in downgraded_tables
     assert "jobs" not in downgraded_tables
     assert "users" not in downgraded_tables

@@ -9,10 +9,12 @@ from forensix_forensic.adb import MockAdbClient, MockAdbScenario
 from forensix_server.auth import RoleName
 from forensix_server.config import Settings
 from forensix_server.db import (
+    AcquisitionPlanRecord,
     CaseDeviceAssessmentRecord,
     CaseDeviceDetectionRecord,
     CaseDeviceRecord,
     DeviceCapabilityRun,
+    JobRecord,
     RoleRecord,
     UserRecord,
     UserRoleRecord,
@@ -462,3 +464,110 @@ def test_closed_case_rejects_case_scoped_device_operation(tmp_path: Path) -> Non
     assert closed.status_code == 200
     assert detection.status_code == 409
     assert detection.json()["error"]["code"] == "CASE_INVALID_STATE"
+
+
+def test_acquisition_plan_binds_exact_case_device_and_snapshot(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post("/api/v1/cases", headers=headers, json={"title": "Planning case"}).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+
+        created = client.post(
+            f"/api/v1/cases/{case['id']}/acquisition-plans",
+            headers=headers,
+            json={
+                "device_id": assessment["case_device_id"],
+                "assessment_id": assessment["assessment_id"],
+                "scope": "quick_triage",
+                "limitations_acknowledged": True,
+            },
+        )
+        listed = client.get(f"/api/v1/cases/{case['id']}/acquisition-plans")
+        detail = client.get(f"/api/v1/cases/{case['id']}/acquisition-plans/{created.json()['id']}")
+
+    assert created.status_code == 201
+    assert created.json()["status"] == "ready"
+    assert created.json()["assessment_id"] == assessment["assessment_id"]
+    assert created.json()["modules"] == [
+        "device_metadata",
+        "package_inventory",
+        "shared_storage_inventory",
+    ]
+    assert len(created.json()["snapshot_hash"]) == 64
+    assert len(created.json()["plan_hash"]) == 64
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 1
+    assert detail.json()["plan_hash"] == created.json()["plan_hash"]
+    with app.state.database.session() as session:
+        plan = session.execute(select(AcquisitionPlanRecord)).scalar_one()
+        jobs = list(session.scalars(select(JobRecord)))
+    assert plan.assessment_id == assessment["assessment_id"]
+    assert jobs == []
+
+
+def test_blocked_storage_cannot_be_planned_for_quick_triage(tmp_path: Path) -> None:
+    app = create_app(
+        _settings(tmp_path),
+        adb_client=MockAdbClient(MockAdbScenario.STORAGE_BLOCKED),
+    )
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Blocked storage plan"}
+        ).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+        common = {
+            "device_id": assessment["case_device_id"],
+            "assessment_id": assessment["assessment_id"],
+            "limitations_acknowledged": True,
+        }
+        blocked = client.post(
+            f"/api/v1/cases/{case['id']}/acquisition-plans",
+            headers=headers,
+            json={**common, "scope": "quick_triage"},
+        )
+        metadata = client.post(
+            f"/api/v1/cases/{case['id']}/acquisition-plans",
+            headers=headers,
+            json={**common, "scope": "metadata_only"},
+        )
+
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "ACQUISITION_PLAN_INVALID"
+    assert metadata.status_code == 201
+    assert metadata.json()["modules"] == ["device_metadata", "package_inventory"]
+
+
+def test_acquisition_plan_requires_explicit_limitation_acknowledgement(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Acknowledgement case"}
+        ).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+        rejected = client.post(
+            f"/api/v1/cases/{case['id']}/acquisition-plans",
+            headers=headers,
+            json={
+                "device_id": assessment["case_device_id"],
+                "assessment_id": assessment["assessment_id"],
+                "scope": "metadata_only",
+                "limitations_acknowledged": False,
+            },
+        )
+
+    assert rejected.status_code == 422

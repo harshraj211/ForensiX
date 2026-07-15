@@ -3,6 +3,7 @@
 from .base import Base
 from .database import Database
 from .models import (
+    AcquisitionPlanRecord,
     AuthEventRecord,
     AuthSessionRecord,
     CaseDeviceAssessmentRecord,
@@ -13,6 +14,7 @@ from .models import (
     CaseRecord,
     DeviceCapabilityRun,
     DeviceDetectionRun,
+    JobRecord,
     RoleRecord,
     SystemEvent,
     UserRecord,
@@ -20,6 +22,7 @@ from .models import (
 )
 
 __all__ = [
+    "AcquisitionPlanRecord",
     "AuthEventRecord",
     "AuthSessionRecord",
     "Base",
@@ -32,6 +35,7 @@ __all__ = [
     "Database",
     "DeviceCapabilityRun",
     "DeviceDetectionRun",
+    "JobRecord",
     "RoleRecord",
     "SystemEvent",
     "UserRecord",

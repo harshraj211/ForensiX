@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, LoaderCircle, Plus, Smartphone } from "lucide-react";
+import { ArrowLeft, ClipboardList, LoaderCircle, Plus, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -112,6 +112,23 @@ export function CaseDetailPage() {
           )}
         </div>
         <CaseDevices devices={devicesQuery.data ?? []} isPending={devicesQuery.isPending} error={devicesQuery.error} />
+      </section>
+      <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+        <div className="flex gap-4">
+          <ClipboardList className="mt-1 shrink-0 text-cyan-300" size={21} aria-hidden="true" />
+          <div>
+            <h2 className="text-xl font-semibold text-white">Acquisition plans</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Review or create hash-bound plans. Planning does not collect evidence.
+            </p>
+          </div>
+        </div>
+        <Link
+          to={`/cases/${caseId}/acquisitions`}
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-4 text-sm font-semibold text-cyan-100"
+        >
+          Open planning
+        </Link>
       </section>
     </div>
   );

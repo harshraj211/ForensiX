@@ -356,3 +356,50 @@ class CaseDeviceAssessmentRecord(Base):
     package_count: Mapped[int] = mapped_column(Integer, nullable=False)
     assessor_version: Mapped[str] = mapped_column(String(32), nullable=False)
     snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AcquisitionPlanRecord(Base):
+    """Immutable, reviewable authorization boundary for a future acquisition."""
+
+    __tablename__ = "acquisition_plans"
+    __table_args__ = (
+        CheckConstraint(
+            "scope IN ('metadata_only', 'quick_triage', 'shared_storage_inventory', 'custom')",
+            name="ck_acquisition_plans_scope",
+        ),
+        CheckConstraint("status IN ('ready')", name="ck_acquisition_plans_status"),
+        UniqueConstraint("plan_hash", name="uq_acquisition_plans_plan_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("case_devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    assessment_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("case_device_assessments.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    scope: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    modules_json: Mapped[str] = mapped_column(Text, nullable=False)
+    limitations_json: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    plan_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    schema_version: Mapped[str] = mapped_column(String(16), nullable=False)
+    readiness_assessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    readiness_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )

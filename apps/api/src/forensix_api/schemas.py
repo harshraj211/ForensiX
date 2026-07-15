@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from forensix_forensic.adb.models import DeviceState, SharedStorageRootProbe
 from forensix_forensic.capabilities.models import CapabilityDecision
+from forensix_server.acquisitions import AcquisitionModule, AcquisitionScope
 from forensix_server.cases import CaseAccessLevel, CaseStatus
 
 
@@ -112,6 +113,39 @@ class CaseDeviceAssessmentResponse(BaseModel):
     capabilities: dict[str, CapabilityDecision]
     warnings: list[str]
     assessor_version: str
+
+
+class AcquisitionPlanCreateRequest(BaseModel):
+    device_id: str = Field(min_length=36, max_length=36)
+    assessment_id: str = Field(min_length=36, max_length=36)
+    scope: AcquisitionScope
+    modules: list[AcquisitionModule] = Field(default_factory=list, max_length=3)
+    limitations_acknowledged: Literal[True]
+
+
+class AcquisitionPlanResponse(BaseModel):
+    id: str
+    case_id: str
+    device_id: str
+    assessment_id: str
+    created_by: str
+    scope: AcquisitionScope
+    status: Literal["ready"]
+    modules: list[AcquisitionModule]
+    limitations: list[str]
+    snapshot_hash: str
+    plan_hash: str
+    schema_version: str
+    readiness_assessed_at: datetime
+    readiness_expires_at: datetime
+    created_at: datetime
+
+
+class AcquisitionPlanListResponse(BaseModel):
+    items: list[AcquisitionPlanResponse]
+    total: int
+    offset: int
+    limit: int
 
 
 class AuthBootstrapStatusResponse(BaseModel):
