@@ -282,3 +282,113 @@ def test_invalid_login_uses_generic_error(tmp_path: Path) -> None:
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "INVALID_CREDENTIALS"
     assert "missing.user" not in response.text
+
+
+def test_case_create_list_detail_and_events_workflow(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        created = client.post(
+            "/api/v1/cases",
+            headers=headers,
+            json={
+                "title": "Controlled Android examination",
+                "description": "Known validation device",
+                "legal_authority": "Internal validation authorization",
+            },
+        )
+        case_id = created.json()["id"]
+        listed = client.get("/api/v1/cases?limit=10")
+        detail = client.get(f"/api/v1/cases/{case_id}")
+        events = client.get(f"/api/v1/cases/{case_id}/events")
+        members = client.get(f"/api/v1/cases/{case_id}/members")
+
+    assert created.status_code == 201
+    assert created.json()["case_number"].startswith("FX-")
+    assert created.json()["status"] == "open"
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["id"] == case_id
+    assert detail.json()["title"] == "Controlled Android examination"
+    assert events.json()[0]["event_type"] == "case_created"
+    assert members.json()[0]["access_level"] == "owner"
+
+
+def test_case_update_and_transition_require_current_version(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        created = client.post(
+            "/api/v1/cases",
+            headers=headers,
+            json={"title": "Versioned case"},
+        ).json()
+        case_id = created["id"]
+        updated = client.patch(
+            f"/api/v1/cases/{case_id}",
+            headers=headers,
+            json={"expected_version": 1, "title": "Updated versioned case"},
+        )
+        stale = client.patch(
+            f"/api/v1/cases/{case_id}",
+            headers=headers,
+            json={"expected_version": 1, "title": "Stale title"},
+        )
+        activated = client.post(
+            f"/api/v1/cases/{case_id}/transition",
+            headers=headers,
+            json={"expected_version": updated.json()["version"], "status": "active"},
+        )
+        closed = client.post(
+            f"/api/v1/cases/{case_id}/transition",
+            headers=headers,
+            json={"expected_version": activated.json()["version"], "status": "closed"},
+        )
+
+    assert updated.status_code == 200
+    assert updated.json()["version"] == 2
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "CASE_VERSION_CONFLICT"
+    assert activated.json()["status"] == "active"
+    assert closed.json()["status"] == "closed"
+    assert closed.json()["closed_at"] is not None
+
+
+def test_case_mutations_require_authentication_and_csrf(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as anonymous:
+        unauthorized = anonymous.post("/api/v1/cases", json={"title": "Denied"})
+    with TestClient(app) as client:
+        _authorize(client)
+        missing_csrf = client.post("/api/v1/cases", json={"title": "Denied"})
+
+    assert unauthorized.status_code == 401
+    assert missing_csrf.status_code == 403
+
+
+def test_case_management_enforces_role_permissions(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        created = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Restricted update"}
+        ).json()
+        with app.state.database.session() as session:
+            user = session.scalar(select(UserRecord))
+            reviewer = session.scalar(
+                select(RoleRecord).where(RoleRecord.name == RoleName.REVIEWER.value)
+            )
+            assert user is not None
+            assert reviewer is not None
+            session.execute(delete(UserRoleRecord).where(UserRoleRecord.user_id == user.id))
+            session.add(UserRoleRecord(user_id=user.id, role_id=reviewer.id))
+
+        readable = client.get(f"/api/v1/cases/{created['id']}")
+        denied = client.patch(
+            f"/api/v1/cases/{created['id']}",
+            headers=headers,
+            json={"expected_version": created["version"], "title": "Denied"},
+        )
+
+    assert readable.status_code == 200
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "CASE_ACCESS_DENIED"

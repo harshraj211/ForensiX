@@ -15,7 +15,7 @@ const AUTH_USER = {
   permissions: ["devices:operate"],
 };
 
-function renderApp() {
+function renderApp(initialEntry = "/devices") {
   const queryClient = new QueryClient({
     defaultOptions: {
       mutations: { retry: false },
@@ -27,7 +27,7 @@ function renderApp() {
   rememberCsrfToken("csrf-test");
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={["/devices"]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <App />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -110,6 +110,50 @@ describe("local authentication", () => {
       "autocomplete",
       "current-password",
     );
+  });
+});
+
+describe("case workspace", () => {
+  it("lists accessible cases with lifecycle state", async () => {
+    mockResponse({
+      items: [
+        {
+          id: "case-1",
+          case_number: "FX-2026-ABC12345",
+          title: "Controlled Android examination",
+          description: "Known validation device",
+          legal_authority: "Internal authorization",
+          status: "open",
+          created_by: "user-1",
+          created_at: "2026-07-15T10:00:00Z",
+          updated_at: "2026-07-15T10:00:00Z",
+          closed_at: null,
+          version: 1,
+        },
+      ],
+      total: 1,
+      offset: 0,
+      limit: 50,
+    });
+
+    renderApp("/cases");
+
+    expect(await screen.findByRole("heading", { name: "Cases" })).toBeInTheDocument();
+    expect(await screen.findByText("Controlled Android examination")).toBeInTheDocument();
+    expect(screen.getByText("FX-2026-ABC12345")).toBeInTheDocument();
+    expect(screen.getByText("open")).toBeInTheDocument();
+  });
+
+  it("opens the case creation form", async () => {
+    mockResponse({ items: [], total: 0, offset: 0, limit: 50 });
+    const user = userEvent.setup();
+    renderApp("/cases");
+
+    await user.click(await screen.findByRole("button", { name: "New case" }));
+
+    expect(screen.getByRole("heading", { name: "Create case" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Case title")).toBeRequired();
+    expect(screen.getByLabelText("Legal authority")).toBeInTheDocument();
   });
 });
 

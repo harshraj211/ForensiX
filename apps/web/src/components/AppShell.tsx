@@ -7,7 +7,7 @@ import { getCurrentUser, logout } from "../lib/api";
 
 const navigation = [
   { label: "Device readiness", to: "/devices", icon: Activity },
-  { label: "Cases", to: "/cases", icon: Boxes, disabled: true },
+  { label: "Cases", to: "/cases", icon: Boxes },
   { label: "Evidence", to: "/evidence", icon: ShieldCheck, disabled: true },
   { label: "Reports", to: "/reports", icon: BookOpenText, disabled: true },
 ];

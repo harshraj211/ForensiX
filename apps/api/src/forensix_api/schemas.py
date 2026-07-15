@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from forensix_forensic.adb.models import DeviceState
 from forensix_forensic.capabilities.models import CapabilityDecision
+from forensix_server.cases import CaseAccessLevel, CaseStatus
 
 
 class ApiErrorDetail(BaseModel):
@@ -99,3 +100,72 @@ class AuthSessionResponse(BaseModel):
     user: AuthUserResponse
     expires_at: datetime
     csrf_token: str
+
+
+class CaseCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=10_000)
+    legal_authority: str | None = Field(default=None, max_length=2_000)
+
+
+class CaseUpdateRequest(BaseModel):
+    expected_version: int = Field(ge=1)
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=10_000)
+    legal_authority: str | None = Field(default=None, max_length=2_000)
+
+
+class CaseTransitionRequest(BaseModel):
+    expected_version: int = Field(ge=1)
+    status: CaseStatus
+
+
+class CaseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    case_number: str
+    title: str
+    description: str | None
+    legal_authority: str | None
+    status: CaseStatus
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+    closed_at: datetime | None
+    version: int
+
+
+class CaseListResponse(BaseModel):
+    items: list[CaseResponse]
+    total: int
+    offset: int
+    limit: int
+
+
+class CaseMemberRequest(BaseModel):
+    user_id: str = Field(min_length=36, max_length=36)
+    access_level: CaseAccessLevel
+
+
+class CaseMemberResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    case_id: str
+    user_id: str
+    access_level: CaseAccessLevel
+    assigned_at: datetime
+    assigned_by: str
+
+
+class CaseEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    case_id: str
+    actor_id: str
+    event_type: str
+    from_status: str | None
+    to_status: str | None
+    safe_detail: str | None
+    created_at: datetime

@@ -12,6 +12,14 @@ from forensix_forensic.adb import (
     AdbOutputLimitError,
     AdbTimeoutError,
 )
+from forensix_server.cases import (
+    CaseAccessDeniedError,
+    CaseError,
+    CaseInvalidStateError,
+    CaseMemberError,
+    CaseNotFoundError,
+    CaseVersionConflictError,
+)
 
 
 class ApiSecurityError(RuntimeError):
@@ -24,6 +32,30 @@ class ApiSecurityError(RuntimeError):
 async def security_error_handler(request: Request, error: ApiSecurityError) -> JSONResponse:
     return JSONResponse(
         status_code=error.status_code,
+        content={
+            "error": {
+                "code": error.code,
+                "message": str(error),
+                "details": {},
+                "request_id": request.state.request_id,
+            }
+        },
+        headers={"X-Request-ID": request.state.request_id},
+    )
+
+
+async def case_error_handler(request: Request, error: CaseError) -> JSONResponse:
+    status_code = 400
+    if isinstance(error, CaseNotFoundError):
+        status_code = 404
+    elif isinstance(error, CaseAccessDeniedError):
+        status_code = 403
+    elif isinstance(error, (CaseInvalidStateError, CaseVersionConflictError)):
+        status_code = 409
+    elif isinstance(error, CaseMemberError):
+        status_code = 400
+    return JSONResponse(
+        status_code=status_code,
         content={
             "error": {
                 "code": error.code,

@@ -68,6 +68,29 @@ export interface BootstrapStatus {
   bootstrap_required: boolean;
 }
 
+export type CaseStatus = "open" | "active" | "closed" | "archived";
+
+export interface CaseRecord {
+  id: string;
+  case_number: string;
+  title: string;
+  description: string | null;
+  legal_authority: string | null;
+  status: CaseStatus;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  version: number;
+}
+
+export interface CaseList {
+  items: CaseRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 interface ErrorEnvelope {
   error?: {
     code?: string;
@@ -130,6 +153,36 @@ export async function login(input: {
 export async function logout(): Promise<void> {
   await apiRequest<undefined>("/api/v1/auth/logout", { method: "POST" });
   rememberCsrfToken(null);
+}
+
+export function listCases(): Promise<CaseList> {
+  return apiRequest("/api/v1/cases?offset=0&limit=50");
+}
+
+export function getCase(caseId: string): Promise<CaseRecord> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}`);
+}
+
+export function createCase(input: {
+  title: string;
+  description?: string;
+  legal_authority?: string;
+}): Promise<CaseRecord> {
+  return apiRequest("/api/v1/cases", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function transitionCase(
+  caseId: string,
+  expectedVersion: number,
+  status: CaseStatus,
+): Promise<CaseRecord> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/transition`, {
+    method: "POST",
+    body: JSON.stringify({ expected_version: expectedVersion, status }),
+  });
 }
 
 export async function detectDevices(signal?: AbortSignal): Promise<DeviceDetection> {

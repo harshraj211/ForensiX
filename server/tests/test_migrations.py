@@ -20,6 +20,9 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "alembic_version",
         "auth_events",
         "auth_sessions",
+        "case_events",
+        "case_members",
+        "cases",
         "device_capability_runs",
         "device_detection_runs",
         "jobs",
@@ -42,5 +45,8 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     assert "user_roles" not in downgraded_tables
     assert "auth_sessions" not in downgraded_tables
     assert "auth_events" not in downgraded_tables
+    assert "cases" not in downgraded_tables
+    assert "case_members" not in downgraded_tables
+    assert "case_events" not in downgraded_tables
     assert "system_events" not in downgraded_tables
     downgraded_engine.dispose()

@@ -15,6 +15,7 @@
 | Evidence storage and hashing | strict portable keys, contained paths, link/reparse rejection, partial writes, atomic sealing, no overwrite, streaming SHA-256 | 15 passed; 1 Windows symlink test skipped without developer-mode permission |
 | Durable local jobs | explicit state graph, monotonic progress, cancellation, restart recovery, version-based stale-update detection, migration | 9 job tests plus migration coverage |
 | Authentication and RBAC | one-time administrator bootstrap, Argon2id, lockout, hashed opaque sessions, CSRF, rotation/revocation, five roles, protected device operations, React setup/login | service/API/component tests plus reversible migration |
+| Case management | unique case numbers, ownership/memberships, object authorization, lifecycle graph, optimistic versions, append-only events, REST API, Cases UI | service/API/component tests plus reversible migration |
 
 ## Supported development behavior
 
@@ -28,10 +29,11 @@
 - Streaming file writes and SHA-256 calculations without loading whole evidence files in memory.
 - Durable job records that preserve interruption/error state across backend restarts.
 - Local administrator bootstrap and session-protected device operations without browser-stored access tokens.
+- Case-scoped access rules and lifecycle history that cannot be bypassed by frontend navigation.
 
 ## Not implemented yet
 
-- Case management, case memberships/authorization, custody, and audit chain
+- Custody and tamper-evident audit chain
 - Acquisition planning/orchestration, ADB pulling, evidence manifests, and verification records
 - Artifact normalization, search, preview, and timeline
 - Report generation and exports
@@ -41,8 +43,8 @@ These omissions are visible project status, not silent product claims. Real-devi
 
 ## Next critical-path slice
 
-1. Implement cases, memberships, lifecycle rules, and object-level authorization.
-2. Probe accessible shared-storage roots through fixed, bounded operations.
+1. Probe accessible shared-storage roots through fixed, bounded operations.
+2. Persist devices and link readiness snapshots to authorized cases.
 3. Connect durable jobs to an acquisition-plan model and progress event stream.
 4. Add acquisition manifests and item-level interruption checkpoints.
 5. Enable the first controlled shared-storage pull only after physical-device validation.
