@@ -14,6 +14,15 @@ body {
   min-height: 100vh;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--color-cyan-300) 30%, transparent);
+  color: white;
+}
+
+* {
+  scrollbar-color: rgb(51 65 85) transparent;
+}
+
 button,
 input,
 select,
