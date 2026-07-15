@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from forensix_forensic.adb.models import DeviceState
+from forensix_forensic.adb.models import DeviceState, SharedStorageRootProbe
 from forensix_forensic.capabilities.models import CapabilityDecision
 from forensix_server.cases import CaseAccessLevel, CaseStatus
 
@@ -72,6 +72,7 @@ class DeviceCapabilityAssessmentResponse(BaseModel):
     build_fingerprint: str | None
     security_patch: str | None
     package_count: int
+    storage_roots: list[SharedStorageRootProbe] = Field(default_factory=list)
     capabilities: dict[str, CapabilityDecision]
     warnings: list[str]
     assessor_version: str
@@ -107,6 +108,7 @@ class CaseDeviceAssessmentResponse(BaseModel):
     build_fingerprint: str | None
     security_patch: str | None
     package_count: int
+    storage_roots: list[SharedStorageRootProbe] = Field(default_factory=list)
     capabilities: dict[str, CapabilityDecision]
     warnings: list[str]
     assessor_version: str

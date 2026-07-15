@@ -13,6 +13,7 @@ from forensix_forensic.adb.models import DeviceState
         (MockAdbScenario.AUTHORIZED, [DeviceState.AUTHORIZED]),
         (MockAdbScenario.UNAUTHORIZED, [DeviceState.UNAUTHORIZED]),
         (MockAdbScenario.OFFLINE, [DeviceState.OFFLINE]),
+        (MockAdbScenario.STORAGE_BLOCKED, [DeviceState.AUTHORIZED]),
         (
             MockAdbScenario.MULTIPLE,
             [DeviceState.AUTHORIZED, DeviceState.UNAUTHORIZED],

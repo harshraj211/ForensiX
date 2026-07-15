@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   CircleOff,
   Clock3,
+  FolderCheck,
+  FolderX,
   HardDrive,
   Info,
   LoaderCircle,
@@ -466,6 +468,46 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
         {entries.map(([capability, decision]) => (
           <CapabilityRow key={capability} capability={capability} decision={decision} />
         ))}
+      </div>
+      <div className="mt-5 rounded-lg border border-white/8 bg-black/10 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+            Content-free root probe
+          </h3>
+          <span className="text-[10px] uppercase tracking-[0.12em] text-slate-600">
+            No files enumerated
+          </span>
+        </div>
+        {assessment.storage_roots.length === 0 ? (
+          <p className="mt-3 text-xs leading-5 text-slate-500">
+            This older readiness snapshot did not include fixed-root checks.
+          </p>
+        ) : (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {assessment.storage_roots.map((root) => {
+              const accessible = root.status === "accessible";
+              const RootIcon = accessible ? FolderCheck : FolderX;
+              return (
+                <div
+                  key={root.root_id}
+                  className={`flex items-center gap-3 rounded-md border px-3 py-2 text-xs ${
+                    accessible
+                      ? "border-emerald-200/12 bg-emerald-200/5 text-emerald-200"
+                      : "border-rose-200/12 bg-rose-200/5 text-rose-200"
+                  }`}
+                >
+                  <RootIcon size={15} aria-hidden="true" className="shrink-0" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-mono">{root.display_path}</span>
+                    <span className="mt-0.5 block text-[10px] uppercase tracking-wide opacity-55">
+                      {root.status}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
       <div className="mt-5 rounded-lg border border-amber-200/12 bg-amber-200/5 p-4">
         <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-200">

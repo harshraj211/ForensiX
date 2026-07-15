@@ -25,9 +25,10 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Unique case numbers, creator ownership, memberships, lifecycle transitions, optimistic versions, append-only case events, protected case APIs, and Cases UI
 - Case-scoped device detection, hashed device identity, immutable readiness snapshots, closed-case blocking, device history APIs, and case registry UI
 - Explicit ADB binary discovery and version validation primitives
+- Typed ADB operation catalog with fixed arguments, serial validation, operation timeouts, and no browser-supplied command or path fields
 - Shell-free asynchronous ADB execution with timeouts, cancellation cleanup, and output limits
 - Device-state parsing for absent, authorized, unauthorized, offline, multiple, recovery, sideload, bootloader, and unknown states
-- Immutable capability snapshots from fixed property/package operations with explicit supported, unknown, and unsupported decisions
+- Immutable capability snapshots from fixed property/package operations and content-free shared-storage root checks with explicit supported, blocked, unknown, and unsupported decisions
 - Strict portable evidence-storage keys with traversal, link, and reparse-point boundary checks
 - Partial-file streaming, atomic sealing, non-overwrite behavior, and streaming SHA-256 verification
 - Durable versioned job states with validated transitions, monotonic progress, cooperative cancellation, and restart interruption recovery
@@ -73,7 +74,7 @@ pnpm dev
 
 Open `http://127.0.0.1:5173/devices`.
 
-Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
+Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, `storage_blocked`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
 
 ## Validation commands
 
@@ -90,4 +91,4 @@ pnpm build
 
 ## Current security boundary
 
-The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property/package commands execute. Case-linked records persist only a serial hash and masked suffix; raw serials remain transient at this stage. Storage and job primitives are not yet exposed as acquisition endpoints. Use only controlled test devices until the audit, acquisition, and validation phases are complete.
+The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text or remote path from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property, package, and storage-root test commands execute. Storage probing uses content-free directory/readability predicates; it does not list filenames, copy files, or prove evidence completeness. Case-linked records persist only a serial hash and masked suffix; raw serials remain transient at this stage. Storage and job primitives are not yet exposed as acquisition endpoints. Use only controlled test devices until the audit, acquisition, and validation phases are complete.

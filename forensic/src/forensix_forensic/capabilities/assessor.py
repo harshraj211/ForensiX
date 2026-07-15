@@ -24,7 +24,9 @@ class DeviceCapabilityAssessor:
 
         properties = await self._adb_client.get_properties(serial)
         packages = await self._adb_client.list_packages(serial)
+        storage_roots = await self._adb_client.probe_shared_storage(serial)
         sdk_level = _parse_sdk_level(properties.get("ro.build.version.sdk"))
+        accessible_roots = tuple(root for root in storage_roots if root.readable)
         capabilities = {
             "device_metadata": _supported(
                 "ADB_PROPERTY_ACCESS",
@@ -37,10 +39,23 @@ class DeviceCapabilityAssessor:
                     "limit coverage."
                 ),
             ),
-            "shared_storage": CapabilityDecision(
-                status=CapabilityStatus.UNKNOWN,
-                reason_code="STORAGE_PROBE_PENDING",
-                explanation="Shared-storage roots have not been probed in this assessment stage.",
+            "shared_storage": (
+                _supported(
+                    "SHARED_STORAGE_ROOT_READABLE",
+                    (
+                        f"{len(accessible_roots)} fixed shared-storage root(s) passed content-free "
+                        "directory and readability checks."
+                    ),
+                )
+                if accessible_roots
+                else CapabilityDecision(
+                    status=CapabilityStatus.BLOCKED,
+                    reason_code="SHARED_STORAGE_NOT_READABLE",
+                    explanation=(
+                        "No approved shared-storage root passed both directory and readability "
+                        "checks."
+                    ),
+                )
             ),
             "private_app_data": _unsupported(
                 "PRIVATE_APP_DATA_INACCESSIBLE",
@@ -64,10 +79,15 @@ class DeviceCapabilityAssessor:
             build_fingerprint=properties.get("ro.build.fingerprint"),
             security_patch=properties.get("ro.build.version.security_patch"),
             package_count=len(packages),
+            storage_roots=storage_roots,
             capabilities=capabilities,
             warnings=(
                 "Private application data is not accessible on this non-rooted logical transport.",
                 "Capability results apply only to this observed device state and can become stale.",
+                (
+                    "Storage probing checks fixed root accessibility only; it does not enumerate, "
+                    "copy, or prove completeness of any evidence content."
+                ),
             ),
         )
 

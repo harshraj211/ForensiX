@@ -35,6 +35,17 @@ export interface CapabilityDecision {
   explanation: string;
 }
 
+export type StorageProbeStatus = "accessible" | "missing" | "blocked";
+
+export interface SharedStorageRootProbe {
+  root_id: string;
+  display_path: string;
+  status: StorageProbeStatus;
+  exists: boolean;
+  readable: boolean;
+  reason_code: string;
+}
+
 export interface DeviceCapabilityAssessment {
   assessment_id: string;
   case_id: string | null;
@@ -48,6 +59,7 @@ export interface DeviceCapabilityAssessment {
   build_fingerprint: string | null;
   security_patch: string | null;
   package_count: number;
+  storage_roots: SharedStorageRootProbe[];
   capabilities: Record<string, CapabilityDecision>;
   warnings: string[];
   assessor_version: string;
@@ -122,6 +134,7 @@ export interface CaseDeviceAssessment {
   build_fingerprint: string | null;
   security_patch: string | null;
   package_count: number;
+  storage_roots: SharedStorageRootProbe[];
   capabilities: Record<string, CapabilityDecision>;
   warnings: string[];
   assessor_version: string;

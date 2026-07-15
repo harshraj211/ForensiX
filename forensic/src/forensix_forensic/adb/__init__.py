@@ -12,7 +12,14 @@ from .errors import (
     AdbTimeoutError,
 )
 from .mock import MockAdbClient, MockAdbScenario
-from .models import AdbServerInfo, DeviceState, DeviceTransport
+from .models import (
+    AdbServerInfo,
+    DeviceState,
+    DeviceTransport,
+    SharedStorageRootProbe,
+    StorageProbeStatus,
+)
+from .policy import AdbCommandPolicy, AdbOperation, ApprovedAdbCommand, SharedStorageRoot
 from .runner import AdbCommandResult, SubprocessAdbRunner
 
 __all__ = [
@@ -21,16 +28,22 @@ __all__ = [
     "AdbClient",
     "AdbCommandError",
     "AdbCommandResult",
+    "AdbCommandPolicy",
     "AdbDeviceNotAuthorizedError",
     "AdbDeviceNotFoundError",
     "AdbError",
     "AdbOutputLimitError",
+    "AdbOperation",
     "AdbServerInfo",
     "AdbTimeoutError",
     "DeviceState",
     "DeviceTransport",
     "MockAdbClient",
     "MockAdbScenario",
+    "ApprovedAdbCommand",
+    "SharedStorageRoot",
+    "SharedStorageRootProbe",
+    "StorageProbeStatus",
     "SubprocessAdbRunner",
     "SystemAdbClient",
 ]

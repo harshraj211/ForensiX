@@ -3,7 +3,13 @@
 from enum import StrEnum
 
 from .errors import AdbTimeoutError
-from .models import AdbServerInfo, DeviceState, DeviceTransport
+from .models import (
+    AdbServerInfo,
+    DeviceState,
+    DeviceTransport,
+    SharedStorageRootProbe,
+    StorageProbeStatus,
+)
 
 
 class MockAdbScenario(StrEnum):
@@ -13,6 +19,7 @@ class MockAdbScenario(StrEnum):
     OFFLINE = "offline"
     MULTIPLE = "multiple"
     TIMEOUT = "timeout"
+    STORAGE_BLOCKED = "storage_blocked"
 
 
 class MockAdbClient:
@@ -42,6 +49,7 @@ class MockAdbClient:
             MockAdbScenario.AUTHORIZED: DeviceState.AUTHORIZED,
             MockAdbScenario.UNAUTHORIZED: DeviceState.UNAUTHORIZED,
             MockAdbScenario.OFFLINE: DeviceState.OFFLINE,
+            MockAdbScenario.STORAGE_BLOCKED: DeviceState.AUTHORIZED,
         }[self.scenario]
         return (self._transport("FX-DEMO-001", state),)
 
@@ -62,6 +70,26 @@ class MockAdbClient:
             "android",
             "com.android.settings",
             "org.forensix.synthetic.fixture",
+        )
+
+    async def probe_shared_storage(self, serial: str) -> tuple[SharedStorageRootProbe, ...]:
+        await self._require_authorized(serial)
+        accessible = self.scenario is not MockAdbScenario.STORAGE_BLOCKED
+        return tuple(
+            SharedStorageRootProbe(
+                root_id=root_id,
+                display_path=display_path,
+                status=(
+                    StorageProbeStatus.ACCESSIBLE if accessible else StorageProbeStatus.BLOCKED
+                ),
+                exists=True,
+                readable=accessible,
+                reason_code="ROOT_READABLE" if accessible else "ROOT_NOT_READABLE",
+            )
+            for root_id, display_path in (
+                ("primary_alias", "/sdcard"),
+                ("emulated_primary", "/storage/emulated/0"),
+            )
         )
 
     async def _require_authorized(self, serial: str) -> DeviceTransport:

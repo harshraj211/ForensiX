@@ -273,6 +273,16 @@ describe("device readiness", () => {
             build_fingerprint: "forensix/demo",
             security_patch: "2026-07-01",
             package_count: 3,
+            storage_roots: [
+              {
+                root_id: "primary_alias",
+                display_path: "/sdcard",
+                status: "accessible",
+                exists: true,
+                readable: true,
+                reason_code: "ROOT_READABLE",
+              },
+            ],
             capabilities: {
               device_metadata: {
                 status: "supported",
@@ -301,6 +311,8 @@ describe("device readiness", () => {
     expect(await screen.findByText("Readiness snapshot")).toBeInTheDocument();
     expect(screen.getByText(/Android 14 · API 34 · 3 packages observed/)).toBeInTheDocument();
     expect(screen.getByText("Private App Data")).toBeInTheDocument();
+    expect(screen.getByText("Content-free root probe")).toBeInTheDocument();
+    expect(screen.getByText("/sdcard")).toBeInTheDocument();
     expect(screen.getByText("unsupported")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/v1/devices/assess",
@@ -415,6 +427,16 @@ describe("device readiness", () => {
             build_fingerprint: "forensix/demo",
             security_patch: "2026-07-01",
             package_count: 3,
+            storage_roots: [
+              {
+                root_id: "primary_alias",
+                display_path: "/sdcard",
+                status: "accessible",
+                exists: true,
+                readable: true,
+                reason_code: "ROOT_READABLE",
+              },
+            ],
             capabilities: {
               device_metadata: {
                 status: "supported",

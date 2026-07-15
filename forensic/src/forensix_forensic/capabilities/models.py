@@ -3,6 +3,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from forensix_forensic.adb.models import SharedStorageRootProbe
+
 
 class CapabilityStatus(StrEnum):
     SUPPORTED = "supported"
@@ -31,6 +33,7 @@ class DeviceCapabilitySnapshot(BaseModel):
     build_fingerprint: str | None
     security_patch: str | None
     package_count: int = Field(ge=0)
+    storage_roots: tuple[SharedStorageRootProbe, ...] = ()
     capabilities: dict[str, CapabilityDecision]
     warnings: tuple[str, ...]
-    assessor_version: str = "0.1.0"
+    assessor_version: str = "0.2.0"

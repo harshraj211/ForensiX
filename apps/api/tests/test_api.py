@@ -130,6 +130,9 @@ def test_authorized_device_capability_assessment(tmp_path: Path) -> None:
     assert body["android_version"] == "14"
     assert body["sdk_level"] == 34
     assert body["capabilities"]["device_metadata"]["status"] == "supported"
+    assert body["capabilities"]["shared_storage"]["status"] == "supported"
+    assert body["storage_roots"][0]["display_path"] == "/sdcard"
+    assert body["storage_roots"][0]["readable"] is True
     assert body["capabilities"]["private_app_data"]["status"] == "unsupported"
     with app.state.database.session() as session:
         persisted = session.execute(select(DeviceCapabilityRun)).scalar_one()
@@ -427,6 +430,7 @@ def test_case_scoped_detection_assessment_and_history(tmp_path: Path) -> None:
     assert snapshots.status_code == 200
     assert snapshots.json()[0]["device_id"] == device_id
     assert snapshots.json()[0]["capabilities"]["device_metadata"]["status"] == "supported"
+    assert snapshots.json()[0]["storage_roots"][0]["status"] == "accessible"
     assert {event["event_type"] for event in events.json()} >= {
         "device_detection_run",
         "device_assessed",

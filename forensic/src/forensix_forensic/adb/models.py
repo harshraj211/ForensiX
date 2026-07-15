@@ -34,3 +34,20 @@ class AdbServerInfo(BaseModel):
     version: str
     executable_path: str
     raw_output: str
+
+
+class StorageProbeStatus(StrEnum):
+    ACCESSIBLE = "accessible"
+    MISSING = "missing"
+    BLOCKED = "blocked"
+
+
+class SharedStorageRootProbe(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    root_id: str
+    display_path: str
+    status: StorageProbeStatus
+    exists: bool
+    readable: bool
+    reason_code: str

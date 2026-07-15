@@ -17,6 +17,7 @@
 | Authentication and RBAC | one-time administrator bootstrap, Argon2id, lockout, hashed opaque sessions, CSRF, rotation/revocation, five roles, protected device operations, React setup/login | service/API/component tests plus reversible migration |
 | Case management | unique case numbers, ownership/memberships, object authorization, lifecycle graph, optimistic versions, append-only events, REST API, Cases UI | service/API/component tests plus reversible migration |
 | Case-linked devices | case-authorized detection, hashed stable identity, immutable readiness history, closed-case blocking, history APIs, case device registry UI | 96 backend tests passed, 1 Windows symlink-permission skip, 10 frontend tests passed |
+| Shared-storage root probe | formal typed ADB catalog, fixed `/sdcard` and `/storage/emulated/0` directory/readability predicates, explicit supported/blocked decisions, persisted/UI root results | 105 backend tests passed, 1 Windows symlink-permission skip, 10 frontend tests passed |
 
 ## Supported development behavior
 
@@ -24,6 +25,7 @@
 - Real ADB discovery from an explicit configured path or host `PATH`.
 - `adb version` and `adb devices -l` only through fixed internal operations.
 - Serial-scoped `getprop` and package listing for authorized transports only.
+- Serial-scoped, content-free `test -d` and `test -r` checks for two internal-policy storage roots; no caller-provided path and no file listing.
 - Explicit decisions for device metadata, package inventory, shared storage, private app data, and deleted-data recovery.
 - Persisted successful detection-run metadata without storing evidence content.
 - Evidence-root primitives that never accept investigator strings as direct paths.
@@ -46,8 +48,8 @@ These omissions are visible project status, not silent product claims. Real-devi
 
 ## Next critical-path slice
 
-1. Probe accessible shared-storage roots through fixed, bounded operations.
-2. Persist a capability-gated acquisition-plan model against a case device.
-3. Connect durable jobs to acquisition progress events and interruption checkpoints.
+1. Persist a capability-gated acquisition-plan model against a case device and readiness snapshot.
+2. Connect durable jobs to acquisition progress events and interruption checkpoints.
+3. Implement a bounded, metadata-only inventory for approved readable roots.
 4. Add acquisition manifests and item-level SHA-256 verification records.
 5. Enable the first controlled shared-storage pull only after physical-device validation.
