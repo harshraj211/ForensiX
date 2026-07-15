@@ -105,6 +105,80 @@ describe("device readiness", () => {
     expect(screen.getByText(/approve this workstation on the Android device/i)).toBeInTheDocument();
   });
 
+  it("assesses an authorized device and labels unsupported access", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            detection_id: "detect-3",
+            observed_at: "2026-07-15T09:00:00Z",
+            result: "single_device",
+            adb: { version: "1.0.41", executable_path: "mock://adb" },
+            devices: [
+              {
+                serial: "FX-DEMO-001",
+                state: "authorized",
+                raw_state: "device",
+                product: "forensix_demo",
+                model: "Controlled_Test_Device",
+                device: "fx_virtual",
+                transport_id: "1",
+                usb: "1-1",
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            assessment_id: "assessment-1",
+            assessed_at: "2026-07-15T09:01:00Z",
+            serial: "FX-DEMO-001",
+            manufacturer: "ForensiX Labs",
+            model: "Controlled Test Device",
+            android_version: "14",
+            sdk_level: 34,
+            build_fingerprint: "forensix/demo",
+            security_patch: "2026-07-01",
+            package_count: 3,
+            capabilities: {
+              device_metadata: {
+                status: "supported",
+                reason_code: "ADB_PROPERTY_ACCESS",
+                explanation: "Core properties were retrieved.",
+              },
+              private_app_data: {
+                status: "unsupported",
+                reason_code: "PRIVATE_APP_DATA_INACCESSIBLE",
+                explanation: "ADB authorization does not grant private sandbox access.",
+              },
+            },
+            warnings: ["Capability results can become stale."],
+            assessor_version: "0.1.0",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole("button", { name: "Detect Android devices" }));
+    await user.click(await screen.findByRole("button", { name: "Assess capabilities" }));
+
+    expect(await screen.findByText("Readiness snapshot")).toBeInTheDocument();
+    expect(screen.getByText(/Android 14 · API 34 · 3 packages observed/)).toBeInTheDocument();
+    expect(screen.getByText("Private App Data")).toBeInTheDocument();
+    expect(screen.getByText("unsupported")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/devices/assess",
+      expect.objectContaining({ body: JSON.stringify({ serial: "FX-DEMO-001" }) }),
+    );
+  });
+
   it("shows the safe API error and request ID", async () => {
     mockResponse(
       {

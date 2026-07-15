@@ -26,6 +26,30 @@ export interface DeviceDetection {
   devices: DeviceTransport[];
 }
 
+export type CapabilityStatus = "supported" | "unsupported" | "unknown" | "blocked";
+
+export interface CapabilityDecision {
+  status: CapabilityStatus;
+  reason_code: string;
+  explanation: string;
+}
+
+export interface DeviceCapabilityAssessment {
+  assessment_id: string;
+  assessed_at: string;
+  serial: string;
+  manufacturer: string | null;
+  model: string | null;
+  android_version: string | null;
+  sdk_level: number | null;
+  build_fingerprint: string | null;
+  security_patch: string | null;
+  package_count: number;
+  capabilities: Record<string, CapabilityDecision>;
+  warnings: string[];
+  assessor_version: string;
+}
+
 interface ErrorEnvelope {
   error?: {
     code?: string;
@@ -64,4 +88,24 @@ export async function detectDevices(signal?: AbortSignal): Promise<DeviceDetecti
     );
   }
   return body as DeviceDetection;
+}
+
+export async function assessDevice(serial: string): Promise<DeviceCapabilityAssessment> {
+  const response = await fetch("/api/v1/devices/assess", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ serial }),
+  });
+  const body = (await response.json()) as DeviceCapabilityAssessment | ErrorEnvelope;
+  if (!response.ok) {
+    const envelope = body as ErrorEnvelope;
+    throw new ApiError(
+      envelope.error?.message ?? "ForensiX could not assess this device.",
+      envelope.error?.code ?? "DEVICE_ASSESSMENT_FAILED",
+      envelope.error?.request_id ?? response.headers.get("X-Request-ID") ?? "unknown",
+      response.status,
+    );
+  }
+  return body as DeviceCapabilityAssessment;
 }
