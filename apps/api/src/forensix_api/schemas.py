@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from forensix_forensic.adb.models import DeviceState
+from forensix_forensic.capabilities.models import CapabilityDecision
 
 
 class ApiErrorDetail(BaseModel):
@@ -49,3 +50,23 @@ class DeviceDetectionResponse(BaseModel):
     result: Literal["no_devices", "single_device", "multiple_devices"]
     adb: AdbInfoResponse
     devices: list[DeviceTransportResponse]
+
+
+class DeviceAssessmentRequest(BaseModel):
+    serial: str = Field(min_length=1, max_length=255)
+
+
+class DeviceCapabilityAssessmentResponse(BaseModel):
+    assessment_id: str
+    assessed_at: datetime
+    serial: str
+    manufacturer: str | None
+    model: str | None
+    android_version: str | None
+    sdk_level: int | None
+    build_fingerprint: str | None
+    security_patch: str | None
+    package_count: int
+    capabilities: dict[str, CapabilityDecision]
+    warnings: list[str]
+    assessor_version: str

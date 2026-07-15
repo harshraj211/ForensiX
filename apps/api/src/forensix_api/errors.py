@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from forensix_forensic.adb import (
     AdbBinaryNotFoundError,
     AdbCommandError,
+    AdbDeviceNotAuthorizedError,
+    AdbDeviceNotFoundError,
     AdbError,
     AdbOutputLimitError,
     AdbTimeoutError,
@@ -16,6 +18,10 @@ async def adb_error_handler(request: Request, error: AdbError) -> JSONResponse:
     status_code = 503
     if isinstance(error, AdbTimeoutError):
         status_code = 504
+    elif isinstance(error, AdbDeviceNotFoundError):
+        status_code = 404
+    elif isinstance(error, AdbDeviceNotAuthorizedError):
+        status_code = 409
     elif isinstance(error, (AdbCommandError, AdbOutputLimitError)):
         status_code = 502
     elif isinstance(error, AdbBinaryNotFoundError):

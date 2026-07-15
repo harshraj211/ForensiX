@@ -15,6 +15,7 @@ _STATE_MAP = {
     "sideload": DeviceState.SIDELOAD,
     "bootloader": DeviceState.BOOTLOADER,
 }
+_GETPROP_PATTERN = re.compile(r"^\[([^]]+)]\s*:\s*\[(.*)]$")
 
 
 def parse_adb_version(output: str) -> str:
@@ -53,6 +54,32 @@ def parse_devices_output(output: str) -> tuple[DeviceTransport, ...]:
             )
         )
     return tuple(transports)
+
+
+def parse_getprop_output(output: str) -> dict[str, str]:
+    properties: dict[str, str] = {}
+    for line in output.splitlines():
+        match = _GETPROP_PATTERN.match(line.strip())
+        if match:
+            properties[match.group(1)] = match.group(2)
+    if not properties:
+        raise AdbProtocolError("ADB property output did not contain any parseable properties.")
+    return properties
+
+
+def parse_package_list(output: str, *, maximum_packages: int = 100_000) -> tuple[str, ...]:
+    packages: list[str] = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("package:"):
+            continue
+        package_name = stripped.removeprefix("package:").split(maxsplit=1)[0]
+        if not package_name or len(package_name) > 255:
+            continue
+        packages.append(package_name)
+        if len(packages) > maximum_packages:
+            raise AdbProtocolError("ADB package output exceeded the supported package count.")
+    return tuple(sorted(set(packages)))
 
 
 def _device_lines(lines: Iterable[str]) -> Iterable[str]:

@@ -35,3 +35,18 @@ class DeviceDetectionRun(Base):
     adb_version: Mapped[str] = mapped_column(String(32), nullable=False)
     device_count: Mapped[int] = mapped_column(Integer, nullable=False)
     result: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+
+
+class DeviceCapabilityRun(Base):
+    __tablename__ = "device_capability_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    assessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    serial_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    manufacturer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    android_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sdk_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)

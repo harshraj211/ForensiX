@@ -1,7 +1,12 @@
 import pytest
 
 from forensix_forensic.adb.models import DeviceState
-from forensix_forensic.adb.parser import parse_adb_version, parse_devices_output
+from forensix_forensic.adb.parser import (
+    parse_adb_version,
+    parse_devices_output,
+    parse_getprop_output,
+    parse_package_list,
+)
 
 
 def test_parse_version() -> None:
@@ -42,3 +47,13 @@ def test_parse_multiple_devices_preserves_order() -> None:
     transports = parse_devices_output(output)
 
     assert [transport.serial for transport in transports] == ["A", "B"]
+
+
+def test_parse_properties_and_packages() -> None:
+    properties = parse_getprop_output(
+        "[ro.product.model]: [Pixel 9]\n[ro.build.version.sdk]: [35]\n"
+    )
+    packages = parse_package_list("package:com.example.z\npackage:com.example.a\nnoise\n")
+
+    assert properties["ro.product.model"] == "Pixel 9"
+    assert packages == ("com.example.a", "com.example.z")

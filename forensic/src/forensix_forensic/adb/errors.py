@@ -45,3 +45,20 @@ class AdbCommandError(AdbError):
 
 class AdbProtocolError(AdbError):
     code = "ADB_PROTOCOL_ERROR"
+
+
+class AdbDeviceNotFoundError(AdbError):
+    code = "DEVICE_NOT_FOUND"
+
+    def __init__(self) -> None:
+        super().__init__("The selected Android transport is no longer connected.")
+
+
+class AdbDeviceNotAuthorizedError(AdbError):
+    code = "DEVICE_NOT_AUTHORIZED"
+
+    def __init__(self, state: str) -> None:
+        super().__init__(
+            f"The selected Android transport is {state} and cannot be assessed until authorized."
+        )
+        self.state = state

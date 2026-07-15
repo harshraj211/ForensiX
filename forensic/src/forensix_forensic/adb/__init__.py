@@ -5,6 +5,8 @@ from .discovery import AdbBinaryResolver
 from .errors import (
     AdbBinaryNotFoundError,
     AdbCommandError,
+    AdbDeviceNotAuthorizedError,
+    AdbDeviceNotFoundError,
     AdbError,
     AdbOutputLimitError,
     AdbTimeoutError,
@@ -19,6 +21,8 @@ __all__ = [
     "AdbClient",
     "AdbCommandError",
     "AdbCommandResult",
+    "AdbDeviceNotAuthorizedError",
+    "AdbDeviceNotFoundError",
     "AdbError",
     "AdbOutputLimitError",
     "AdbServerInfo",
