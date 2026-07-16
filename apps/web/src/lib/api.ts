@@ -305,6 +305,23 @@ export interface AcquiredEvidenceFile {
   completed_at: string | null;
 }
 
+export interface AcquisitionPartial {
+  id: string;
+  evidence_file_id: string;
+  case_id: string;
+  job_id: string;
+  created_by: string;
+  storage_key: string;
+  status: "active" | "retained" | "discarded" | "sealed" | "missing";
+  reason_code: string | null;
+  size_bytes: number | null;
+  sha256: string | null;
+  disposition_by: string | null;
+  created_at: string;
+  reconciled_at: string | null;
+  disposition_at: string | null;
+}
+
 export interface EvidenceVerification {
   id: string;
   evidence_file_id: string;
@@ -567,6 +584,30 @@ export function listAcquiredFiles(
 ): Promise<AcquiredEvidenceFile[]> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/files`,
+  );
+}
+
+export function listAcquisitionPartials(
+  caseId: string,
+  jobId: string,
+): Promise<AcquisitionPartial[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/partials`,
+  );
+}
+
+export function resumeEvidenceFile(
+  caseId: string,
+  jobId: string,
+  evidenceFileId: string,
+  partialDisposition: "retain" | "discard",
+): Promise<AcquiredEvidenceFile> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/files/${encodeURIComponent(evidenceFileId)}/resume`,
+    {
+      method: "POST",
+      body: JSON.stringify({ partial_disposition: partialDisposition }),
+    },
   );
 }
 

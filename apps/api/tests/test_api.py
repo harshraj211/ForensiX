@@ -1,11 +1,18 @@
+import asyncio
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, inspect, select
 
 from forensix_api.main import create_app
-from forensix_forensic.adb import MockAdbClient, MockAdbScenario
+from forensix_forensic.adb import (
+    AdbCommandError,
+    MockAdbClient,
+    MockAdbScenario,
+    SharedStorageRoot,
+)
 from forensix_server.auth import RoleName
 from forensix_server.config import Settings
 from forensix_server.db import (
@@ -22,6 +29,18 @@ from forensix_server.db import (
 )
 
 PASSWORD = "StrongPass!2026"
+
+
+class _PartialDisconnectClient(MockAdbClient):
+    async def pull_inventory_file(
+        self,
+        serial: str,
+        root: SharedStorageRoot,
+        relative_path: str,
+        destination: Path,
+    ) -> NoReturn:
+        await asyncio.to_thread(destination.write_bytes, b"API interrupted partial")
+        raise AdbCommandError(1, "The controlled device disconnected during transfer.")
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -91,6 +110,7 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
     assert {
         "alembic_version",
         "acquired_evidence_files",
+        "acquisition_partials",
         "audit_logs",
         "acquisition_inventories",
         "acquisition_inventory_items",
@@ -759,6 +779,44 @@ def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
     assert verified.json()["manifest_matches"] is True
     assert len(verified.json()["verification_hash"]) == 64
     assert [entry["id"] for entry in verifications.json()] == [verified.json()["id"]]
+
+
+def test_interrupted_file_api_requires_review_and_restarts_from_zero(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=_PartialDisconnectClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+        inventory = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers).json()
+        item = inventory["items"][0]
+        acquire_url = f"{endpoint}/{job['id']}/inventory/items/{item['id']}/acquire"
+
+        interrupted = client.post(acquire_url, headers=headers)
+        files = client.get(f"{endpoint}/{job['id']}/files").json()
+        partials = client.get(f"{endpoint}/{job['id']}/partials")
+        blocked_retry = client.post(acquire_url, headers=headers)
+        app.state.adb_client = MockAdbClient()
+        resumed = client.post(
+            f"{endpoint}/{job['id']}/files/{files[0]['id']}/resume",
+            headers=headers,
+            json={"partial_disposition": "retain"},
+        )
+        reviewed_partials = client.get(f"{endpoint}/{job['id']}/partials").json()
+
+    assert interrupted.status_code == 502
+    assert files[0]["status"] == "failed"
+    assert files[0]["partial_preserved"] is True
+    assert partials.status_code == 200
+    assert partials.json()[0]["status"] == "retained"
+    assert partials.json()[0]["size_bytes"] == len(b"API interrupted partial")
+    assert len(partials.json()[0]["sha256"]) == 64
+    assert blocked_retry.status_code == 409
+    assert "Review whether" in blocked_retry.json()["error"]["message"]
+    assert resumed.status_code == 200
+    assert resumed.json()["status"] == "completed"
+    assert [partial["status"] for partial in reviewed_partials] == ["retained", "sealed"]
+    assert reviewed_partials[0]["disposition_by"] is not None
 
 
 def test_verification_detects_modified_evidence_without_changing_expected_hash(

@@ -1,15 +1,19 @@
+import asyncio
 import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from sqlalchemy import select, text
 
 from forensix_forensic.adb import (
+    AdbCommandError,
     AdbDeviceNotFoundError,
     MockAdbClient,
     MockAdbScenario,
+    SharedStorageRoot,
     SharedStorageRootProbe,
     StorageProbeStatus,
 )
@@ -25,9 +29,11 @@ from forensix_server.acquisitions import (
     AcquisitionInventoryError,
     AcquisitionInventoryService,
     AcquisitionPlanService,
+    AcquisitionRecoveryService,
     AcquisitionScope,
     DeviceIdentityChangedError,
     EvidenceVerificationService,
+    PartialIntegrityChangedError,
 )
 from forensix_server.auth import Principal, RoleName
 from forensix_server.auth.domain import ROLE_PERMISSIONS
@@ -38,6 +44,7 @@ from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
+    AcquisitionPartialRecord,
     AuditLogRecord,
     Database,
     EvidenceVerificationRecord,
@@ -45,6 +52,34 @@ from forensix_server.db import (
     UserRecord,
 )
 from forensix_server.jobs import JobService, JobState
+
+
+class _PartialDisconnectClient(MockAdbClient):
+    async def pull_inventory_file(
+        self,
+        serial: str,
+        root: SharedStorageRoot,
+        relative_path: str,
+        destination: Path,
+    ) -> NoReturn:
+        await asyncio.to_thread(destination.write_bytes, b"known interrupted bytes")
+        raise AdbCommandError(1, "The controlled device disconnected during transfer.")
+
+
+class _ProcessTermination(BaseException):
+    pass
+
+
+class _TerminatedTransferClient(MockAdbClient):
+    async def pull_inventory_file(
+        self,
+        serial: str,
+        root: SharedStorageRoot,
+        relative_path: str,
+        destination: Path,
+    ) -> NoReturn:
+        await asyncio.to_thread(destination.write_bytes, b"bytes present at process termination")
+        raise _ProcessTermination
 
 
 @pytest.fixture
@@ -372,6 +407,136 @@ async def test_file_acquisition_revalidates_device_and_records_failure(
     assert record.status == "failed"
     assert record.error_code == "DEVICE_NOT_FOUND"
     assert record.sha256 is None
+
+
+@pytest.mark.asyncio
+async def test_interrupted_partial_requires_review_before_byte_zero_restart(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, job_id = _ready_job(database, principal)
+    await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
+    with database.session() as session:
+        item = session.scalar(select(AcquisitionInventoryItemRecord))
+        assert item is not None
+        item_id = item.id
+
+    with pytest.raises(AdbCommandError):
+        await AcquisitionFileService().acquire(
+            database,
+            principal,
+            case_id,
+            job_id,
+            item_id,
+            _PartialDisconnectClient(),
+        )
+
+    with database.session() as session:
+        evidence = session.scalar(select(AcquiredEvidenceFileRecord))
+        partial = session.scalar(select(AcquisitionPartialRecord))
+    assert evidence is not None
+    assert partial is not None
+    assert evidence.status == "failed"
+    assert evidence.partial_preserved is True
+    assert partial.status == "retained"
+    assert partial.size_bytes == len(b"known interrupted bytes")
+    assert partial.sha256 == hashlib.sha256(b"known interrupted bytes").hexdigest()
+    partial_path = database.data_dir / "evidence" / Path(partial.storage_key)
+    assert partial_path.read_bytes() == b"known interrupted bytes"
+
+    with pytest.raises(AcquisitionFileError, match="Review whether"):
+        await AcquisitionFileService().acquire(
+            database, principal, case_id, job_id, item_id, MockAdbClient()
+        )
+
+    reviewed = AcquisitionRecoveryService().review_pending(
+        database,
+        principal,
+        case_id,
+        job_id,
+        evidence.id,
+        disposition="retain",
+    )
+    restarted = await AcquisitionFileService().acquire(
+        database, principal, case_id, job_id, item_id, MockAdbClient()
+    )
+
+    assert reviewed[0].disposition_by == principal.user_id
+    assert partial_path.exists()
+    assert restarted.status == "completed"
+    with database.session() as session:
+        attempts = list(
+            session.scalars(
+                select(AcquisitionPartialRecord).order_by(AcquisitionPartialRecord.created_at)
+            )
+        )
+    assert [attempt.status for attempt in attempts] == ["retained", "sealed"]
+
+
+@pytest.mark.asyncio
+async def test_backend_restart_reconciles_then_verified_discard_allows_restart(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, job_id = _ready_job(database, principal)
+    await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
+    with database.session() as session:
+        item = session.scalar(select(AcquisitionInventoryItemRecord))
+        assert item is not None
+        item_id = item.id
+
+    with pytest.raises(_ProcessTermination):
+        await AcquisitionFileService().acquire(
+            database,
+            principal,
+            case_id,
+            job_id,
+            item_id,
+            _TerminatedTransferClient(),
+        )
+    with database.session() as session:
+        before = session.scalar(select(AcquisitionPartialRecord))
+        evidence = session.scalar(select(AcquiredEvidenceFileRecord))
+    assert before is not None and before.status == "active"
+    assert evidence is not None and evidence.status == "acquiring"
+
+    reconciled = AcquisitionRecoveryService().recover_after_restart(database)
+
+    with database.session() as session:
+        partial = session.get(AcquisitionPartialRecord, before.id)
+        interrupted = session.get(AcquiredEvidenceFileRecord, evidence.id)
+    assert reconciled == 1
+    assert partial is not None and partial.status == "retained"
+    assert partial.sha256 == hashlib.sha256(b"bytes present at process termination").hexdigest()
+    assert interrupted is not None and interrupted.status == "interrupted"
+    assert interrupted.error_code == "SERVICE_RESTARTED"
+    partial_path = database.data_dir / "evidence" / Path(partial.storage_key)
+
+    await asyncio.to_thread(partial_path.write_bytes, b"tampered partial")
+    with pytest.raises(PartialIntegrityChangedError):
+        AcquisitionRecoveryService().review_pending(
+            database,
+            principal,
+            case_id,
+            job_id,
+            evidence.id,
+            disposition="discard",
+        )
+    assert partial_path.exists()
+    await asyncio.to_thread(partial_path.write_bytes, b"bytes present at process termination")
+    AcquisitionRecoveryService().review_pending(
+        database,
+        principal,
+        case_id,
+        job_id,
+        evidence.id,
+        disposition="discard",
+    )
+    assert not partial_path.exists()
+    restarted = await AcquisitionFileService().acquire(
+        database, principal, case_id, job_id, item_id, MockAdbClient()
+    )
+    assert restarted.status == "completed"
 
 
 @pytest.mark.asyncio

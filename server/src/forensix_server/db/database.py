@@ -98,6 +98,7 @@ def sqlite_pragmas(engine: Engine) -> dict[str, int | str]:
 def _legacy_revision(tables: set[str]) -> str:
     """Identify the newest schema marker created before migration tracking was enabled."""
     markers = (
+        ("acquisition_partials", "0013_partial_recovery"),
         ("custody_events", "0012_custody_audit"),
         ("evidence_verifications", "0011_verifications"),
         ("acquired_evidence_files", "0010_evidence_files"),

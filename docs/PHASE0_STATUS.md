@@ -22,6 +22,7 @@
 | Durable acquisition-job preparation | restrictive case/plan/operator links, idempotent preparation, bounded checkpoints, sequenced append-only events, cancellation, restart interruption records, status UI | service/API/migration/UI coverage |
 | Bounded shared-storage path inventory | fixed approved root, live identity/readiness revalidation, path/depth/time/output limits, durable result and canonical manifest hash, API and result UI | ADB parser/policy, service failure-state, migration, API, and UI coverage |
 | Selected evidence-file acquisition | opaque inventory-item selection, shell-free bounded pull, contained partial/seal, SHA-256, canonical JSON manifest, durable provenance/failure state, result UI | known-answer storage/ADB/service/API/UI tests; physical-device validation pending |
+| Interrupted-transfer recovery | durable attempt IDs, startup filesystem reconciliation, retained partial SHA-256, review-before-restart, verified discard, byte-zero retry | disconnect/process-termination/tamper/service/API/UI tests; physical-device validation pending |
 | Evidence integrity re-verification | independent file/manifest re-hashing, append-only result history, mismatch/missing detection, preserved expected hashes, API and UI controls | known-answer, tampering, missing-object, API, and UI tests |
 | Custody and audit chains | automatic evidence/integrity custody events, manual transfers, amendments, per-case custody hashes, global audit hashes, verification APIs, case UI | service tampering tests, migration/API authorization, append-only route tests, UI checks |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
@@ -60,7 +61,7 @@
 ## Not implemented yet
 
 - External audit anchoring, digital signatures, and write-once custody exports
-- Bulk and resumable acquisition and validated partial-file recovery
+- Bulk acquisition and physical-device validation of byte-zero restart behavior
 - Artifact normalization, search, preview, and timeline
 - Report generation and exports
 - Production packaging, signing, and forensic validation
@@ -70,7 +71,7 @@ These omissions are visible project status, not silent product claims. Real-devi
 ## Next critical-path slice
 
 1. Install Android Platform Tools and validate inventory plus selected pulls against controlled physical devices and hostile filename fixtures.
-2. Add partial-file recovery/cleanup tooling with reviewable retention decisions.
+2. Validate disconnect/restart recovery against physical devices on Windows, Linux, and macOS.
 3. Add external audit anchoring and signed/write-once custody exports before evidentiary claims.
 4. Normalize acquired files into evidence/artifact records without parsing hostile content in-process.
 5. Build evidence search, preview, and timeline views from validated normalized metadata.

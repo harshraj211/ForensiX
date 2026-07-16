@@ -16,6 +16,11 @@ from .inventory import (
     InventoryCancelledError,
     InventoryDiskSpaceError,
 )
+from .recovery import (
+    AcquisitionRecoveryError,
+    AcquisitionRecoveryService,
+    PartialIntegrityChangedError,
+)
 from .service import (
     AcquisitionPlanNotFoundError,
     AcquisitionPlanService,
@@ -37,6 +42,8 @@ __all__ = [
     "AcquisitionPlanNotFoundError",
     "AcquisitionPlanService",
     "AcquisitionPlanValidationError",
+    "AcquisitionRecoveryError",
+    "AcquisitionRecoveryService",
     "AcquisitionScope",
     "DeviceIdentityChangedError",
     "EvidenceDiskSpaceError",
@@ -46,6 +53,7 @@ __all__ = [
     "job_checkpoint",
     "InventoryCancelledError",
     "InventoryDiskSpaceError",
+    "PartialIntegrityChangedError",
     "plan_limitations",
     "plan_modules",
 ]

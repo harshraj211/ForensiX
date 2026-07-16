@@ -72,13 +72,24 @@ class EvidenceStore:
             raise EvidenceAlreadyExistsError(storage_key)
         return AtomicEvidenceWriter(self, storage_key, target)
 
-    def reserve_external(self, storage_key: str) -> "ExternalEvidenceReservation":
+    def reserve_external(
+        self,
+        storage_key: str,
+        *,
+        partial_storage_key: str | None = None,
+    ) -> "ExternalEvidenceReservation":
         """Reserve a contained partial destination for a trusted local subprocess."""
         target = self.resolve(storage_key)
         self._create_safe_directories(target.parent)
         if target.exists():
             raise EvidenceAlreadyExistsError(storage_key)
-        return ExternalEvidenceReservation(self, storage_key, target)
+        partial = self.resolve(partial_storage_key) if partial_storage_key else None
+        if partial is not None:
+            self._create_safe_directories(partial.parent)
+            if partial.exists():
+                assert partial_storage_key is not None
+                raise EvidenceAlreadyExistsError(partial_storage_key)
+        return ExternalEvidenceReservation(self, storage_key, target, partial=partial)
 
     def hash(self, storage_key: str) -> HashResult:
         path = self.resolve(storage_key, require_file=True)
@@ -202,12 +213,21 @@ class AtomicEvidenceWriter:
 class ExternalEvidenceReservation:
     """Seals a subprocess-created partial file into append-only evidence storage."""
 
-    def __init__(self, store: EvidenceStore, storage_key: str, target: Path) -> None:
+    def __init__(
+        self,
+        store: EvidenceStore,
+        storage_key: str,
+        target: Path,
+        *,
+        partial: Path | None = None,
+    ) -> None:
         self._store = store
         self.storage_key = storage_key
         self._target = target
         token = sha256(storage_key.encode("utf-8")).hexdigest()[:20]
-        self._partial = target.parent / f".forensix-{token}-{os.urandom(8).hex()}.partial"
+        self._partial = partial or (
+            target.parent / f".forensix-{token}-{os.urandom(8).hex()}.partial"
+        )
         self._lock = target.parent / f".forensix-{token}.lock"
         self._sealed = False
 

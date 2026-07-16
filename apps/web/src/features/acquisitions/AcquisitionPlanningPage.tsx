@@ -21,12 +21,14 @@ import {
   getCase,
   listAcquisitionJobs,
   listAcquiredFiles,
+  listAcquisitionPartials,
   listEvidenceVerifications,
   listAcquisitionPlans,
   listCaseDeviceAssessments,
   listCaseDevices,
   prepareAcquisitionJob,
   runAcquisitionInventory,
+  resumeEvidenceFile,
   verifyEvidenceFile,
   type AcquisitionJob,
   type AcquisitionModule,
@@ -482,6 +484,10 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
     queryKey: ["evidence-verifications", caseId, jobId],
     queryFn: () => listEvidenceVerifications(caseId, jobId),
   });
+  const partialsQuery = useQuery({
+    queryKey: ["acquisition-partials", caseId, jobId],
+    queryFn: () => listAcquisitionPartials(caseId, jobId),
+  });
   const acquireFile = useMutation({
     mutationFn: (itemId: string) => acquireInventoryFile(caseId, jobId, itemId),
     onSuccess: () => {
@@ -495,6 +501,14 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
       void queryClient.invalidateQueries({
         queryKey: ["evidence-verifications", caseId, jobId],
       });
+    },
+  });
+  const resumeFile = useMutation({
+    mutationFn: ({ evidenceFileId, disposition }: { evidenceFileId: string; disposition: "retain" | "discard" }) =>
+      resumeEvidenceFile(caseId, jobId, evidenceFileId, disposition),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["acquired-files", caseId, jobId] });
+      void queryClient.invalidateQueries({ queryKey: ["acquisition-partials", caseId, jobId] });
     },
   });
   if (inventoryQuery.isPending) {
@@ -511,6 +525,11 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
       latestVerificationByFile.set(verification.evidence_file_id, verification);
     }
   }
+  const retainedPartialByFile = new Map(
+    (partialsQuery.data ?? [])
+      .filter((partial) => partial.status === "retained")
+      .map((partial) => [partial.evidence_file_id, partial]),
+  );
   return (
     <div className="mt-3 rounded-lg border border-emerald-200/10 bg-emerald-200/5 p-3">
       <p className="text-xs font-semibold text-emerald-200">
@@ -528,6 +547,7 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
           const verification = acquired
             ? latestVerificationByFile.get(acquired.id)
             : undefined;
+          const retainedPartial = acquired ? retainedPartialByFile.get(acquired.id) : undefined;
           return (
             <li key={item.id} className="rounded border border-white/5 p-2">
               <p className="truncate font-mono" title={item.relative_path}>
@@ -565,6 +585,37 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
                     </p>
                   )}
                 </div>
+              ) : acquired?.partial_preserved && retainedPartial ? (
+                <div className="mt-2 rounded border border-amber-200/15 bg-amber-200/5 p-2 text-[10px] text-amber-100/80">
+                  <p className="font-semibold">Interrupted partial requires review</p>
+                  <p className="mt-1">{retainedPartial.size_bytes ?? 0} bytes retained</p>
+                  <p className="mt-1 truncate font-mono" title={retainedPartial.sha256 ?? undefined}>
+                    SHA-256 {retainedPartial.sha256}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={resumeFile.isPending}
+                      onClick={() => {
+                        resumeFile.mutate({ evidenceFileId: acquired.id, disposition: "retain" });
+                      }}
+                      className="min-h-9 rounded border border-cyan-200/20 px-3 font-semibold text-cyan-100 disabled:opacity-40"
+                    >
+                      Restart and retain partial
+                    </button>
+                    <button
+                      type="button"
+                      disabled={resumeFile.isPending}
+                      onClick={() => {
+                        resumeFile.mutate({ evidenceFileId: acquired.id, disposition: "discard" });
+                      }}
+                      className="min-h-9 rounded border border-rose-200/20 px-3 font-semibold text-rose-100 disabled:opacity-40"
+                    >
+                      Verify, discard, and restart
+                    </button>
+                  </div>
+                  <p className="mt-2">Restart begins from byte zero; ADB byte-range resume is not claimed.</p>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -593,7 +644,9 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
       </ul>
       {filesQuery.isError && <div className="mt-3"><CaseError error={filesQuery.error} /></div>}
       {verificationsQuery.isError && <div className="mt-3"><CaseError error={verificationsQuery.error} /></div>}
+      {partialsQuery.isError && <div className="mt-3"><CaseError error={partialsQuery.error} /></div>}
       {acquireFile.isError && <div className="mt-3"><CaseError error={acquireFile.error} /></div>}
+      {resumeFile.isError && <div className="mt-3"><CaseError error={resumeFile.error} /></div>}
       {verifyFile.isError && <div className="mt-3"><CaseError error={verifyFile.error} /></div>}
       {inventory.total > inventory.items.length && (
         <p className="mt-2 text-[10px] text-slate-600">

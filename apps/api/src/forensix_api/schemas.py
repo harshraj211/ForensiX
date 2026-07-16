@@ -243,6 +243,27 @@ class AcquiredEvidenceFileResponse(BaseModel):
     completed_at: datetime | None
 
 
+class AcquisitionResumeRequest(BaseModel):
+    partial_disposition: Literal["retain", "discard"]
+
+
+class AcquisitionPartialResponse(BaseModel):
+    id: str
+    evidence_file_id: str
+    case_id: str
+    job_id: str
+    created_by: str
+    storage_key: str
+    status: Literal["active", "retained", "discarded", "sealed", "missing"]
+    reason_code: str | None
+    size_bytes: int | None
+    sha256: str | None
+    disposition_by: str | None
+    created_at: datetime
+    reconciled_at: datetime | None
+    disposition_at: datetime | None
+
+
 class EvidenceVerificationResponse(BaseModel):
     id: str
     evidence_file_id: str

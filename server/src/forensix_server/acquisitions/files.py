@@ -38,6 +38,7 @@ from forensix_server.jobs import JobState
 
 from .execution import AcquisitionExecutionService
 from .inventory import AcquisitionInventoryError, DeviceIdentityChangedError
+from .recovery import AcquisitionRecoveryService
 
 MINIMUM_POST_TRANSFER_FREE_BYTES = 100 * 1024 * 1024
 
@@ -88,11 +89,26 @@ class AcquisitionFileService:
         assert context is not None
         store = EvidenceStore(database.data_dir / "evidence")
         partial_preserved = False
+        partial_id: str | None = None
         try:
             serial = await self._revalidate_live_device(adb_client, context)
             stored = self._recover_sealed_file(store, context.storage_key)
             if stored is None:
-                reservation = store.reserve_external(context.storage_key)
+                partial_id = str(uuid4())
+                partial_storage_key = f"c/{context.case_id[:8]}/p/{partial_id}.partial"
+                reservation = store.reserve_external(
+                    context.storage_key,
+                    partial_storage_key=partial_storage_key,
+                )
+                AcquisitionRecoveryService().begin_attempt(
+                    database,
+                    partial_id=partial_id,
+                    evidence_file_id=context.record_id,
+                    case_id=context.case_id,
+                    job_id=context.job_id,
+                    created_by=context.operator_id,
+                    storage_key=partial_storage_key,
+                )
                 try:
                     transfer = await adb_client.pull_inventory_file(
                         serial,
@@ -107,15 +123,27 @@ class AcquisitionFileService:
                         raise AcquisitionFileError(
                             "The ADB transfer result did not match the selected inventory item."
                         )
-                    stored = reservation.seal()
-                    if stored.size_bytes != transfer.size_bytes:
+                    if reservation.partial_path.stat().st_size != transfer.size_bytes:
                         raise AcquisitionFileError(
-                            "The sealed evidence size differs from the ADB transfer result."
+                            "The evidence partial size differs from the ADB transfer result."
                         )
+                    stored = reservation.seal()
+                    AcquisitionRecoveryService().mark_sealed(
+                        database,
+                        partial_id,
+                        size_bytes=stored.size_bytes,
+                        sha256=stored.sha256,
+                    )
                 except Exception as error:
                     preserve_partial = not isinstance(error, AdbTransferLimitError)
                     reservation.close(preserve_partial=preserve_partial)
-                    partial_preserved = preserve_partial and reservation.partial_path.exists()
+                    reconciled = AcquisitionRecoveryService().reconcile_attempt(
+                        database,
+                        partial_id,
+                        reason_code=getattr(error, "code", "TRANSFER_FAILED"),
+                        preserve=preserve_partial,
+                    )
+                    partial_preserved = reconciled.status == "retained"
                     raise
             return self._complete(database, store, context, stored)
         except AdbError as error:
@@ -149,23 +177,6 @@ class AcquisitionFileService:
                 .order_by(AcquiredEvidenceFileRecord.started_at)
             )
         )
-
-    @staticmethod
-    def recover_interrupted(session: Session) -> int:
-        records = list(
-            session.scalars(
-                select(AcquiredEvidenceFileRecord).where(
-                    AcquiredEvidenceFileRecord.status == "acquiring"
-                )
-            )
-        )
-        for record in records:
-            record.status = "interrupted"
-            record.error_code = "SERVICE_RESTARTED"
-            record.error_message = "The backend restarted before acquisition completion."
-            record.partial_preserved = True
-        session.flush()
-        return len(records)
 
     def _begin(
         self,
@@ -207,6 +218,12 @@ class AcquisitionFileService:
                 return None, existing
             if existing is not None and existing.status == "acquiring":
                 raise AcquisitionFileError("This inventory item is already being acquired.")
+            if existing is not None and AcquisitionRecoveryService().has_unreviewed_partial(
+                session, existing.id
+            ):
+                raise AcquisitionFileError(
+                    "Review whether to retain or discard the preserved partial before restart."
+                )
             required_free = MAX_ACQUIRED_FILE_BYTES + MINIMUM_POST_TRANSFER_FREE_BYTES
             if shutil.disk_usage(database.data_dir).free < required_free:
                 raise EvidenceDiskSpaceError(

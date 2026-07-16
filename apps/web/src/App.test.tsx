@@ -692,6 +692,9 @@ describe("acquisition planning", () => {
           ),
         );
       }
+      if (url === "/api/v1/cases/case-1/acquisitions/job-1/partials") {
+        return Promise.resolve(jsonResponse([]));
+      }
       if (url === "/api/v1/cases/case-1/acquisitions/job-1/verifications") {
         return Promise.resolve(
           jsonResponse(

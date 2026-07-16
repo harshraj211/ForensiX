@@ -17,6 +17,8 @@ from forensix_api.schemas import (
     AcquisitionJobListResponse,
     AcquisitionJobPrepareRequest,
     AcquisitionJobResponse,
+    AcquisitionPartialResponse,
+    AcquisitionResumeRequest,
     EvidenceVerificationResponse,
     JobEventResponse,
 )
@@ -25,6 +27,8 @@ from forensix_server.acquisitions import (
     AcquisitionExecutionService,
     AcquisitionFileService,
     AcquisitionInventoryService,
+    AcquisitionRecoveryError,
+    AcquisitionRecoveryService,
     EvidenceVerificationService,
     event_checkpoint,
     job_checkpoint,
@@ -34,6 +38,7 @@ from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
+    AcquisitionPartialRecord,
     Database,
     EvidenceVerificationRecord,
     JobEventRecord,
@@ -182,6 +187,65 @@ async def acquire_inventory_file(
     database: Annotated[Database, Depends(get_database)],
     adb_client: Annotated[AdbClient, Depends(get_adb_client)],
 ) -> AcquiredEvidenceFileResponse:
+    record = await AcquisitionFileService().acquire(
+        database,
+        authenticated.principal,
+        case_id,
+        job_id,
+        item_id,
+        adb_client,
+    )
+    return _file_response(record)
+
+
+@router.get("/{job_id}/partials", response_model=list[AcquisitionPartialResponse])
+def list_acquisition_partials(
+    case_id: str,
+    job_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[AcquisitionPartialResponse]:
+    with database.session() as session:
+        records = AcquisitionRecoveryService().list_for_job(
+            session, authenticated.principal, case_id, job_id
+        )
+        return [_partial_response(record) for record in records]
+
+
+@router.post(
+    "/{job_id}/files/{evidence_file_id}/resume",
+    response_model=AcquiredEvidenceFileResponse,
+)
+async def resume_acquired_file(
+    case_id: str,
+    job_id: str,
+    evidence_file_id: str,
+    request: AcquisitionResumeRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+) -> AcquiredEvidenceFileResponse:
+    with database.session() as session:
+        AcquisitionExecutionService().get(session, authenticated.principal, case_id, job_id)
+        evidence = session.get(AcquiredEvidenceFileRecord, evidence_file_id)
+        if (
+            evidence is None
+            or evidence.case_id != case_id
+            or evidence.job_id != job_id
+            or evidence.status not in {"failed", "interrupted"}
+        ):
+            raise AcquisitionRecoveryError(
+                "Only a failed or interrupted evidence file from this job can restart."
+            )
+        item_id = evidence.inventory_item_id
+    AcquisitionRecoveryService().review_pending(
+        database,
+        authenticated.principal,
+        case_id,
+        job_id,
+        evidence_file_id,
+        disposition=request.partial_disposition,
+    )
     record = await AcquisitionFileService().acquire(
         database,
         authenticated.principal,
@@ -365,6 +429,31 @@ def _file_response(record: AcquiredEvidenceFileRecord) -> AcquiredEvidenceFileRe
         error_message=record.error_message,
         started_at=record.started_at,
         completed_at=record.completed_at,
+    )
+
+
+def _partial_response(record: AcquisitionPartialRecord) -> AcquisitionPartialResponse:
+    status_value = record.status
+    if status_value not in {"active", "retained", "discarded", "sealed", "missing"}:
+        raise RuntimeError("Acquisition partial has an invalid persisted status.")
+    return AcquisitionPartialResponse(
+        id=record.id,
+        evidence_file_id=record.evidence_file_id,
+        case_id=record.case_id,
+        job_id=record.job_id,
+        created_by=record.created_by,
+        storage_key=record.storage_key,
+        status=cast(
+            Literal["active", "retained", "discarded", "sealed", "missing"],
+            status_value,
+        ),
+        reason_code=record.reason_code,
+        size_bytes=record.size_bytes,
+        sha256=record.sha256,
+        disposition_by=record.disposition_by,
+        created_at=record.created_at,
+        reconciled_at=record.reconciled_at,
+        disposition_at=record.disposition_at,
     )
 
 
