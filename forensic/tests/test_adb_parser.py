@@ -6,6 +6,7 @@ from forensix_forensic.adb.parser import (
     parse_devices_output,
     parse_getprop_output,
     parse_package_list,
+    parse_storage_inventory,
 )
 
 
@@ -57,3 +58,34 @@ def test_parse_properties_and_packages() -> None:
 
     assert properties["ro.product.model"] == "Pixel 9"
     assert packages == ("com.example.a", "com.example.z")
+
+
+def test_inventory_parser_rejects_unsafe_paths_and_enforces_item_limit() -> None:
+    output = "\x00".join(
+        (
+            "/sdcard/DCIM/IMG_1.jpg",
+            "/sdcard/Download/report.pdf",
+            "/sdcard/Download/report.pdf",
+            "/data/local/tmp/outside.txt",
+            "/sdcard/bad\nname.txt",
+            "/sdcard/a/b/c/d/e/f/too-deep.txt",
+            "/sdcard/Pictures/third.jpg",
+            "",
+        )
+    )
+
+    inventory = parse_storage_inventory(
+        output,
+        root_id="primary_alias",
+        display_path="/sdcard",
+        max_items=2,
+        max_depth=6,
+    )
+
+    assert [entry.relative_path for entry in inventory.entries] == [
+        "DCIM/IMG_1.jpg",
+        "Download/report.pdf",
+    ]
+    assert inventory.discovered_count == 7
+    assert inventory.skipped_count == 4
+    assert inventory.truncated is True

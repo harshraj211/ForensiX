@@ -51,3 +51,22 @@ class SharedStorageRootProbe(BaseModel):
     exists: bool
     readable: bool
     reason_code: str
+
+
+class StorageInventoryEntry(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    relative_path: str = Field(min_length=1, max_length=1024)
+
+
+class StorageInventoryResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    root_id: str
+    display_path: str
+    entries: tuple[StorageInventoryEntry, ...]
+    discovered_count: int = Field(ge=0)
+    skipped_count: int = Field(ge=0)
+    truncated: bool
+    max_items: int = Field(ge=1)
+    max_depth: int = Field(ge=1)

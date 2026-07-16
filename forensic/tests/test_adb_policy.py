@@ -28,11 +28,11 @@ class RecordingRunner:
         return self.results.popleft()
 
 
-def _result(exit_code: int, stderr: str = "") -> AdbCommandResult:
+def _result(exit_code: int, stderr: str = "", stdout: str = "") -> AdbCommandResult:
     return AdbCommandResult(
         argv=(),
         exit_code=exit_code,
-        stdout="",
+        stdout=stdout,
         stderr=stderr,
         duration_seconds=0.01,
     )
@@ -63,6 +63,28 @@ def test_storage_policy_builds_only_fixed_content_free_commands() -> None:
     assert all(token not in exists.arguments for token in {"ls", "find", "pull", "sh", "-c"})
 
 
+def test_inventory_policy_is_fixed_bounded_and_has_no_shell_composition() -> None:
+    command = AdbCommandPolicy.inventory_storage_paths(
+        "FX-DEMO-001", SharedStorageRoot.EMULATED_PRIMARY
+    )
+
+    assert command.arguments == (
+        "-s",
+        "FX-DEMO-001",
+        "shell",
+        "find",
+        "/storage/emulated/0",
+        "-xdev",
+        "-maxdepth",
+        "6",
+        "-type",
+        "f",
+        "-print0",
+    )
+    assert command.timeout_seconds == 30.0
+    assert all(token not in command.arguments for token in {"pull", "sh", "-c", "|", ";"})
+
+
 @pytest.mark.parametrize("serial", ["", "bad serial", "bad\nserial", "x" * 256])
 def test_policy_rejects_invalid_serials(serial: str) -> None:
     with pytest.raises(ValueError):
@@ -91,3 +113,21 @@ async def test_system_probe_does_not_treat_command_failure_as_missing_storage() 
 
     with pytest.raises(AdbCommandError):
         await client.probe_shared_storage("FX-DEMO-001")
+
+
+@pytest.mark.asyncio
+async def test_system_inventory_parses_paths_without_running_path_derived_commands() -> None:
+    output = "/sdcard/DCIM/IMG_1.jpg\x00/sdcard/Download/report.pdf\x00"
+    runner = RecordingRunner([_result(0, stdout=output)])
+    client = SystemAdbClient(cast(SubprocessAdbRunner, runner))
+
+    inventory = await client.inventory_shared_storage(
+        "FX-DEMO-001", SharedStorageRoot.PRIMARY_ALIAS
+    )
+
+    assert [entry.relative_path for entry in inventory.entries] == [
+        "DCIM/IMG_1.jpg",
+        "Download/report.pdf",
+    ]
+    assert len(runner.calls) == 1
+    assert runner.calls[0][0][3] == "find"

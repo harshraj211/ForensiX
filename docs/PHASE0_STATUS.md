@@ -20,6 +20,7 @@
 | Shared-storage root probe | formal typed ADB catalog, fixed `/sdcard` and `/storage/emulated/0` directory/readability predicates, explicit supported/blocked decisions, persisted/UI root results | 105 backend tests passed, 1 Windows symlink-permission skip, 10 frontend tests passed |
 | Immutable acquisition planning | exact readiness-snapshot binding, freshness/capability gates, preset and custom scopes, canonical plan/snapshot hashes, limitation acknowledgement, REST API and planning history UI | service/API/migration coverage plus 11 frontend tests |
 | Durable acquisition-job preparation | restrictive case/plan/operator links, idempotent preparation, bounded checkpoints, sequenced append-only events, cancellation, restart interruption records, status UI | service/API/migration/UI coverage |
+| Bounded shared-storage path inventory | fixed approved root, live identity/readiness revalidation, path/depth/time/output limits, durable result and canonical manifest hash, API and result UI | ADB parser/policy, service failure-state, migration, API, and UI coverage |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
 
 ## Supported development behavior
@@ -40,13 +41,16 @@
 - Immutable readiness snapshots and append-only case events for detection and assessment operations.
 - Immutable acquisition plans that bind the selected modules to an exact readiness snapshot and operator acknowledgement.
 - Server-side rejection of stale, unsupported, cross-case, closed-case, and underprivileged planning requests.
-- Prepared acquisition jobs that remain explicitly non-running until a bounded executor is implemented.
+- Prepared acquisition jobs that run only the explicitly selected bounded path-inventory executor.
+- Content-free path inventory under one approved shared-storage root, capped at depth 6, 250 persisted paths, 30 seconds, and the ADB runner output limit.
+- Live serial-hash, authorization, build-fingerprint, readable-root, and workstation free-space checks immediately before inventory.
+- Durable relative paths, extensions, per-path hashes, counts, and a canonical inventory-manifest hash without Android file bytes.
 - Reconstructable progress history with monotonic sequence numbers and persisted restart interruption events.
 
 ## Not implemented yet
 
 - Custody and tamper-evident audit chain
-- Bounded acquisition execution/orchestration, ADB inventory/pulling, evidence manifests, and verification records
+- Android file-content pulling, evidence-file manifests, and verification records
 - Artifact normalization, search, preview, and timeline
 - Report generation and exports
 - Production packaging, signing, and forensic validation
@@ -55,8 +59,8 @@ These omissions are visible project status, not silent product claims. Real-devi
 
 ## Next critical-path slice
 
-1. Implement a bounded, metadata-only inventory for approved readable roots.
-2. Revalidate live device identity, authorization, readiness, and free disk space immediately before execution.
-3. Connect the bounded inventory executor to durable progress events and checkpoints.
-4. Add acquisition manifests and item-level SHA-256 verification records.
-5. Enable the first controlled shared-storage pull only after physical-device validation.
+1. Validate the bounded inventory against controlled physical devices and hostile filename fixtures.
+2. Define a safe item-metadata strategy that never interpolates device filenames into a shell command.
+3. Add evidence-file manifests and item-level SHA-256 verification records.
+4. Enable the first controlled shared-storage pull only after physical-device validation.
+5. Add custody and chained audit records before presenting outputs as forensic evidence.

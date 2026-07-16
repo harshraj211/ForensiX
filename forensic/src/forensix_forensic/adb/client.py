@@ -7,6 +7,7 @@ from .models import (
     AdbServerInfo,
     DeviceTransport,
     SharedStorageRootProbe,
+    StorageInventoryResult,
     StorageProbeStatus,
 )
 from .parser import (
@@ -14,8 +15,15 @@ from .parser import (
     parse_devices_output,
     parse_getprop_output,
     parse_package_list,
+    parse_storage_inventory,
 )
-from .policy import AdbCommandPolicy, ApprovedAdbCommand, SharedStorageRoot
+from .policy import (
+    INVENTORY_MAX_DEPTH,
+    INVENTORY_MAX_ITEMS,
+    AdbCommandPolicy,
+    ApprovedAdbCommand,
+    SharedStorageRoot,
+)
 from .runner import AdbCommandResult, SubprocessAdbRunner
 
 
@@ -29,6 +37,10 @@ class AdbClient(Protocol):
     async def list_packages(self, serial: str) -> tuple[str, ...]: ...
 
     async def probe_shared_storage(self, serial: str) -> tuple[SharedStorageRootProbe, ...]: ...
+
+    async def inventory_shared_storage(
+        self, serial: str, root: SharedStorageRoot
+    ) -> StorageInventoryResult: ...
 
 
 class SystemAdbClient:
@@ -97,6 +109,20 @@ class SystemAdbClient:
                 )
             )
         return tuple(probes)
+
+    async def inventory_shared_storage(
+        self, serial: str, root: SharedStorageRoot
+    ) -> StorageInventoryResult:
+        result = await self._run(AdbCommandPolicy.inventory_storage_paths(serial, root))
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        return parse_storage_inventory(
+            result.stdout,
+            root_id=root.value,
+            display_path=AdbCommandPolicy.display_path(root),
+            max_items=INVENTORY_MAX_ITEMS,
+            max_depth=INVENTORY_MAX_DEPTH,
+        )
 
     async def _run(self, command: ApprovedAdbCommand) -> AdbCommandResult:
         return await self._runner.run(command.arguments, timeout_seconds=command.timeout_seconds)

@@ -221,6 +221,38 @@ export interface AcquisitionJobList {
   limit: number;
 }
 
+export interface AcquisitionInventoryItem {
+  id: string;
+  ordinal: number;
+  relative_path: string;
+  path_hash: string;
+  extension: string | null;
+}
+
+export interface AcquisitionInventory {
+  id: string;
+  job_id: string;
+  case_id: string;
+  plan_id: string;
+  device_id: string;
+  created_by: string;
+  root_id: string;
+  display_path: string;
+  status: "completed" | "truncated";
+  discovered_count: number;
+  persisted_count: number;
+  skipped_count: number;
+  max_items: number;
+  max_depth: number;
+  manifest_hash: string;
+  started_at: string;
+  completed_at: string;
+  items: AcquisitionInventoryItem[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export interface AcquisitionJobEvent {
   id: string;
   job_id: string;
@@ -408,6 +440,25 @@ export function cancelAcquisitionJob(
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/cancel`,
     { method: "POST" },
+  );
+}
+
+export function runAcquisitionInventory(
+  caseId: string,
+  jobId: string,
+): Promise<AcquisitionInventory> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/inventory`,
+    { method: "POST" },
+  );
+}
+
+export function getAcquisitionInventory(
+  caseId: string,
+  jobId: string,
+): Promise<AcquisitionInventory> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/inventory?offset=0&limit=100`,
   );
 }
 

@@ -3,6 +3,8 @@
 from .base import Base
 from .database import Database
 from .models import (
+    AcquisitionInventoryItemRecord,
+    AcquisitionInventoryRecord,
     AcquisitionPlanRecord,
     AuthEventRecord,
     AuthSessionRecord,
@@ -23,6 +25,8 @@ from .models import (
 )
 
 __all__ = [
+    "AcquisitionInventoryItemRecord",
+    "AcquisitionInventoryRecord",
     "AcquisitionPlanRecord",
     "AuthEventRecord",
     "AuthSessionRecord",

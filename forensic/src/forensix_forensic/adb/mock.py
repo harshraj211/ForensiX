@@ -8,8 +8,11 @@ from .models import (
     DeviceState,
     DeviceTransport,
     SharedStorageRootProbe,
+    StorageInventoryEntry,
+    StorageInventoryResult,
     StorageProbeStatus,
 )
+from .policy import INVENTORY_MAX_DEPTH, INVENTORY_MAX_ITEMS, AdbCommandPolicy, SharedStorageRoot
 
 
 class MockAdbScenario(StrEnum):
@@ -90,6 +93,28 @@ class MockAdbClient:
                 ("primary_alias", "/sdcard"),
                 ("emulated_primary", "/storage/emulated/0"),
             )
+        )
+
+    async def inventory_shared_storage(
+        self, serial: str, root: SharedStorageRoot
+    ) -> StorageInventoryResult:
+        await self._require_authorized(serial)
+        return StorageInventoryResult(
+            root_id=root.value,
+            display_path=AdbCommandPolicy.display_path(root),
+            entries=tuple(
+                StorageInventoryEntry(relative_path=path)
+                for path in (
+                    "DCIM/Camera/IMG_0001.jpg",
+                    "Documents/timeline.csv",
+                    "Download/incident-notes.pdf",
+                )
+            ),
+            discovered_count=3,
+            skipped_count=0,
+            truncated=False,
+            max_items=INVENTORY_MAX_ITEMS,
+            max_depth=INVENTORY_MAX_DEPTH,
         )
 
     async def _require_authorized(self, serial: str) -> DeviceTransport:

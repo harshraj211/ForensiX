@@ -16,12 +16,14 @@ import { CaseError } from "../cases/CasesPage";
 import {
   cancelAcquisitionJob,
   createAcquisitionPlan,
+  getAcquisitionInventory,
   getCase,
   listAcquisitionJobs,
   listAcquisitionPlans,
   listCaseDeviceAssessments,
   listCaseDevices,
   prepareAcquisitionJob,
+  runAcquisitionInventory,
   type AcquisitionJob,
   type AcquisitionModule,
   type AcquisitionPlan,
@@ -138,6 +140,16 @@ export function AcquisitionPlanningPage() {
   const cancelJob = useMutation({
     mutationFn: (jobId: string) => cancelAcquisitionJob(caseId, jobId),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: caseKeys.acquisitionJobs(caseId) });
+    },
+  });
+  const runInventory = useMutation({
+    mutationFn: (jobId: string) => runAcquisitionInventory(caseId, jobId),
+    onSuccess: (inventory) => {
+      queryClient.setQueryData(
+        ["acquisition-inventory", caseId, inventory.job_id],
+        inventory,
+      );
       void queryClient.invalidateQueries({ queryKey: caseKeys.acquisitionJobs(caseId) });
     },
   });
@@ -291,13 +303,17 @@ export function AcquisitionPlanningPage() {
           referenceTime={pageOpenedAt}
           preparingPlanId={prepareJob.isPending ? prepareJob.variables : undefined}
           cancellingJobId={cancelJob.isPending ? cancelJob.variables : undefined}
+          runningJobId={runInventory.isPending ? runInventory.variables : undefined}
           onPrepare={(planId) => {
             prepareJob.mutate(planId);
           }}
           onCancel={(jobId) => {
             cancelJob.mutate(jobId);
           }}
-          mutationError={prepareJob.error ?? cancelJob.error}
+          onRun={(jobId) => {
+            runInventory.mutate(jobId);
+          }}
+          mutationError={prepareJob.error ?? cancelJob.error ?? runInventory.error}
         />
       </div>
     </div>
@@ -341,8 +357,10 @@ function PlanHistory({
   referenceTime,
   preparingPlanId,
   cancellingJobId,
+  runningJobId,
   onPrepare,
   onCancel,
+  onRun,
   mutationError,
 }: {
   plans: AcquisitionPlan[];
@@ -353,8 +371,10 @@ function PlanHistory({
   referenceTime: number;
   preparingPlanId?: string;
   cancellingJobId?: string;
+  runningJobId?: string;
   onPrepare: (planId: string) => void;
   onCancel: (jobId: string) => void;
+  onRun: (jobId: string) => void;
   mutationError: Error | null;
 }) {
   return (
@@ -362,7 +382,7 @@ function PlanHistory({
       <h2 className="text-lg font-semibold text-white">Frozen plan history</h2>
       <div className="mt-4 flex gap-3 rounded-xl border border-cyan-200/10 bg-cyan-200/5 p-3 text-xs leading-5 text-cyan-100/70">
         <ShieldCheck size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-        Preparing a job only freezes durable execution state. The bounded executor and evidence collection are not enabled yet.
+        The bounded executor records relative paths and counts only. It does not pull or read Android file contents.
       </div>
       {pending && <p role="status" className="mt-5 text-sm text-slate-500">Loading plans…</p>}
       {error && <div className="mt-5"><CaseError error={error} /></div>}
@@ -373,6 +393,7 @@ function PlanHistory({
           const job = jobs.find((item) => item.plan_id === plan.id);
           const planFresh = referenceTime <= new Date(plan.readiness_expires_at).getTime();
           const cancellable = job && new Set(["created", "validating", "ready", "paused", "interrupted"]).has(job.state);
+          const inventoryAllowed = job?.state === "ready" && plan.modules.includes("shared_storage_inventory");
           return (
           <article key={plan.id} className="rounded-xl border border-white/8 bg-black/10 p-4">
             <div className="flex items-center justify-between gap-3">
@@ -390,6 +411,19 @@ function PlanHistory({
                 </div>
                 <p className="mt-2 text-xs leading-5 text-slate-500">{job.current_step ?? "Awaiting a safe executor step."}</p>
                 <p className="mt-2 text-[11px] text-slate-600">{job.progress_percent}% checkpoint / {job.last_event_sequence} durable events / not running</p>
+                {inventoryAllowed && (
+                  <button
+                    type="button"
+                    disabled={runningJobId === job.id}
+                    onClick={() => {
+                      onRun(job.id);
+                    }}
+                    className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg bg-cyan-300 px-3 text-xs font-semibold text-slate-950 disabled:opacity-40"
+                  >
+                    {runningJobId === job.id ? <LoaderCircle size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                    Run bounded path inventory
+                  </button>
+                )}
                 {cancellable && (
                   <button
                     type="button"
@@ -403,6 +437,7 @@ function PlanHistory({
                     Cancel prepared job
                   </button>
                 )}
+                {job.result_reference && <InventoryResultPanel caseId={plan.case_id} jobId={job.id} />}
               </div>
             ) : (
               <div className="mt-4">
@@ -425,6 +460,36 @@ function PlanHistory({
         })}
       </div>
     </aside>
+  );
+}
+
+function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string }) {
+  const inventoryQuery = useQuery({
+    queryKey: ["acquisition-inventory", caseId, jobId],
+    queryFn: () => getAcquisitionInventory(caseId, jobId),
+  });
+  if (inventoryQuery.isPending) {
+    return <p role="status" className="mt-3 text-xs text-slate-500">Loading inventory manifest...</p>;
+  }
+  if (inventoryQuery.isError) return <div className="mt-3"><CaseError error={inventoryQuery.error} /></div>;
+  const inventory = inventoryQuery.data;
+  return (
+    <div className="mt-3 rounded-lg border border-emerald-200/10 bg-emerald-200/5 p-3">
+      <p className="text-xs font-semibold text-emerald-200">
+        {inventory.persisted_count} path records · {inventory.status}
+      </p>
+      <p className="mt-1 truncate font-mono text-[10px] text-slate-500" title={inventory.manifest_hash}>
+        Manifest SHA-256 {inventory.manifest_hash}
+      </p>
+      <ul className="mt-3 space-y-1 text-[11px] text-slate-400">
+        {inventory.items.slice(0, 5).map((item) => (
+          <li key={item.id} className="truncate font-mono" title={item.relative_path}>
+            {item.relative_path}
+          </li>
+        ))}
+      </ul>
+      {inventory.total > 5 && <p className="mt-2 text-[10px] text-slate-600">Showing 5 of {inventory.total} paths.</p>}
+    </div>
   );
 }
 

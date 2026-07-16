@@ -11,6 +11,7 @@ class AdbOperation(StrEnum):
     LIST_PACKAGES = "list_packages"
     STORAGE_ROOT_EXISTS = "storage_root_exists"
     STORAGE_ROOT_READABLE = "storage_root_readable"
+    INVENTORY_STORAGE_PATHS = "inventory_storage_paths"
 
 
 class SharedStorageRoot(StrEnum):
@@ -22,6 +23,9 @@ _STORAGE_PATHS: dict[SharedStorageRoot, str] = {
     SharedStorageRoot.PRIMARY_ALIAS: "/sdcard",
     SharedStorageRoot.EMULATED_PRIMARY: "/storage/emulated/0",
 }
+
+INVENTORY_MAX_DEPTH = 6
+INVENTORY_MAX_ITEMS = 250
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +72,27 @@ class AdbCommandPolicy:
     def storage_root_readable(serial: str, root: SharedStorageRoot) -> ApprovedAdbCommand:
         return AdbCommandPolicy._storage_test(
             serial, root, "-r", AdbOperation.STORAGE_ROOT_READABLE
+        )
+
+    @staticmethod
+    def inventory_storage_paths(serial: str, root: SharedStorageRoot) -> ApprovedAdbCommand:
+        _validate_serial(serial)
+        return ApprovedAdbCommand(
+            AdbOperation.INVENTORY_STORAGE_PATHS,
+            (
+                "-s",
+                serial,
+                "shell",
+                "find",
+                _STORAGE_PATHS[root],
+                "-xdev",
+                "-maxdepth",
+                str(INVENTORY_MAX_DEPTH),
+                "-type",
+                "f",
+                "-print0",
+            ),
+            30.0,
         )
 
     @staticmethod

@@ -2,7 +2,7 @@
 
 ForensiX is a planned cross-platform Android rapid evidence triage and forensic preview platform. It runs on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
-The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, immutable capability-gated acquisition plans, case-owned durable acquisition jobs with append-only progress events and checkpoints, a typed and bounded ADB subsystem, deterministic mock-device scenarios, protected FastAPI endpoints, SQLite operational metadata, contained evidence-storage and hashing primitives, and tested React authentication/case/device-readiness/planning screens. No production forensic capability is claimed yet.
+The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, immutable capability-gated acquisition plans, case-owned durable acquisition jobs, and the first bounded content-free shared-storage path inventory. No production forensic capability is claimed yet.
 
 ## Project status
 
@@ -37,6 +37,8 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Partial-file streaming, atomic sealing, non-overwrite behavior, and streaming SHA-256 verification
 - Durable versioned job states with restrictive case/plan ownership, validated transitions, monotonic progress, bounded JSON checkpoints, append-only sequenced events, cooperative cancellation, and restart interruption recovery
 - Idempotent acquisition-job preparation, status/event/cancellation APIs, and case UI that clearly labels prepared jobs as not running
+- Fixed-policy shared-storage path inventory with live device/fingerprint/root revalidation, a 30-second command timeout, depth 6 and 250-path limits, durable checkpoints, cancellation preservation, and a canonical SHA-256 manifest
+- Path-only inventory persistence and UI: relative path, extension, per-path SHA-256, counts, limits, and manifest hash; no Android file bytes, timestamps, sizes, or arbitrary remote paths
 - Deterministic mock ADB scenarios and safe API error envelopes
 - Device-readiness UI with forensic limitations and operator guidance
 - CI for frontend lint/type/test/build and backend Ruff/mypy/Pytest
@@ -96,4 +98,4 @@ pnpm build
 
 ## Current security boundary
 
-The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text or remote path from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property, package, and storage-root test commands execute. Storage probing uses content-free directory/readability predicates; it does not list filenames, copy files, or prove evidence completeness. Case-linked records persist only a serial hash and masked suffix; raw serials remain transient at this stage. Creating a plan still performs no execution. Preparing its durable job records intent, checkpoint, and progress history but does not run ADB, list files, or acquire evidence. Use only controlled test devices until the audit, acquisition, and validation phases are complete.
+The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text or remote path from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property, package, and storage-root test commands execute. A separately confirmed Quick Triage job can now enumerate relative file paths under one approved readable shared-storage root. The command is fixed internally and device-derived filenames are never fed back into a shell. The result is metadata-only and bounded; it does not copy or open files, collect timestamps or sizes, access app-private storage, or prove completeness. Case-linked records persist only a serial hash and masked suffix; raw serials remain transient. Use only controlled test devices until audit, content acquisition, and forensic validation are complete.

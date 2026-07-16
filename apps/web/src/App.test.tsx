@@ -473,7 +473,7 @@ describe("device readiness", () => {
 describe("acquisition planning", () => {
   it("creates a frozen plan without starting acquisition", async () => {
     let created = false;
-    let jobState: "ready" | "cancelled" | null = null;
+    let jobState: "ready" | "completed" | null = null;
     const assessedAt = new Date().toISOString();
     const plan = {
       id: "plan-1",
@@ -498,21 +498,24 @@ describe("acquisition planning", () => {
       plan_id: "plan-1",
       owner_id: "user-1",
       state: jobState,
-      progress_percent: 5,
-      current_step: "Immutable plan validated; awaiting bounded executor",
-      current_module: null,
-      cancellation_requested: jobState === "cancelled",
+      progress_percent: jobState === "completed" ? 100 : 5,
+      current_step:
+        jobState === "completed"
+          ? "Bounded path inventory persisted with manifest hash"
+          : "Immutable plan validated; awaiting bounded executor",
+      current_module: jobState === "completed" ? "shared_storage_inventory" : null,
+      cancellation_requested: false,
       resume_supported: true,
       checkpoint: { phase: "prepared", plan_id: "plan-1", plan_hash: plan.plan_hash },
       error_code: null,
       error_message: null,
-      result_reference: null,
-      last_event_sequence: jobState === "cancelled" ? 5 : 4,
-      version: jobState === "cancelled" ? 5 : 4,
+      result_reference: jobState === "completed" ? "inventory-1" : null,
+      last_event_sequence: jobState === "completed" ? 11 : 4,
+      version: jobState === "completed" ? 11 : 4,
       created_at: assessedAt,
       updated_at: assessedAt,
       started_at: null,
-      completed_at: jobState === "cancelled" ? assessedAt : null,
+      completed_at: jobState === "completed" ? assessedAt : null,
       executor_available: false,
     });
     const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
@@ -615,9 +618,41 @@ describe("acquisition planning", () => {
         jobState = "ready";
         return Promise.resolve(jsonResponse(acquisitionJob(), 201));
       }
-      if (url === "/api/v1/cases/case-1/acquisitions/job-1/cancel" && init?.method === "POST") {
-        jobState = "cancelled";
-        return Promise.resolve(jsonResponse(acquisitionJob()));
+      if (url === "/api/v1/cases/case-1/acquisitions/job-1/inventory" && init?.method === "POST") {
+        jobState = "completed";
+        return Promise.resolve(
+          jsonResponse({
+            id: "inventory-1",
+            job_id: "job-1",
+            case_id: "case-1",
+            plan_id: "plan-1",
+            device_id: "device-1",
+            created_by: "user-1",
+            root_id: "primary_alias",
+            display_path: "/sdcard",
+            status: "completed",
+            discovered_count: 3,
+            persisted_count: 3,
+            skipped_count: 0,
+            max_items: 250,
+            max_depth: 6,
+            manifest_hash: "c".repeat(64),
+            started_at: assessedAt,
+            completed_at: assessedAt,
+            items: [
+              {
+                id: "item-1",
+                ordinal: 1,
+                relative_path: "DCIM/Camera/IMG_0001.jpg",
+                path_hash: "d".repeat(64),
+                extension: "jpg",
+              },
+            ],
+            total: 3,
+            offset: 0,
+            limit: 100,
+          }),
+        );
       }
       throw new Error(`Unexpected request: ${url}`);
     });
@@ -638,8 +673,9 @@ describe("acquisition planning", () => {
 
     expect(await screen.findByText("Durable job")).toBeInTheDocument();
     expect(await screen.findByText(/4 durable events \/ not running/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Cancel prepared job" }));
-    expect(await screen.findByText("cancelled")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Run bounded path inventory" }));
+    expect(await screen.findByText("3 path records · completed")).toBeInTheDocument();
+    expect(screen.getByText("DCIM/Camera/IMG_0001.jpg")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/cases/case-1/acquisition-plans",
       expect.objectContaining({

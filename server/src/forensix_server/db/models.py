@@ -446,3 +446,82 @@ class AcquisitionPlanRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, index=True
     )
+
+
+class AcquisitionInventoryRecord(Base):
+    """Immutable summary for one bounded, content-free shared-storage inventory."""
+
+    __tablename__ = "acquisition_inventories"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('completed', 'truncated')", name="ck_acquisition_inventories_status"
+        ),
+        CheckConstraint(
+            "discovered_count >= 0 AND persisted_count >= 0 AND skipped_count >= 0",
+            name="ck_acquisition_inventories_counts",
+        ),
+        CheckConstraint(
+            "max_items >= 1 AND max_depth >= 1",
+            name="ck_acquisition_inventories_limits",
+        ),
+        UniqueConstraint("job_id", name="uq_acquisition_inventories_job_id"),
+        UniqueConstraint("manifest_hash", name="uq_acquisition_inventories_manifest_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    plan_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("acquisition_plans.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("case_devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    root_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    display_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    discovered_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    persisted_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_items: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_depth: Mapped[int] = mapped_column(Integer, nullable=False)
+    manifest_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class AcquisitionInventoryItemRecord(Base):
+    """Path metadata only; no Android file content or caller-provided path is stored."""
+
+    __tablename__ = "acquisition_inventory_items"
+    __table_args__ = (
+        CheckConstraint("ordinal >= 1", name="ck_acquisition_inventory_items_ordinal"),
+        UniqueConstraint("inventory_id", "ordinal", name="uq_acquisition_inventory_items_ordinal"),
+        UniqueConstraint(
+            "inventory_id", "path_hash", name="uq_acquisition_inventory_items_path_hash"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    inventory_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("acquisition_inventories.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    relative_path: Mapped[str] = mapped_column(Text, nullable=False)
+    path_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    extension: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)

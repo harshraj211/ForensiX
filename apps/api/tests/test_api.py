@@ -42,7 +42,11 @@ def _authorize(client: TestClient) -> dict[str, str]:
 
 
 def _create_case_plan(
-    client: TestClient, headers: dict[str, str], *, title: str = "Execution case"
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    title: str = "Execution case",
+    scope: str = "metadata_only",
 ) -> tuple[dict[str, object], dict[str, object]]:
     case = client.post("/api/v1/cases", headers=headers, json={"title": title}).json()
     assessment = client.post(
@@ -56,7 +60,7 @@ def _create_case_plan(
         json={
             "device_id": assessment["case_device_id"],
             "assessment_id": assessment["assessment_id"],
-            "scope": "metadata_only",
+            "scope": scope,
             "limitations_acknowledged": True,
         },
     ).json()
@@ -84,7 +88,14 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
         tables = set(inspect(app.state.database.engine).get_table_names())
 
     assert ready.status_code == 200
-    assert {"alembic_version", "acquisition_plans", "jobs", "job_events"} <= tables
+    assert {
+        "alembic_version",
+        "acquisition_inventories",
+        "acquisition_inventory_items",
+        "acquisition_plans",
+        "jobs",
+        "job_events",
+    } <= tables
 
 
 @pytest.mark.parametrize(
@@ -644,6 +655,54 @@ def test_acquisition_job_preparation_is_idempotent_and_reconstructable(tmp_path:
     assert job.case_id == case["id"]
     assert job.plan_id == plan["id"]
     assert len(persisted_events) == 4
+
+
+def test_bounded_inventory_runs_live_revalidation_and_returns_path_metadata(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+
+        inventory = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers)
+        repeated = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers)
+        fetched = client.get(f"{endpoint}/{job['id']}/inventory")
+        completed_job = client.get(f"{endpoint}/{job['id']}")
+
+    assert inventory.status_code == 200
+    assert inventory.json()["status"] == "completed"
+    assert inventory.json()["persisted_count"] == 3
+    assert inventory.json()["total"] == 3
+    assert inventory.json()["items"][0]["relative_path"] == "DCIM/Camera/IMG_0001.jpg"
+    assert set(inventory.json()["items"][0]) == {
+        "id",
+        "ordinal",
+        "relative_path",
+        "path_hash",
+        "extension",
+    }
+    assert len(inventory.json()["manifest_hash"]) == 64
+    assert repeated.json()["id"] == inventory.json()["id"]
+    assert fetched.json()["manifest_hash"] == inventory.json()["manifest_hash"]
+    assert completed_job.json()["state"] == "completed"
+    assert completed_job.json()["result_reference"] == inventory.json()["id"]
+
+
+def test_metadata_only_plan_cannot_run_storage_inventory(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers)
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+
+        rejected = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers)
+
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "ACQUISITION_INVENTORY_INVALID"
 
 
 def test_prepared_acquisition_job_can_be_cancelled_without_execution(tmp_path: Path) -> None:

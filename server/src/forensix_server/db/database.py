@@ -15,6 +15,7 @@ from .base import Base
 class Database:
     def __init__(self, database_url: str, data_dir: Path) -> None:
         data_dir.mkdir(parents=True, exist_ok=True)
+        self._data_dir = data_dir.resolve()
         self.engine = create_engine(
             database_url,
             connect_args={"check_same_thread": False, "timeout": 5.0},
@@ -26,6 +27,10 @@ class Database:
             autoflush=False,
             expire_on_commit=False,
         )
+
+    @property
+    def data_dir(self) -> Path:
+        return self._data_dir
 
     def initialize(self) -> None:
         Base.metadata.create_all(self.engine)
@@ -93,6 +98,7 @@ def sqlite_pragmas(engine: Engine) -> dict[str, int | str]:
 def _legacy_revision(tables: set[str]) -> str:
     """Identify the newest schema marker created before migration tracking was enabled."""
     markers = (
+        ("acquisition_inventories", "0009_inventory"),
         ("job_events", "0008_job_events"),
         ("acquisition_plans", "0007_acquisition_plans"),
         ("case_devices", "0006_case_devices"),

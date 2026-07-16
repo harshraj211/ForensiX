@@ -184,6 +184,38 @@ class AcquisitionJobListResponse(BaseModel):
     limit: int
 
 
+class AcquisitionInventoryItemResponse(BaseModel):
+    id: str
+    ordinal: int
+    relative_path: str
+    path_hash: str
+    extension: str | None
+
+
+class AcquisitionInventoryResponse(BaseModel):
+    id: str
+    job_id: str
+    case_id: str
+    plan_id: str
+    device_id: str
+    created_by: str
+    root_id: str
+    display_path: str
+    status: Literal["completed", "truncated"]
+    discovered_count: int
+    persisted_count: int
+    skipped_count: int
+    max_items: int
+    max_depth: int
+    manifest_hash: str
+    started_at: datetime
+    completed_at: datetime
+    items: list[AcquisitionInventoryItemResponse] = Field(default_factory=list)
+    total: int
+    offset: int
+    limit: int
+
+
 class JobEventResponse(BaseModel):
     id: str
     job_id: str

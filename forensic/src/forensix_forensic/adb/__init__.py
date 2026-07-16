@@ -17,9 +17,18 @@ from .models import (
     DeviceState,
     DeviceTransport,
     SharedStorageRootProbe,
+    StorageInventoryEntry,
+    StorageInventoryResult,
     StorageProbeStatus,
 )
-from .policy import AdbCommandPolicy, AdbOperation, ApprovedAdbCommand, SharedStorageRoot
+from .policy import (
+    INVENTORY_MAX_DEPTH,
+    INVENTORY_MAX_ITEMS,
+    AdbCommandPolicy,
+    AdbOperation,
+    ApprovedAdbCommand,
+    SharedStorageRoot,
+)
 from .runner import AdbCommandResult, SubprocessAdbRunner
 
 __all__ = [
@@ -32,6 +41,8 @@ __all__ = [
     "AdbDeviceNotAuthorizedError",
     "AdbDeviceNotFoundError",
     "AdbError",
+    "INVENTORY_MAX_DEPTH",
+    "INVENTORY_MAX_ITEMS",
     "AdbOutputLimitError",
     "AdbOperation",
     "AdbServerInfo",
@@ -43,6 +54,8 @@ __all__ = [
     "ApprovedAdbCommand",
     "SharedStorageRoot",
     "SharedStorageRootProbe",
+    "StorageInventoryEntry",
+    "StorageInventoryResult",
     "StorageProbeStatus",
     "SubprocessAdbRunner",
     "SystemAdbClient",
