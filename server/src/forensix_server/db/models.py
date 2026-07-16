@@ -717,6 +717,138 @@ class ArtifactRecord(Base):
     )
 
 
+class TimelineEventRecord(Base):
+    """Deterministic timestamp claim materialized from one normalized artifact."""
+
+    __tablename__ = "timeline_events"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('device', 'file', 'media', 'communication', 'application', "
+            "'location', 'system', 'acquisition', 'custody')",
+            name="ck_timeline_events_category",
+        ),
+        UniqueConstraint("artifact_id", "timestamp_type", name="uq_timeline_events_artifact_type"),
+        UniqueConstraint("event_hash", name="uq_timeline_events_hash"),
+        Index("ix_timeline_events_case_time", "case_id", "event_time", "id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    artifact_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    category: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    timestamp_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    original_time: Mapped[str] = mapped_column(String(128), nullable=False)
+    timezone_basis: Mapped[str] = mapped_column(String(64), nullable=False)
+    precision: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    summary: Mapped[str] = mapped_column(String(1000), nullable=False)
+    builder_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class BookmarkRecord(Base):
+    """User-scoped bookmark state; source artifacts remain immutable."""
+
+    __tablename__ = "bookmarks"
+    __table_args__ = (
+        UniqueConstraint("artifact_id", "user_id", name="uq_bookmarks_artifact_user"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    artifact_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    reason: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TagRecord(Base):
+    """Case-scoped normalized analyst tag."""
+
+    __tablename__ = "tags"
+    __table_args__ = (UniqueConstraint("case_id", "normalized_name", name="uq_tags_case_name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class ArtifactTagRecord(Base):
+    """Append-protected association between an artifact and case tag."""
+
+    __tablename__ = "artifact_tags"
+    __table_args__ = (UniqueConstraint("artifact_id", "tag_id", name="uq_artifact_tags_pair"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    artifact_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    tag_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tags.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    added_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class AnalystNoteRecord(Base):
+    """Append-only analyst observation; corrections point to superseded notes."""
+
+    __tablename__ = "analyst_notes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    artifact_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    author_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    body: Mapped[str] = mapped_column(String(4000), nullable=False)
+    supersedes_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("analyst_notes.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
 class EvidenceVerificationRecord(Base):
     """Append-only known-answer re-verification of one file and its manifest."""
 

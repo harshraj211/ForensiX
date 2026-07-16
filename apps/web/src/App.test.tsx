@@ -907,6 +907,9 @@ describe("evidence explorer", () => {
       if (url === "/api/v1/cases/case-1/artifacts/artifact-1") {
         return Promise.resolve(jsonResponse(artifact));
       }
+      if (url === "/api/v1/cases/case-1/artifacts/artifact-1/annotations") {
+        return Promise.resolve(jsonResponse({ bookmark: null, tags: [], notes: [] }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -920,5 +923,71 @@ describe("evidence explorer", () => {
     expect(screen.getByText("text/csv")).toBeInTheDocument();
     expect(screen.getByText(/file bytes are not opened, executed, or rendered/i)).toBeInTheDocument();
     expect(screen.getByText(`SHA-256`)).toBeInTheDocument();
+  });
+
+  it("shows explicit collection-time claims in the chronological timeline", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-TIMELINE",
+            title: "Timeline case",
+            description: null,
+            legal_authority: null,
+            status: "active",
+            created_by: "user-1",
+            created_at: "2026-07-16T10:00:00Z",
+            updated_at: "2026-07-16T10:00:00Z",
+            closed_at: null,
+            version: 1,
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/timeline?offset=0&limit=200") {
+        return Promise.resolve(
+          jsonResponse({
+            items: [
+              {
+                id: "event-1",
+                case_id: "case-1",
+                artifact_id: "artifact-1",
+                job_id: "job-1",
+                category: "file",
+                timestamp_type: "acquisition_collected_at",
+                event_time: "2026-07-16T10:00:00Z",
+                original_time: "2026-07-16T10:00:00+00:00",
+                timezone_basis: "UTC recorded by acquisition workstation",
+                precision: "microsecond",
+                confidence: "high",
+                summary: "ForensiX collected timeline.csv.",
+                builder_version: "1.0.0",
+                event_hash: "a".repeat(64),
+              },
+            ],
+            total: 1,
+            offset: 0,
+            limit: 200,
+            category_facets: { file: 1 },
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/cases/case-1/timeline");
+
+    expect(await screen.findByRole("heading", { name: "Timeline" })).toBeInTheDocument();
+    expect(await screen.findByText("ForensiX collected timeline.csv.")).toBeInTheDocument();
+    expect(screen.getByText(/acquisition collected at/i)).toBeInTheDocument();
+    expect(screen.getByText("UTC recorded by acquisition workstation")).toBeInTheDocument();
+    expect(screen.getByText(/No missing device-side timestamps are inferred/i)).toBeInTheDocument();
   });
 });

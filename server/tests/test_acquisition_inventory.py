@@ -52,7 +52,12 @@ from forensix_server.db import (
     JobRecord,
     UserRecord,
 )
-from forensix_server.evidence import ArtifactError, ArtifactService
+from forensix_server.evidence import (
+    AnalysisService,
+    ArtifactError,
+    ArtifactService,
+    TimelineService,
+)
 from forensix_server.jobs import JobService, JobState
 
 
@@ -460,6 +465,95 @@ async def test_artifact_search_is_case_scoped_bounded_and_reindexable(
     assert other.total == 1
     assert restored.items[0].case_id == case_id
     assert other.items[0].case_id == other_case_id
+
+
+@pytest.mark.asyncio
+async def test_timeline_is_deterministic_and_contains_only_collection_claim(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, acquired = await _acquire_timeline_fixture(database, principal)
+
+    with database.session() as session:
+        artifact = session.scalar(
+            select(ArtifactRecord).where(ArtifactRecord.evidence_file_id == acquired.id)
+        )
+        assert artifact is not None
+        first = TimelineService().materialize(session, artifact)
+        repeated = TimelineService().materialize(session, artifact)
+        result = TimelineService().search(
+            session,
+            principal,
+            case_id,
+            category="file",
+            confidence="high",
+        )
+        backfilled = TimelineService().backfill(session)
+
+    assert repeated.id == first.id
+    assert repeated.event_hash == first.event_hash
+    assert result.total == 1
+    assert result.category_facets == {"file": 1}
+    assert result.items[0].timestamp_type == "acquisition_collected_at"
+    assert result.items[0].event_time == artifact.collected_at
+    assert result.items[0].timezone_basis == "UTC recorded by acquisition workstation"
+    assert "modified" not in result.items[0].timestamp_type
+    assert backfilled == 0
+
+
+@pytest.mark.asyncio
+async def test_analyst_annotations_do_not_modify_artifact_and_notes_are_append_only(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, acquired = await _acquire_timeline_fixture(database, principal)
+    service = AnalysisService()
+
+    with database.session() as session:
+        artifact = session.scalar(
+            select(ArtifactRecord).where(ArtifactRecord.evidence_file_id == acquired.id)
+        )
+        assert artifact is not None
+        source_hash = artifact.primary_sha256
+        bookmark = service.bookmark(
+            session, principal, case_id, artifact.id, reason="Review for report"
+        )
+        repeated_bookmark = service.bookmark(
+            session, principal, case_id, artifact.id, reason="Review for report"
+        )
+        tag = service.add_tag(session, principal, case_id, artifact.id, "Priority Evidence")
+        repeated_tag = service.add_tag(
+            session, principal, case_id, artifact.id, "priority   evidence"
+        )
+        note = service.add_note(
+            session, principal, case_id, artifact.id, "Initial analyst observation."
+        )
+        amendment = service.add_note(
+            session,
+            principal,
+            case_id,
+            artifact.id,
+            "Corrected analyst observation.",
+            supersedes_id=note.id,
+        )
+        active_bookmark, tags, notes = service.annotations(session, principal, case_id, artifact.id)
+        persisted_artifact = session.get(ArtifactRecord, artifact.id)
+        audit_events = list(session.scalars(select(AuditLogRecord)))
+
+    assert repeated_bookmark.id == bookmark.id
+    assert repeated_tag.id == tag.id
+    assert active_bookmark is not None
+    assert [item.normalized_name for item in tags] == ["priority evidence"]
+    assert [item.id for item in notes] == [note.id, amendment.id]
+    assert amendment.supersedes_id == note.id
+    assert persisted_artifact is not None
+    assert persisted_artifact.primary_sha256 == source_hash
+    assert {event.event_type for event in audit_events} >= {
+        "artifact_bookmarked",
+        "artifact_tag_added",
+        "analyst_note_added",
+        "analyst_note_amended",
+    }
 
 
 @pytest.mark.asyncio

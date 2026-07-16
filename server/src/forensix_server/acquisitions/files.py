@@ -34,7 +34,7 @@ from forensix_server.db import (
     CaseEventRecord,
     Database,
 )
-from forensix_server.evidence import ArtifactService
+from forensix_server.evidence import ArtifactService, TimelineService
 from forensix_server.jobs import JobState
 
 from .execution import AcquisitionExecutionService
@@ -408,6 +408,7 @@ class AcquisitionFileService:
             record.partial_preserved = False
             record.completed_at = completed_at
             artifact = ArtifactService().normalize_completed(session, record, context.relative_path)
+            TimelineService().materialize(session, artifact)
             CustodyService().append_automatic(
                 session,
                 case_id=context.case_id,

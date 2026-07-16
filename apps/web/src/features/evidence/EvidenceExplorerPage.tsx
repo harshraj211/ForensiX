@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, FileSearch, LoaderCircle, ShieldAlert } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Bookmark, FileSearch, LoaderCircle, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -7,9 +7,14 @@ import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
 import {
   getArtifact,
+  getArtifactAnnotations,
   getCase,
   listCases,
   searchArtifacts,
+  addAnalystNote,
+  addArtifactTag,
+  bookmarkArtifact,
+  removeArtifactBookmark,
   type Artifact,
   type ArtifactCategory,
   type ArtifactStatus,
@@ -181,18 +186,56 @@ export function EvidenceExplorerPage() {
               ))}
             </ul>
           </section>
-          <ArtifactDetail artifact={detailQuery.data} pending={detailQuery.isPending} error={detailQuery.error} />
+          <ArtifactDetail caseId={caseId} artifact={detailQuery.data} pending={detailQuery.isPending} error={detailQuery.error} />
         </div>
       )}
     </div>
   );
 }
 
-function ArtifactDetail({ artifact, pending, error }: { artifact?: Artifact; pending: boolean; error: Error | null }) {
+function ArtifactDetail({ caseId, artifact, pending, error }: { caseId: string; artifact?: Artifact; pending: boolean; error: Error | null }) {
   if (pending) return <aside role="status" className="rounded-2xl border border-white/8 p-6 text-sm text-slate-500">Loading artifact provenance...</aside>;
   if (error) return <aside><CaseError error={error} /></aside>;
   if (!artifact) return <aside className="rounded-2xl border border-dashed border-white/10 p-8 text-sm text-slate-600"><FileSearch className="mb-3" />Select an artifact.</aside>;
+  return <ArtifactDetailContent caseId={caseId} artifact={artifact} />;
+}
+
+function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact: Artifact }) {
+  const queryClient = useQueryClient();
+  const [tagName, setTagName] = useState("");
+  const [noteBody, setNoteBody] = useState("");
+  const annotationKey = ["artifact-annotations", caseId, artifact.id] as const;
+  const annotations = useQuery({
+    queryKey: annotationKey,
+    queryFn: () => getArtifactAnnotations(caseId, artifact.id),
+  });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: annotationKey });
+  const bookmark = useMutation({
+    mutationFn: async () => {
+      if (annotations.data?.bookmark) {
+        await removeArtifactBookmark(caseId, artifact.id);
+      } else {
+        await bookmarkArtifact(caseId, artifact.id);
+      }
+    },
+    onSuccess: refresh,
+  });
+  const addTag = useMutation({
+    mutationFn: () => addArtifactTag(caseId, artifact.id, tagName),
+    onSuccess: () => {
+      setTagName("");
+      void refresh();
+    },
+  });
+  const addNote = useMutation({
+    mutationFn: () => addAnalystNote(caseId, artifact.id, noteBody),
+    onSuccess: () => {
+      setNoteBody("");
+      void refresh();
+    },
+  });
   const limitations = Array.isArray(artifact.metadata.limitations) ? artifact.metadata.limitations.map(String) : [];
+  const actionError = annotations.error ?? bookmark.error ?? addTag.error ?? addNote.error;
   return (
     <aside className="min-w-0 rounded-2xl border border-white/8 bg-white/[0.025] p-5">
       <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300">Normalized metadata</p>
@@ -213,6 +256,56 @@ function ArtifactDetail({ artifact, pending, error }: { artifact?: Artifact; pen
           <ul className="mt-2 list-disc space-y-1 pl-4">{limitations.map((item) => <li key={item}>{item}</li>)}</ul>
         </div>
       )}
+      <section className="mt-6 border-t border-white/8 pt-5">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-white">Analyst annotations</h3>
+          <button
+            type="button"
+            disabled={bookmark.isPending || annotations.isPending}
+            onClick={() => {
+              bookmark.mutate();
+            }}
+            className="inline-flex min-h-9 items-center gap-2 rounded border border-cyan-200/15 px-3 text-[11px] text-cyan-100 disabled:opacity-40"
+          >
+            <Bookmark size={13} fill={annotations.data?.bookmark ? "currentColor" : "none"} />
+            {annotations.data?.bookmark ? "Remove bookmark" : "Bookmark"}
+          </button>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {annotations.data?.tags.map((tag) => <span key={tag.id} className="rounded-full bg-cyan-300/8 px-2 py-1 text-[10px] text-cyan-100">{tag.name}</span>)}
+        </div>
+        <form
+          className="mt-3 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (tagName.trim()) addTag.mutate();
+          }}
+        >
+          <input aria-label="New evidence tag" value={tagName} onChange={(event) => { setTagName(event.target.value); }} maxLength={64} className="min-h-9 min-w-0 flex-1 rounded border border-white/10 bg-black/20 px-2 text-xs" placeholder="priority" />
+          <button type="submit" disabled={addTag.isPending || !tagName.trim()} className="rounded border border-white/10 px-3 text-[11px] disabled:opacity-40">Add tag</button>
+        </form>
+        <form
+          className="mt-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (noteBody.trim()) addNote.mutate();
+          }}
+        >
+          <label className="text-[11px] text-slate-500">Append analyst note
+            <textarea aria-label="Append analyst note" value={noteBody} onChange={(event) => { setNoteBody(event.target.value); }} maxLength={4000} className="mt-2 min-h-20 w-full rounded border border-white/10 bg-black/20 p-2 text-xs text-slate-200" />
+          </label>
+          <button type="submit" disabled={addNote.isPending || !noteBody.trim()} className="mt-2 min-h-9 rounded border border-white/10 px-3 text-[11px] disabled:opacity-40">Append note</button>
+        </form>
+        <ol className="mt-4 space-y-2">
+          {annotations.data?.notes.map((note) => (
+            <li key={note.id} className="rounded border border-white/7 bg-black/10 p-3 text-[11px] leading-5 text-slate-300">
+              {note.body}
+              <p className="mt-1 text-[9px] text-slate-600">{new Date(note.created_at).toLocaleString()}{note.supersedes_id ? " · amendment" : ""}</p>
+            </li>
+          ))}
+        </ol>
+        {actionError && <div className="mt-3"><CaseError error={actionError} /></div>}
+      </section>
     </aside>
   );
 }

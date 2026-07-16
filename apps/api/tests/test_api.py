@@ -113,6 +113,11 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
         "acquisition_partials",
         "artifacts",
         "artifact_search",
+        "artifact_tags",
+        "analyst_notes",
+        "bookmarks",
+        "tags",
+        "timeline_events",
         "audit_logs",
         "acquisition_inventories",
         "acquisition_inventory_items",
@@ -776,6 +781,32 @@ def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
         artifact_detail = client.get(
             f"/api/v1/cases/{case['id']}/artifacts/{artifacts.json()['items'][0]['id']}"
         )
+        artifact_id = artifacts.json()["items"][0]["id"]
+        timeline = client.get(f"/api/v1/cases/{case['id']}/timeline")
+        bookmark = client.post(
+            f"/api/v1/cases/{case['id']}/artifacts/{artifact_id}/bookmark",
+            headers=headers,
+            json={"reason": "Include in preliminary report"},
+        )
+        tag = client.post(
+            f"/api/v1/cases/{case['id']}/artifacts/{artifact_id}/tags",
+            headers=headers,
+            json={"name": "Priority"},
+        )
+        note = client.post(
+            f"/api/v1/cases/{case['id']}/artifacts/{artifact_id}/notes",
+            headers=headers,
+            json={"body": "Initial observation."},
+        )
+        amendment = client.post(
+            f"/api/v1/cases/{case['id']}/artifacts/{artifact_id}/notes",
+            headers=headers,
+            json={
+                "body": "Corrected observation.",
+                "supersedes_id": note.json()["id"],
+            },
+        )
+        annotations = client.get(f"/api/v1/cases/{case['id']}/artifacts/{artifact_id}/annotations")
 
     assert acquired.status_code == 200
     assert acquired.json()["status"] == "completed"
@@ -800,6 +831,20 @@ def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
     assert artifact_detail.json()["title"] == "timeline.csv"
     assert artifact_detail.json()["primary_sha256"] == acquired.json()["sha256"]
     assert artifact_detail.json()["metadata"]["content_parsed"] is False
+    assert timeline.status_code == 200
+    assert timeline.json()["total"] == 1
+    assert timeline.json()["items"][0]["timestamp_type"] == "acquisition_collected_at"
+    assert bookmark.status_code == 201
+    assert tag.status_code == 201
+    assert note.status_code == 201
+    assert amendment.status_code == 201
+    assert amendment.json()["supersedes_id"] == note.json()["id"]
+    assert annotations.json()["bookmark"]["reason"] == "Include in preliminary report"
+    assert [item["name"] for item in annotations.json()["tags"]] == ["Priority"]
+    assert [item["body"] for item in annotations.json()["notes"]] == [
+        "Initial observation.",
+        "Corrected observation.",
+    ]
 
 
 def test_interrupted_file_api_requires_review_and_restarts_from_zero(tmp_path: Path) -> None:

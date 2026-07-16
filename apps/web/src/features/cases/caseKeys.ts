@@ -11,4 +11,5 @@ export const caseKeys = {
     ["cases", caseId, "custody-verification"] as const,
   artifacts: (caseId: string, filters: Record<string, string>) =>
     ["cases", caseId, "artifacts", filters] as const,
+  timeline: (caseId: string) => ["cases", caseId, "timeline"] as const,
 };

@@ -360,6 +360,61 @@ export interface ArtifactSearchResult {
   category_facets: Record<string, number>;
 }
 
+export interface TimelineEvent {
+  id: string;
+  case_id: string;
+  artifact_id: string;
+  job_id: string;
+  category: "device" | "file" | "media" | "communication" | "application" | "location" | "system" | "acquisition" | "custody";
+  timestamp_type: string;
+  event_time: string;
+  original_time: string;
+  timezone_basis: string;
+  precision: string;
+  confidence: string;
+  summary: string;
+  builder_version: string;
+  event_hash: string;
+}
+
+export interface TimelineSearchResult {
+  items: TimelineEvent[];
+  total: number;
+  offset: number;
+  limit: number;
+  category_facets: Record<string, number>;
+}
+
+export interface Bookmark {
+  id: string;
+  artifact_id: string;
+  user_id: string;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface ArtifactTag {
+  id: string;
+  name: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface AnalystNote {
+  id: string;
+  artifact_id: string;
+  author_id: string;
+  body: string;
+  supersedes_id: string | null;
+  created_at: string;
+}
+
+export interface ArtifactAnnotations {
+  bookmark: Bookmark | null;
+  tags: ArtifactTag[];
+  notes: AnalystNote[];
+}
+
 export interface EvidenceVerification {
   id: string;
   evidence_file_id: string;
@@ -656,6 +711,65 @@ export function searchArtifacts(
 export function getArtifact(caseId: string, artifactId: string): Promise<Artifact> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}`,
+  );
+}
+
+export function getArtifactAnnotations(
+  caseId: string,
+  artifactId: string,
+): Promise<ArtifactAnnotations> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/annotations`,
+  );
+}
+
+export function bookmarkArtifact(
+  caseId: string,
+  artifactId: string,
+  reason?: string,
+): Promise<Bookmark> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/bookmark`,
+    { method: "POST", body: JSON.stringify({ reason: reason || null }) },
+  );
+}
+
+export function removeArtifactBookmark(caseId: string, artifactId: string): Promise<void> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/bookmark`,
+    { method: "DELETE" },
+  );
+}
+
+export function addArtifactTag(
+  caseId: string,
+  artifactId: string,
+  name: string,
+): Promise<ArtifactTag> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/tags`,
+    { method: "POST", body: JSON.stringify({ name }) },
+  );
+}
+
+export function addAnalystNote(
+  caseId: string,
+  artifactId: string,
+  body: string,
+  supersedesId?: string,
+): Promise<AnalystNote> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/notes`,
+    {
+      method: "POST",
+      body: JSON.stringify({ body, supersedes_id: supersedesId ?? null }),
+    },
+  );
+}
+
+export function getTimeline(caseId: string): Promise<TimelineSearchResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/timeline?offset=0&limit=200`,
   );
 }
 

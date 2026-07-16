@@ -299,6 +299,84 @@ class ArtifactSearchResponse(BaseModel):
     category_facets: dict[str, int]
 
 
+class TimelineEventResponse(BaseModel):
+    id: str
+    case_id: str
+    artifact_id: str
+    job_id: str
+    category: Literal[
+        "device",
+        "file",
+        "media",
+        "communication",
+        "application",
+        "location",
+        "system",
+        "acquisition",
+        "custody",
+    ]
+    timestamp_type: str
+    event_time: datetime
+    original_time: str
+    timezone_basis: str
+    precision: str
+    confidence: str
+    summary: str
+    builder_version: str
+    event_hash: str
+
+
+class TimelineSearchResponse(BaseModel):
+    items: list[TimelineEventResponse]
+    total: int
+    offset: int
+    limit: int
+    category_facets: dict[str, int]
+
+
+class BookmarkRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class BookmarkResponse(BaseModel):
+    id: str
+    artifact_id: str
+    user_id: str
+    reason: str | None
+    created_at: datetime
+
+
+class TagRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+
+
+class TagResponse(BaseModel):
+    id: str
+    name: str
+    created_by: str
+    created_at: datetime
+
+
+class AnalystNoteRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+    supersedes_id: str | None = None
+
+
+class AnalystNoteResponse(BaseModel):
+    id: str
+    artifact_id: str
+    author_id: str
+    body: str
+    supersedes_id: str | None
+    created_at: datetime
+
+
+class ArtifactAnnotationsResponse(BaseModel):
+    bookmark: BookmarkResponse | None
+    tags: list[TagResponse]
+    notes: list[AnalystNoteResponse]
+
+
 class EvidenceVerificationResponse(BaseModel):
     id: str
     evidence_file_id: str

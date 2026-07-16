@@ -3,13 +3,33 @@
 import json
 from typing import Annotated, Any, Literal, cast
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response, status
 
-from forensix_api.dependencies import get_authenticated_session, get_database
-from forensix_api.schemas import ArtifactResponse, ArtifactSearchResponse
+from forensix_api.dependencies import (
+    get_authenticated_session,
+    get_database,
+    require_csrf_session,
+)
+from forensix_api.schemas import (
+    AnalystNoteRequest,
+    AnalystNoteResponse,
+    ArtifactAnnotationsResponse,
+    ArtifactResponse,
+    ArtifactSearchResponse,
+    BookmarkRequest,
+    BookmarkResponse,
+    TagRequest,
+    TagResponse,
+)
 from forensix_server.auth import AuthenticatedSession
-from forensix_server.db import ArtifactRecord, Database
-from forensix_server.evidence import ArtifactService
+from forensix_server.db import (
+    AnalystNoteRecord,
+    ArtifactRecord,
+    BookmarkRecord,
+    Database,
+    TagRecord,
+)
+from forensix_server.evidence import AnalysisService, ArtifactService
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/artifacts", tags=["artifacts"])
 
@@ -63,6 +83,94 @@ def get_artifact(
         return _artifact_response(record)
 
 
+@router.get("/{artifact_id}/annotations", response_model=ArtifactAnnotationsResponse)
+def get_annotations(
+    case_id: str,
+    artifact_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> ArtifactAnnotationsResponse:
+    with database.session() as session:
+        bookmark, tags, notes = AnalysisService().annotations(
+            session, authenticated.principal, case_id, artifact_id
+        )
+        return _annotations_response(bookmark, tags, notes)
+
+
+@router.post(
+    "/{artifact_id}/bookmark",
+    response_model=BookmarkResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def bookmark_artifact(
+    case_id: str,
+    artifact_id: str,
+    request: BookmarkRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> BookmarkResponse:
+    with database.session() as session:
+        record = AnalysisService().bookmark(
+            session,
+            authenticated.principal,
+            case_id,
+            artifact_id,
+            reason=request.reason,
+        )
+        return _bookmark_response(record)
+
+
+@router.delete("/{artifact_id}/bookmark", status_code=status.HTTP_204_NO_CONTENT)
+def remove_artifact_bookmark(
+    case_id: str,
+    artifact_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> Response:
+    with database.session() as session:
+        AnalysisService().remove_bookmark(session, authenticated.principal, case_id, artifact_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{artifact_id}/tags", response_model=TagResponse, status_code=status.HTTP_201_CREATED)
+def add_artifact_tag(
+    case_id: str,
+    artifact_id: str,
+    request: TagRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> TagResponse:
+    with database.session() as session:
+        record = AnalysisService().add_tag(
+            session, authenticated.principal, case_id, artifact_id, request.name
+        )
+        return _tag_response(record)
+
+
+@router.post(
+    "/{artifact_id}/notes",
+    response_model=AnalystNoteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_artifact_note(
+    case_id: str,
+    artifact_id: str,
+    request: AnalystNoteRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> AnalystNoteResponse:
+    with database.session() as session:
+        record = AnalysisService().add_note(
+            session,
+            authenticated.principal,
+            case_id,
+            artifact_id,
+            request.body,
+            supersedes_id=request.supersedes_id,
+        )
+        return _note_response(record)
+
+
 def _artifact_response(record: ArtifactRecord) -> ArtifactResponse:
     category = cast(
         Literal["image", "video", "audio", "document", "archive", "other"],
@@ -105,3 +213,45 @@ def _json_object(value: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise RuntimeError("Normalized artifact JSON must be an object.")
     return cast(dict[str, Any], parsed)
+
+
+def _annotations_response(
+    bookmark: BookmarkRecord | None,
+    tags: list[TagRecord],
+    notes: list[AnalystNoteRecord],
+) -> ArtifactAnnotationsResponse:
+    return ArtifactAnnotationsResponse(
+        bookmark=_bookmark_response(bookmark) if bookmark else None,
+        tags=[_tag_response(tag) for tag in tags],
+        notes=[_note_response(note) for note in notes],
+    )
+
+
+def _bookmark_response(record: BookmarkRecord) -> BookmarkResponse:
+    return BookmarkResponse(
+        id=record.id,
+        artifact_id=record.artifact_id,
+        user_id=record.user_id,
+        reason=record.reason,
+        created_at=record.created_at,
+    )
+
+
+def _tag_response(record: TagRecord) -> TagResponse:
+    return TagResponse(
+        id=record.id,
+        name=record.name,
+        created_by=record.created_by,
+        created_at=record.created_at,
+    )
+
+
+def _note_response(record: AnalystNoteRecord) -> AnalystNoteResponse:
+    return AnalystNoteResponse(
+        id=record.id,
+        artifact_id=record.artifact_id,
+        author_id=record.author_id,
+        body=record.body,
+        supersedes_id=record.supersedes_id,
+        created_at=record.created_at,
+    )
