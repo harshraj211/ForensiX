@@ -1,6 +1,6 @@
 # ADR-011: Bounded Shared-Storage Path Inventory
 
-**Status:** Accepted  
+**Status:** Accepted
 **Date:** 16 July 2026
 
 ## Context
