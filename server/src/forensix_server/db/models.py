@@ -86,9 +86,20 @@ class JobRecord(Base):
             name="ck_jobs_progress_percent",
         ),
         CheckConstraint("version >= 1", name="ck_jobs_version"),
+        CheckConstraint("last_event_sequence >= 0", name="ck_jobs_last_event_sequence"),
+        UniqueConstraint("plan_id", name="uq_jobs_plan_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    owner_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    case_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    plan_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("acquisition_plans.id", ondelete="RESTRICT"), nullable=True
+    )
     job_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     state: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
     progress_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -99,6 +110,8 @@ class JobRecord(Base):
     result_reference: Mapped[str | None] = mapped_column(String(512), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    checkpoint_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_event_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, index=True
@@ -110,6 +123,36 @@ class JobRecord(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __mapper_args__ = {"version_id_col": version}
+
+
+class JobEventRecord(Base):
+    """Append-only, reconstructable progress history for one durable job."""
+
+    __tablename__ = "job_events"
+    __table_args__ = (
+        CheckConstraint("sequence >= 1", name="ck_job_events_sequence"),
+        CheckConstraint(
+            "progress_percent >= 0 AND progress_percent <= 100",
+            name="ck_job_events_progress_percent",
+        ),
+        UniqueConstraint("job_id", "sequence", name="uq_job_events_job_sequence"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    state: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    progress_percent: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_step: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    current_module: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    checkpoint_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    safe_detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
 
 
 class UserRecord(Base):

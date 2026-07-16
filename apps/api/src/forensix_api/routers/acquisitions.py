@@ -1,0 +1,150 @@
+"""Protected durable acquisition-job preparation and observation endpoints."""
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, Response, status
+
+from forensix_api.dependencies import (
+    get_authenticated_session,
+    get_database,
+    require_csrf_session,
+)
+from forensix_api.schemas import (
+    AcquisitionJobListResponse,
+    AcquisitionJobPrepareRequest,
+    AcquisitionJobResponse,
+    JobEventResponse,
+)
+from forensix_server.acquisitions import (
+    AcquisitionExecutionService,
+    event_checkpoint,
+    job_checkpoint,
+)
+from forensix_server.auth import AuthenticatedSession
+from forensix_server.db import Database, JobEventRecord, JobRecord
+from forensix_server.jobs import JobState
+
+router = APIRouter(prefix="/api/v1/cases/{case_id}/acquisitions", tags=["acquisitions"])
+
+
+@router.get("", response_model=AcquisitionJobListResponse)
+def list_acquisition_jobs(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> AcquisitionJobListResponse:
+    with database.session() as session:
+        jobs, total = AcquisitionExecutionService().list_for_case(
+            session,
+            authenticated.principal,
+            case_id,
+            offset=offset,
+            limit=limit,
+        )
+        items = [_job_response(job) for job in jobs]
+    return AcquisitionJobListResponse(items=items, total=total, offset=offset, limit=limit)
+
+
+@router.post("", response_model=AcquisitionJobResponse, status_code=status.HTTP_201_CREATED)
+def prepare_acquisition_job(
+    case_id: str,
+    request: AcquisitionJobPrepareRequest,
+    response: Response,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> AcquisitionJobResponse:
+    with database.session() as session:
+        job, created = AcquisitionExecutionService().prepare(
+            session,
+            authenticated.principal,
+            case_id,
+            request.plan_id,
+        )
+        result = _job_response(job)
+    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return result
+
+
+@router.get("/{job_id}", response_model=AcquisitionJobResponse)
+def get_acquisition_job(
+    case_id: str,
+    job_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> AcquisitionJobResponse:
+    with database.session() as session:
+        job = AcquisitionExecutionService().get(session, authenticated.principal, case_id, job_id)
+        return _job_response(job)
+
+
+@router.get("/{job_id}/events", response_model=list[JobEventResponse])
+def list_acquisition_job_events(
+    case_id: str,
+    job_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[JobEventResponse]:
+    with database.session() as session:
+        events = AcquisitionExecutionService().list_events(
+            session, authenticated.principal, case_id, job_id
+        )
+        return [_event_response(event) for event in events]
+
+
+@router.post("/{job_id}/cancel", response_model=AcquisitionJobResponse)
+def cancel_acquisition_job(
+    case_id: str,
+    job_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> AcquisitionJobResponse:
+    with database.session() as session:
+        job = AcquisitionExecutionService().cancel(
+            session, authenticated.principal, case_id, job_id
+        )
+        return _job_response(job)
+
+
+def _job_response(job: JobRecord) -> AcquisitionJobResponse:
+    if job.case_id is None or job.plan_id is None or job.owner_id is None:
+        raise RuntimeError("Acquisition jobs require case, plan, and owner references.")
+    return AcquisitionJobResponse(
+        id=job.id,
+        case_id=job.case_id,
+        plan_id=job.plan_id,
+        owner_id=job.owner_id,
+        state=JobState(job.state),
+        progress_percent=job.progress_percent,
+        current_step=job.current_step,
+        current_module=job.current_module,
+        cancellation_requested=job.cancellation_requested,
+        resume_supported=job.resume_supported,
+        checkpoint=job_checkpoint(job),
+        error_code=job.error_code,
+        error_message=job.error_message,
+        result_reference=job.result_reference,
+        last_event_sequence=job.last_event_sequence,
+        version=job.version,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+    )
+
+
+def _event_response(event: JobEventRecord) -> JobEventResponse:
+    return JobEventResponse(
+        id=event.id,
+        job_id=event.job_id,
+        sequence=event.sequence,
+        event_type=event.event_type,
+        state=JobState(event.state),
+        progress_percent=event.progress_percent,
+        current_step=event.current_step,
+        current_module=event.current_module,
+        checkpoint=event_checkpoint(event),
+        safe_detail=event.safe_detail,
+        created_at=event.created_at,
+    )

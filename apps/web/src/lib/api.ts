@@ -176,6 +176,65 @@ export interface AcquisitionPlanList {
   limit: number;
 }
 
+export type AcquisitionJobState =
+  | "created"
+  | "validating"
+  | "ready"
+  | "running"
+  | "paused"
+  | "cancelling"
+  | "cancelled"
+  | "interrupted"
+  | "failed"
+  | "completed"
+  | "verifying"
+  | "verified";
+
+export interface AcquisitionJob {
+  id: string;
+  case_id: string;
+  plan_id: string;
+  owner_id: string;
+  state: AcquisitionJobState;
+  progress_percent: number;
+  current_step: string | null;
+  current_module: string | null;
+  cancellation_requested: boolean;
+  resume_supported: boolean;
+  checkpoint: Record<string, unknown> | null;
+  error_code: string | null;
+  error_message: string | null;
+  result_reference: string | null;
+  last_event_sequence: number;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  executor_available: false;
+}
+
+export interface AcquisitionJobList {
+  items: AcquisitionJob[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface AcquisitionJobEvent {
+  id: string;
+  job_id: string;
+  sequence: number;
+  event_type: string;
+  state: AcquisitionJobState;
+  progress_percent: number;
+  current_step: string | null;
+  current_module: string | null;
+  checkpoint: Record<string, unknown> | null;
+  safe_detail: string | null;
+  created_at: string;
+}
+
 interface ErrorEnvelope {
   error?: {
     code?: string;
@@ -324,6 +383,41 @@ export function createAcquisitionPlan(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function listAcquisitionJobs(caseId: string): Promise<AcquisitionJobList> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions?offset=0&limit=50`,
+  );
+}
+
+export function prepareAcquisitionJob(
+  caseId: string,
+  planId: string,
+): Promise<AcquisitionJob> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions`, {
+    method: "POST",
+    body: JSON.stringify({ plan_id: planId }),
+  });
+}
+
+export function cancelAcquisitionJob(
+  caseId: string,
+  jobId: string,
+): Promise<AcquisitionJob> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/cancel`,
+    { method: "POST" },
+  );
+}
+
+export function listAcquisitionJobEvents(
+  caseId: string,
+  jobId: string,
+): Promise<AcquisitionJobEvent[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/events`,
+  );
 }
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {

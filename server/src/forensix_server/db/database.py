@@ -4,7 +4,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event, text
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from .base import Base
@@ -27,6 +29,21 @@ class Database:
 
     def initialize(self) -> None:
         Base.metadata.create_all(self.engine)
+
+    def migrate(self) -> None:
+        """Upgrade a workstation database, safely adopting legacy create-all schemas."""
+        server_dir = Path(__file__).resolve().parents[3]
+        config = Config(str(server_dir / "alembic.ini"))
+        config.set_main_option("script_location", str(server_dir / "alembic"))
+        config.set_main_option(
+            "sqlalchemy.url",
+            self.engine.url.render_as_string(hide_password=False).replace("%", "%%"),
+        )
+        tables = set(inspect(self.engine).get_table_names())
+        if tables and "alembic_version" not in tables:
+            legacy_revision = _legacy_revision(tables)
+            command.stamp(config, legacy_revision)
+        command.upgrade(config, "head")
 
     def ready(self) -> bool:
         try:
@@ -71,3 +88,23 @@ def sqlite_pragmas(engine: Engine) -> dict[str, int | str]:
             "synchronous": connection.execute(text("PRAGMA synchronous")).scalar_one(),
             "busy_timeout": connection.execute(text("PRAGMA busy_timeout")).scalar_one(),
         }
+
+
+def _legacy_revision(tables: set[str]) -> str:
+    """Identify the newest schema marker created before migration tracking was enabled."""
+    markers = (
+        ("job_events", "0008_job_events"),
+        ("acquisition_plans", "0007_acquisition_plans"),
+        ("case_devices", "0006_case_devices"),
+        ("cases", "0005_cases"),
+        ("users", "0004_auth_rbac"),
+        ("jobs", "0003_jobs"),
+        ("device_capability_runs", "0002_capabilities"),
+        ("device_detection_runs", "0001_phase0"),
+    )
+    for table, revision in markers:
+        if table in tables:
+            return revision
+    raise RuntimeError(
+        "The configured database has unrecognized tables and cannot be adopted automatically."
+    )

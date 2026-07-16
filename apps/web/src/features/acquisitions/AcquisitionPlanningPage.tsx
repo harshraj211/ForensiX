@@ -1,16 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, LoaderCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  ClipboardCheck,
+  LoaderCircle,
+  ShieldCheck,
+  XCircle,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { caseKeys } from "../cases/caseKeys";
 import { CaseError } from "../cases/CasesPage";
 import {
+  cancelAcquisitionJob,
   createAcquisitionPlan,
   getCase,
+  listAcquisitionJobs,
   listAcquisitionPlans,
   listCaseDeviceAssessments,
   listCaseDevices,
+  prepareAcquisitionJob,
+  type AcquisitionJob,
   type AcquisitionModule,
   type AcquisitionPlan,
   type AcquisitionScope,
@@ -70,6 +82,11 @@ export function AcquisitionPlanningPage() {
     queryFn: () => listAcquisitionPlans(caseId),
     enabled: Boolean(caseId),
   });
+  const jobsQuery = useQuery({
+    queryKey: caseKeys.acquisitionJobs(caseId),
+    queryFn: () => listAcquisitionJobs(caseId),
+    enabled: Boolean(caseId),
+  });
   const latestAssessment = assessmentsQuery.data?.[0];
   const supportedModules = useMemo(() => {
     if (!latestAssessment) return new Set<AcquisitionModule>();
@@ -110,6 +127,18 @@ export function AcquisitionPlanningPage() {
     onSuccess: () => {
       setAcknowledged(false);
       void queryClient.invalidateQueries({ queryKey: caseKeys.acquisitionPlans(caseId) });
+    },
+  });
+  const prepareJob = useMutation({
+    mutationFn: (planId: string) => prepareAcquisitionJob(caseId, planId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: caseKeys.acquisitionJobs(caseId) });
+    },
+  });
+  const cancelJob = useMutation({
+    mutationFn: (jobId: string) => cancelAcquisitionJob(caseId, jobId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: caseKeys.acquisitionJobs(caseId) });
     },
   });
 
@@ -253,7 +282,23 @@ export function AcquisitionPlanningPage() {
             </form>
           )}
         </section>
-        <PlanHistory plans={plansQuery.data?.items ?? []} pending={plansQuery.isPending} error={plansQuery.error} />
+        <PlanHistory
+          plans={plansQuery.data?.items ?? []}
+          jobs={jobsQuery.data?.items ?? []}
+          pending={plansQuery.isPending || jobsQuery.isPending}
+          error={plansQuery.error ?? jobsQuery.error}
+          caseWritable={caseWritable}
+          referenceTime={pageOpenedAt}
+          preparingPlanId={prepareJob.isPending ? prepareJob.variables : undefined}
+          cancellingJobId={cancelJob.isPending ? cancelJob.variables : undefined}
+          onPrepare={(planId) => {
+            prepareJob.mutate(planId);
+          }}
+          onCancel={(jobId) => {
+            cancelJob.mutate(jobId);
+          }}
+          mutationError={prepareJob.error ?? cancelJob.error}
+        />
       </div>
     </div>
   );
@@ -287,15 +332,48 @@ function ReadinessState({
   );
 }
 
-function PlanHistory({ plans, pending, error }: { plans: AcquisitionPlan[]; pending: boolean; error: Error | null }) {
+function PlanHistory({
+  plans,
+  jobs,
+  pending,
+  error,
+  caseWritable,
+  referenceTime,
+  preparingPlanId,
+  cancellingJobId,
+  onPrepare,
+  onCancel,
+  mutationError,
+}: {
+  plans: AcquisitionPlan[];
+  jobs: AcquisitionJob[];
+  pending: boolean;
+  error: Error | null;
+  caseWritable: boolean;
+  referenceTime: number;
+  preparingPlanId?: string;
+  cancellingJobId?: string;
+  onPrepare: (planId: string) => void;
+  onCancel: (jobId: string) => void;
+  mutationError: Error | null;
+}) {
   return (
     <aside className="rounded-2xl border border-white/8 bg-white/[0.025] p-6">
       <h2 className="text-lg font-semibold text-white">Frozen plan history</h2>
+      <div className="mt-4 flex gap-3 rounded-xl border border-cyan-200/10 bg-cyan-200/5 p-3 text-xs leading-5 text-cyan-100/70">
+        <ShieldCheck size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+        Preparing a job only freezes durable execution state. The bounded executor and evidence collection are not enabled yet.
+      </div>
       {pending && <p role="status" className="mt-5 text-sm text-slate-500">Loading plans…</p>}
       {error && <div className="mt-5"><CaseError error={error} /></div>}
+      {mutationError && <div className="mt-5"><CaseError error={mutationError} /></div>}
       {!pending && !error && plans.length === 0 && <p className="mt-5 text-sm leading-6 text-slate-500">No acquisition plan has been created for this case.</p>}
       <div className="mt-5 space-y-3">
-        {plans.map((plan) => (
+        {plans.map((plan) => {
+          const job = jobs.find((item) => item.plan_id === plan.id);
+          const planFresh = referenceTime <= new Date(plan.readiness_expires_at).getTime();
+          const cancellable = job && new Set(["created", "validating", "ready", "paused", "interrupted"]).has(job.state);
+          return (
           <article key={plan.id} className="rounded-xl border border-white/8 bg-black/10 p-4">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-white">{scopeCopy[plan.scope].label}</h3>
@@ -304,8 +382,47 @@ function PlanHistory({ plans, pending, error }: { plans: AcquisitionPlan[]; pend
             <p className="mt-3 text-xs text-slate-500">{plan.modules.map((module) => moduleLabels[module]).join(" · ")}</p>
             <p className="mt-3 truncate font-mono text-[10px] text-slate-600" title={plan.plan_hash}>SHA-256 {plan.plan_hash}</p>
             <p className="mt-2 text-[11px] text-slate-600">Created {new Date(plan.created_at).toLocaleString()}</p>
+            {job ? (
+              <div className="mt-4 rounded-lg border border-white/8 bg-white/[0.025] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold text-slate-300">Durable job</span>
+                  <span className="rounded-full border border-cyan-200/15 px-2 py-1 text-[10px] uppercase tracking-wide text-cyan-200">{job.state}</span>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">{job.current_step ?? "Awaiting a safe executor step."}</p>
+                <p className="mt-2 text-[11px] text-slate-600">{job.progress_percent}% checkpoint / {job.last_event_sequence} durable events / not running</p>
+                {cancellable && (
+                  <button
+                    type="button"
+                    disabled={cancellingJobId === job.id}
+                    onClick={() => {
+                      onCancel(job.id);
+                    }}
+                    className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-lg border border-rose-200/15 px-3 text-xs font-semibold text-rose-200 disabled:opacity-40"
+                  >
+                    {cancellingJobId === job.id ? <LoaderCircle size={14} className="animate-spin" /> : <XCircle size={14} />}
+                    Cancel prepared job
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  disabled={!caseWritable || !planFresh || preparingPlanId === plan.id}
+                  onClick={() => {
+                    onPrepare(plan.id);
+                  }}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-cyan-200/15 px-3 text-xs font-semibold text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {preparingPlanId === plan.id ? <LoaderCircle size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                  Prepare durable job
+                </button>
+                {!planFresh && <p className="mt-2 text-[11px] text-rose-200/75">Readiness expired; reassess and create a new plan.</p>}
+              </div>
+            )}
           </article>
-        ))}
+          );
+        })}
       </div>
     </aside>
   );

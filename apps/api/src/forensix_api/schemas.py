@@ -9,6 +9,7 @@ from forensix_forensic.adb.models import DeviceState, SharedStorageRootProbe
 from forensix_forensic.capabilities.models import CapabilityDecision
 from forensix_server.acquisitions import AcquisitionModule, AcquisitionScope
 from forensix_server.cases import CaseAccessLevel, CaseStatus
+from forensix_server.jobs import JobState
 
 
 class ApiErrorDetail(BaseModel):
@@ -146,6 +147,55 @@ class AcquisitionPlanListResponse(BaseModel):
     total: int
     offset: int
     limit: int
+
+
+class AcquisitionJobPrepareRequest(BaseModel):
+    plan_id: str = Field(min_length=36, max_length=36)
+
+
+class AcquisitionJobResponse(BaseModel):
+    id: str
+    case_id: str
+    plan_id: str
+    owner_id: str
+    state: JobState
+    progress_percent: int
+    current_step: str | None
+    current_module: str | None
+    cancellation_requested: bool
+    resume_supported: bool
+    checkpoint: dict[str, Any] | None
+    error_code: str | None
+    error_message: str | None
+    result_reference: str | None
+    last_event_sequence: int
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    executor_available: Literal[False] = False
+
+
+class AcquisitionJobListResponse(BaseModel):
+    items: list[AcquisitionJobResponse]
+    total: int
+    offset: int
+    limit: int
+
+
+class JobEventResponse(BaseModel):
+    id: str
+    job_id: str
+    sequence: int
+    event_type: str
+    state: JobState
+    progress_percent: int
+    current_step: str | None
+    current_module: str | None
+    checkpoint: dict[str, Any] | None
+    safe_detail: str | None
+    created_at: datetime
 
 
 class AuthBootstrapStatusResponse(BaseModel):

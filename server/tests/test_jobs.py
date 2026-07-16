@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
-from forensix_server.db.database import Database
+from forensix_server.db import Database, JobEventRecord
 from forensix_server.jobs import JobService, JobState, JobTransitionError, JobType
 
 
@@ -66,6 +66,42 @@ def test_progress_is_monotonic_and_only_allowed_while_active(session: Session) -
     service.transition(session, job.id, JobState.READY)
     with pytest.raises(ValueError, match="cannot be updated"):
         service.update_progress(session, job.id, 50)
+
+
+def test_progress_persists_bounded_checkpoint_and_append_only_events(session: Session) -> None:
+    service = JobService()
+    job = service.create(session, JobType.ACQUISITION, resume_supported=True)
+    service.transition(session, job.id, JobState.VALIDATING)
+    service.update_progress(
+        session,
+        job.id,
+        15,
+        current_step="Validating plan",
+        current_module="device_metadata",
+        checkpoint={"phase": "validation", "completed_modules": 0},
+    )
+
+    events = service.list_events(session, job.id)
+
+    assert [event.sequence for event in events] == [1, 2, 3]
+    assert [event.event_type for event in events] == [
+        "job_created",
+        "state_changed",
+        "progress_updated",
+    ]
+    assert events[-1].checkpoint_json == '{"completed_modules":0,"phase":"validation"}'
+    assert session.query(JobEventRecord).count() == 3
+
+
+def test_checkpoint_rejects_unbounded_or_non_json_values(session: Session) -> None:
+    service = JobService()
+    job = service.create(session, JobType.ACQUISITION)
+    service.transition(session, job.id, JobState.VALIDATING)
+
+    with pytest.raises(ValueError, match="JSON serializable"):
+        service.update_progress(session, job.id, 1, checkpoint={"invalid": object()})
+    with pytest.raises(ValueError, match="8192"):
+        service.update_progress(session, job.id, 1, checkpoint={"oversized": "x" * 9_000})
 
 
 def test_active_job_cancellation_is_cooperative_and_idempotent(session: Session) -> None:
@@ -132,6 +168,7 @@ def test_restart_marks_only_active_jobs_interrupted(session: Session) -> None:
     assert running.state == JobState.INTERRUPTED.value
     assert running.error_code == "BACKEND_RESTARTED"
     assert ready.state == JobState.READY.value
+    assert service.list_events(session, running.id)[-1].event_type == "job_interrupted"
 
 
 def test_job_version_detects_concurrent_state_update(tmp_path: Path) -> None:

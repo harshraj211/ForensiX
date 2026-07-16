@@ -2,7 +2,7 @@
 
 ForensiX is a planned cross-platform Android rapid evidence triage and forensic preview platform. It runs on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
-The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, immutable capability-gated acquisition plans, a typed and bounded ADB subsystem, deterministic mock-device scenarios, protected FastAPI endpoints, SQLite operational metadata, contained evidence-storage and hashing primitives, durable local-job states, and tested React authentication/case/device-readiness/planning screens. No production forensic capability is claimed yet.
+The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, immutable capability-gated acquisition plans, case-owned durable acquisition jobs with append-only progress events and checkpoints, a typed and bounded ADB subsystem, deterministic mock-device scenarios, protected FastAPI endpoints, SQLite operational metadata, contained evidence-storage and hashing primitives, and tested React authentication/case/device-readiness/planning screens. No production forensic capability is claimed yet.
 
 ## Project status
 
@@ -21,6 +21,7 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - React 19, TypeScript 6, Vite, Tailwind CSS, TanStack Query, and accessible route shell
 - FastAPI application factory with loopback-safe CORS configuration and request IDs
 - SQLite WAL/foreign-key configuration and an initial reversible Alembic migration
+- Migration-aware workstation startup that safely adopts recognized legacy development schemas before upgrading
 - One-time local administrator bootstrap, Argon2id credentials, opaque hashed sessions, lockout, session rotation/revocation, CSRF validation, and explicit RBAC permissions
 - Unique case numbers, creator ownership, memberships, lifecycle transitions, optimistic versions, append-only case events, protected case APIs, and Cases UI
 - Case-scoped device detection, hashed device identity, immutable readiness snapshots, closed-case blocking, device history APIs, and case registry UI
@@ -34,7 +35,8 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Canonical SHA-256 plan and readiness-snapshot hashes, recorded limitation acknowledgement, protected planning APIs, and plan-history UI
 - Strict portable evidence-storage keys with traversal, link, and reparse-point boundary checks
 - Partial-file streaming, atomic sealing, non-overwrite behavior, and streaming SHA-256 verification
-- Durable versioned job states with validated transitions, monotonic progress, cooperative cancellation, and restart interruption recovery
+- Durable versioned job states with restrictive case/plan ownership, validated transitions, monotonic progress, bounded JSON checkpoints, append-only sequenced events, cooperative cancellation, and restart interruption recovery
+- Idempotent acquisition-job preparation, status/event/cancellation APIs, and case UI that clearly labels prepared jobs as not running
 - Deterministic mock ADB scenarios and safe API error envelopes
 - Device-readiness UI with forensic limitations and operator guidance
 - CI for frontend lint/type/test/build and backend Ruff/mypy/Pytest
@@ -94,4 +96,4 @@ pnpm build
 
 ## Current security boundary
 
-The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text or remote path from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property, package, and storage-root test commands execute. Storage probing uses content-free directory/readability predicates; it does not list filenames, copy files, or prove evidence completeness. Case-linked records persist only a serial hash and masked suffix; raw serials remain transient at this stage. Creating an acquisition plan does not create a job, run ADB, list files, or acquire evidence. Use only controlled test devices until the audit, acquisition, and validation phases are complete.
+The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text or remote path from the browser. Capability assessment revalidates the selected serial and authorization state before fixed property, package, and storage-root test commands execute. Storage probing uses content-free directory/readability predicates; it does not list filenames, copy files, or prove evidence completeness. Case-linked records persist only a serial hash and masked suffix; raw serials remain transient at this stage. Creating a plan still performs no execution. Preparing its durable job records intent, checkpoint, and progress history but does not run ADB, list files, or acquire evidence. Use only controlled test devices until the audit, acquisition, and validation phases are complete.

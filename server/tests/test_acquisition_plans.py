@@ -14,17 +14,21 @@ from forensix_forensic.capabilities import (
     DeviceCapabilitySnapshot,
 )
 from forensix_server.acquisitions import (
+    AcquisitionExecutionService,
+    AcquisitionJobInvalidStateError,
     AcquisitionModule,
     AcquisitionPlanService,
     AcquisitionPlanValidationError,
     AcquisitionScope,
+    job_checkpoint,
     plan_limitations,
     plan_modules,
 )
 from forensix_server.auth.domain import ROLE_PERMISSIONS, Principal, RoleName
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseAccessDeniedError, CaseAccessLevel, CaseService
-from forensix_server.db import CaseEventRecord, Database, UserRecord
+from forensix_server.db import CaseEventRecord, Database, JobRecord, UserRecord
+from forensix_server.jobs import JobState
 
 
 @pytest.fixture
@@ -250,3 +254,101 @@ def test_case_member_without_acquisition_permission_cannot_plan(session: Session
             limitations_acknowledged=True,
             now=now,
         )
+
+
+def test_plan_prepares_one_idempotent_durable_job_with_checkpoint(session: Session) -> None:
+    now = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+    principal, _ = _identity(session, "execution.owner", RoleName.INVESTIGATOR)
+    case, device, assessment = _case_device(session, principal, now)
+    plan = AcquisitionPlanService().create(
+        session,
+        principal,
+        case.id,
+        device_id=device.id,
+        assessment_id=assessment.id,
+        scope=AcquisitionScope.METADATA_ONLY,
+        limitations_acknowledged=True,
+        now=now,
+    )
+    service = AcquisitionExecutionService()
+
+    job, created = service.prepare(session, principal, case.id, plan.id, now=now)
+    same_job, created_again = service.prepare(
+        session, principal, case.id, plan.id, now=now + timedelta(minutes=1)
+    )
+    events = service.list_events(session, principal, case.id, job.id)
+
+    assert created is True
+    assert created_again is False
+    assert same_job.id == job.id
+    assert job.case_id == case.id
+    assert job.plan_id == plan.id
+    assert job.owner_id == principal.user_id
+    assert job.state == JobState.READY.value
+    assert job.progress_percent == 5
+    assert job.started_at is None
+    assert job_checkpoint(job) == {
+        "phase": "prepared",
+        "plan_hash": plan.plan_hash,
+        "plan_id": plan.id,
+        "schema_version": plan.schema_version,
+    }
+    assert [event.sequence for event in events] == [1, 2, 3, 4]
+    assert session.query(JobRecord).count() == 1
+    case_event = session.scalar(
+        select(CaseEventRecord).where(CaseEventRecord.event_type == "acquisition_job_prepared")
+    )
+    assert case_event is not None
+
+
+def test_stale_plan_cannot_prepare_an_execution_job(session: Session) -> None:
+    now = datetime(2026, 7, 15, 10, 0, tzinfo=UTC)
+    principal, _ = _identity(session, "execution.owner", RoleName.INVESTIGATOR)
+    case, device, assessment = _case_device(session, principal, now)
+    plan = AcquisitionPlanService().create(
+        session,
+        principal,
+        case.id,
+        device_id=device.id,
+        assessment_id=assessment.id,
+        scope=AcquisitionScope.METADATA_ONLY,
+        limitations_acknowledged=True,
+        now=now,
+    )
+
+    with pytest.raises(AcquisitionJobInvalidStateError, match="stale"):
+        AcquisitionExecutionService().prepare(
+            session,
+            principal,
+            case.id,
+            plan.id,
+            now=now + timedelta(minutes=31),
+        )
+
+
+def test_ready_acquisition_job_cancels_immediately_and_idempotently(session: Session) -> None:
+    now = datetime.now(UTC)
+    principal, _ = _identity(session, "execution.owner", RoleName.INVESTIGATOR)
+    case, device, assessment = _case_device(session, principal, now)
+    plan = AcquisitionPlanService().create(
+        session,
+        principal,
+        case.id,
+        device_id=device.id,
+        assessment_id=assessment.id,
+        scope=AcquisitionScope.METADATA_ONLY,
+        limitations_acknowledged=True,
+        now=now,
+    )
+    service = AcquisitionExecutionService()
+    job, _ = service.prepare(session, principal, case.id, plan.id, now=now)
+
+    cancelled = service.cancel(session, principal, case.id, job.id)
+    repeated = service.cancel(session, principal, case.id, job.id)
+    events = service.list_events(session, principal, case.id, job.id)
+
+    assert cancelled.state == JobState.CANCELLED.value
+    assert repeated.state == JobState.CANCELLED.value
+    assert cancelled.cancellation_requested is True
+    assert events[-1].event_type == "cancellation_requested"
+    assert len(events) == 5

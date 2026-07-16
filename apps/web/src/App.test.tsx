@@ -473,6 +473,7 @@ describe("device readiness", () => {
 describe("acquisition planning", () => {
   it("creates a frozen plan without starting acquisition", async () => {
     let created = false;
+    let jobState: "ready" | "cancelled" | null = null;
     const assessedAt = new Date().toISOString();
     const plan = {
       id: "plan-1",
@@ -491,6 +492,29 @@ describe("acquisition planning", () => {
       readiness_expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       created_at: assessedAt,
     };
+    const acquisitionJob = () => ({
+      id: "job-1",
+      case_id: "case-1",
+      plan_id: "plan-1",
+      owner_id: "user-1",
+      state: jobState,
+      progress_percent: 5,
+      current_step: "Immutable plan validated; awaiting bounded executor",
+      current_module: null,
+      cancellation_requested: jobState === "cancelled",
+      resume_supported: true,
+      checkpoint: { phase: "prepared", plan_id: "plan-1", plan_hash: plan.plan_hash },
+      error_code: null,
+      error_message: null,
+      result_reference: null,
+      last_event_sequence: jobState === "cancelled" ? 5 : 4,
+      version: jobState === "cancelled" ? 5 : 4,
+      created_at: assessedAt,
+      updated_at: assessedAt,
+      started_at: null,
+      completed_at: jobState === "cancelled" ? assessedAt : null,
+      executor_available: false,
+    });
     const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url =
         typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -577,6 +601,24 @@ describe("acquisition planning", () => {
         created = true;
         return Promise.resolve(jsonResponse(plan, 201));
       }
+      if (url === "/api/v1/cases/case-1/acquisitions?offset=0&limit=50") {
+        return Promise.resolve(
+          jsonResponse({
+            items: jobState ? [acquisitionJob()] : [],
+            total: jobState ? 1 : 0,
+            offset: 0,
+            limit: 50,
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/acquisitions" && init?.method === "POST") {
+        jobState = "ready";
+        return Promise.resolve(jsonResponse(acquisitionJob(), 201));
+      }
+      if (url === "/api/v1/cases/case-1/acquisitions/job-1/cancel" && init?.method === "POST") {
+        jobState = "cancelled";
+        return Promise.resolve(jsonResponse(acquisitionJob()));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -592,6 +634,12 @@ describe("acquisition planning", () => {
     expect(
       await screen.findByRole("heading", { name: "Quick triage", level: 3 }),
     ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Prepare durable job" }));
+
+    expect(await screen.findByText("Durable job")).toBeInTheDocument();
+    expect(await screen.findByText(/4 durable events \/ not running/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel prepared job" }));
+    expect(await screen.findByText("cancelled")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/cases/case-1/acquisition-plans",
       expect.objectContaining({
@@ -602,6 +650,13 @@ describe("acquisition planning", () => {
           scope: "quick_triage",
           limitations_acknowledged: true,
         }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/cases/case-1/acquisitions",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ plan_id: "plan-1" }),
       }),
     );
   });

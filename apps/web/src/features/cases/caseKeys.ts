@@ -5,4 +5,5 @@ export const caseKeys = {
   deviceAssessments: (caseId: string, deviceId: string) =>
     ["cases", caseId, "devices", deviceId, "assessments"] as const,
   acquisitionPlans: (caseId: string) => ["cases", caseId, "acquisition-plans"] as const,
+  acquisitionJobs: (caseId: string) => ["cases", caseId, "acquisition-jobs"] as const,
 };

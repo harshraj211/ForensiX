@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, inspect, select
 
 from forensix_api.main import create_app
 from forensix_forensic.adb import MockAdbClient, MockAdbScenario
@@ -14,6 +14,7 @@ from forensix_server.db import (
     CaseDeviceDetectionRecord,
     CaseDeviceRecord,
     DeviceCapabilityRun,
+    JobEventRecord,
     JobRecord,
     RoleRecord,
     UserRecord,
@@ -40,6 +41,28 @@ def _authorize(client: TestClient) -> dict[str, str]:
     return {"X-CSRF-Token": response.json()["csrf_token"]}
 
 
+def _create_case_plan(
+    client: TestClient, headers: dict[str, str], *, title: str = "Execution case"
+) -> tuple[dict[str, object], dict[str, object]]:
+    case = client.post("/api/v1/cases", headers=headers, json={"title": title}).json()
+    assessment = client.post(
+        "/api/v1/devices/assess",
+        headers=headers,
+        json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+    ).json()
+    plan = client.post(
+        f"/api/v1/cases/{case['id']}/acquisition-plans",
+        headers=headers,
+        json={
+            "device_id": assessment["case_device_id"],
+            "assessment_id": assessment["assessment_id"],
+            "scope": "metadata_only",
+            "limitations_acknowledged": True,
+        },
+    ).json()
+    return case, plan
+
+
 def test_health_endpoints(tmp_path: Path) -> None:
     with TestClient(create_app(_settings(tmp_path), adb_client=MockAdbClient())) as client:
         live = client.get("/health/live")
@@ -50,6 +73,18 @@ def test_health_endpoints(tmp_path: Path) -> None:
     assert ready.status_code == 200
     assert ready.json()["database"] == "ready"
     assert live.headers["X-Request-ID"]
+
+
+def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> None:
+    settings = Settings(environment="development", data_dir=tmp_path, adb_mode="mock")
+    app = create_app(settings, adb_client=MockAdbClient())
+
+    with TestClient(app) as client:
+        ready = client.get("/health/ready")
+        tables = set(inspect(app.state.database.engine).get_table_names())
+
+    assert ready.status_code == 200
+    assert {"alembic_version", "acquisition_plans", "jobs", "job_events"} <= tables
 
 
 @pytest.mark.parametrize(
@@ -571,3 +606,82 @@ def test_acquisition_plan_requires_explicit_limitation_acknowledgement(tmp_path:
         )
 
     assert rejected.status_code == 422
+
+
+def test_acquisition_job_preparation_is_idempotent_and_reconstructable(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers)
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+
+        prepared = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]})
+        repeated = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]})
+        listed = client.get(endpoint)
+        detail = client.get(f"{endpoint}/{prepared.json()['id']}")
+        events = client.get(f"{endpoint}/{prepared.json()['id']}/events")
+
+    assert prepared.status_code == 201
+    assert repeated.status_code == 200
+    assert repeated.json()["id"] == prepared.json()["id"]
+    assert prepared.json()["state"] == "ready"
+    assert prepared.json()["progress_percent"] == 5
+    assert prepared.json()["started_at"] is None
+    assert prepared.json()["executor_available"] is False
+    assert prepared.json()["checkpoint"]["plan_hash"] == plan["plan_hash"]
+    assert listed.json()["total"] == 1
+    assert detail.json()["plan_id"] == plan["id"]
+    assert [event["sequence"] for event in events.json()] == [1, 2, 3, 4]
+    assert [event["event_type"] for event in events.json()] == [
+        "job_created",
+        "state_changed",
+        "progress_updated",
+        "state_changed",
+    ]
+    with app.state.database.session() as session:
+        job = session.execute(select(JobRecord)).scalar_one()
+        persisted_events = list(session.scalars(select(JobEventRecord)))
+    assert job.case_id == case["id"]
+    assert job.plan_id == plan["id"]
+    assert len(persisted_events) == 4
+
+
+def test_prepared_acquisition_job_can_be_cancelled_without_execution(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, title="Cancellation case")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+
+        cancelled = client.post(f"{endpoint}/{job['id']}/cancel", headers=headers)
+        repeated = client.post(f"{endpoint}/{job['id']}/cancel", headers=headers)
+        events = client.get(f"{endpoint}/{job['id']}/events")
+
+    assert cancelled.status_code == 200
+    assert cancelled.json()["state"] == "cancelled"
+    assert cancelled.json()["cancellation_requested"] is True
+    assert cancelled.json()["started_at"] is None
+    assert repeated.json()["last_event_sequence"] == cancelled.json()["last_event_sequence"]
+    assert events.json()[-1]["event_type"] == "cancellation_requested"
+    assert len(events.json()) == 5
+
+
+def test_acquisition_job_mutations_require_csrf_and_open_case(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, title="Closed execution case")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        missing_csrf = client.post(endpoint, json={"plan_id": plan["id"]})
+        closed = client.post(
+            f"/api/v1/cases/{case['id']}/transition",
+            headers=headers,
+            json={"expected_version": case["version"], "status": "closed"},
+        )
+        rejected = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]})
+
+    assert missing_csrf.status_code == 403
+    assert closed.status_code == 200
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "ACQUISITION_JOB_INVALID"

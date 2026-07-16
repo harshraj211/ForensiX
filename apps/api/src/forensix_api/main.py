@@ -14,12 +14,13 @@ from forensix_api.errors import (
     security_error_handler,
 )
 from forensix_api.middleware import request_id_middleware
-from forensix_api.routers import auth, cases, devices, health
+from forensix_api.routers import acquisitions, auth, cases, devices, health
 from forensix_forensic.adb import AdbClient, AdbError
 from forensix_server.auth import AuthService
 from forensix_server.cases import CaseError
 from forensix_server.config import Settings
 from forensix_server.db import Database
+from forensix_server.jobs import JobService
 
 
 def create_app(
@@ -36,9 +37,13 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        database.initialize()
+        if effective_settings.environment == "test":
+            database.initialize()
+        else:
+            database.migrate()
         with database.session() as session:
             auth_service.ensure_roles(session)
+            JobService().recover_after_restart(session)
         yield
         database.dispose()
 
@@ -68,6 +73,7 @@ def create_app(
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(cases.router)
+    app.include_router(acquisitions.router)
     app.include_router(devices.router)
     return app
 
