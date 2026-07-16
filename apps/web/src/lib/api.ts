@@ -280,6 +280,26 @@ export interface AcquiredEvidenceFile {
   completed_at: string | null;
 }
 
+export interface EvidenceVerification {
+  id: string;
+  evidence_file_id: string;
+  case_id: string;
+  job_id: string;
+  verified_by: string;
+  status: "verified" | "mismatch" | "missing" | "error";
+  expected_file_sha256: string;
+  observed_file_sha256: string | null;
+  file_size_bytes: number | null;
+  file_matches: boolean;
+  expected_manifest_sha256: string;
+  observed_manifest_sha256: string | null;
+  manifest_matches: boolean;
+  error_code: string | null;
+  verification_hash: string;
+  tool_version: string;
+  verified_at: string;
+}
+
 export interface AcquisitionJobEvent {
   id: string;
   job_id: string;
@@ -514,6 +534,26 @@ export function listAcquiredFiles(
 ): Promise<AcquiredEvidenceFile[]> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/files`,
+  );
+}
+
+export function verifyEvidenceFile(
+  caseId: string,
+  jobId: string,
+  evidenceFileId: string,
+): Promise<EvidenceVerification> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/files/${encodeURIComponent(evidenceFileId)}/verify`,
+    { method: "POST" },
+  );
+}
+
+export function listEvidenceVerifications(
+  caseId: string,
+  jobId: string,
+): Promise<EvidenceVerification[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/verifications`,
   );
 }
 

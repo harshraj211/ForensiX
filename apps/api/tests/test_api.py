@@ -94,6 +94,7 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
         "acquisition_inventories",
         "acquisition_inventory_items",
         "acquisition_plans",
+        "evidence_verifications",
         "jobs",
         "job_events",
     } <= tables
@@ -231,8 +232,12 @@ def test_openapi_exposes_no_arbitrary_shell_operation(tmp_path: Path) -> None:
     acquire = schema["paths"][
         "/api/v1/cases/{case_id}/acquisitions/{job_id}/inventory/items/{item_id}/acquire"
     ]["post"]
+    verify = schema["paths"][
+        "/api/v1/cases/{case_id}/acquisitions/{job_id}/files/{evidence_file_id}/verify"
+    ]["post"]
     assert "requestBody" not in detect
     assert "requestBody" not in acquire
+    assert "requestBody" not in verify
 
 
 def test_first_run_bootstrap_creates_secure_local_session(tmp_path: Path) -> None:
@@ -730,6 +735,11 @@ def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
         acquired = client.post(acquire_url, headers=headers)
         repeated = client.post(acquire_url, headers=headers)
         listed = client.get(f"{endpoint}/{job['id']}/files")
+        verified = client.post(
+            f"{endpoint}/{job['id']}/files/{acquired.json()['id']}/verify",
+            headers=headers,
+        )
+        verifications = client.get(f"{endpoint}/{job['id']}/verifications")
 
     assert acquired.status_code == 200
     assert acquired.json()["status"] == "completed"
@@ -741,6 +751,45 @@ def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
     assert repeated.json()["id"] == acquired.json()["id"]
     assert listed.status_code == 200
     assert [entry["id"] for entry in listed.json()] == [acquired.json()["id"]]
+    assert verified.status_code == 200
+    assert verified.json()["status"] == "verified"
+    assert verified.json()["file_matches"] is True
+    assert verified.json()["manifest_matches"] is True
+    assert len(verified.json()["verification_hash"]) == 64
+    assert [entry["id"] for entry in verifications.json()] == [verified.json()["id"]]
+
+
+def test_verification_detects_modified_evidence_without_changing_expected_hash(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+        inventory = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers).json()
+        item = inventory["items"][0]
+        acquired = client.post(
+            f"{endpoint}/{job['id']}/inventory/items/{item['id']}/acquire",
+            headers=headers,
+        ).json()
+        expected_hash = acquired["sha256"]
+        evidence_path = tmp_path / "evidence" / Path(acquired["storage_key"])
+        evidence_path.write_bytes(b"modified after acquisition")
+
+        verification = client.post(
+            f"{endpoint}/{job['id']}/files/{acquired['id']}/verify",
+            headers=headers,
+        )
+        unchanged = client.get(f"{endpoint}/{job['id']}/files").json()[0]
+
+    assert verification.status_code == 200
+    assert verification.json()["status"] == "mismatch"
+    assert verification.json()["file_matches"] is False
+    assert verification.json()["manifest_matches"] is True
+    assert verification.json()["expected_file_sha256"] == expected_hash
+    assert unchanged["sha256"] == expected_hash
 
 
 def test_file_acquisition_rejects_caller_supplied_or_unknown_item(tmp_path: Path) -> None:

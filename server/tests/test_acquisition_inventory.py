@@ -27,6 +27,7 @@ from forensix_server.acquisitions import (
     AcquisitionPlanService,
     AcquisitionScope,
     DeviceIdentityChangedError,
+    EvidenceVerificationService,
 )
 from forensix_server.auth import Principal, RoleName
 from forensix_server.auth.domain import ROLE_PERMISSIONS
@@ -37,6 +38,7 @@ from forensix_server.db import (
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     Database,
+    EvidenceVerificationRecord,
     JobRecord,
     UserRecord,
 )
@@ -405,3 +407,87 @@ async def test_file_acquisition_rejects_inventory_item_from_another_job(
             other_item_id,
             MockAdbClient(),
         )
+
+
+async def _acquire_timeline_fixture(
+    database: Database, principal: Principal
+) -> tuple[str, str, AcquiredEvidenceFileRecord]:
+    case_id, _, job_id = _ready_job(database, principal)
+    await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
+    with database.session() as session:
+        item = session.scalar(
+            select(AcquisitionInventoryItemRecord).where(
+                AcquisitionInventoryItemRecord.relative_path == "Documents/timeline.csv"
+            )
+        )
+        assert item is not None
+        item_id = item.id
+    acquired = await AcquisitionFileService().acquire(
+        database, principal, case_id, job_id, item_id, MockAdbClient()
+    )
+    return case_id, job_id, acquired
+
+
+@pytest.mark.asyncio
+async def test_evidence_verification_is_append_only_and_matches_known_hashes(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, job_id, acquired = await _acquire_timeline_fixture(database, principal)
+    service = EvidenceVerificationService()
+
+    first = await service.verify(database, principal, case_id, job_id, acquired.id)
+    second = await service.verify(database, principal, case_id, job_id, acquired.id)
+
+    assert first.status == second.status == "verified"
+    assert first.file_matches is True
+    assert first.manifest_matches is True
+    assert first.observed_file_sha256 == acquired.sha256
+    assert first.observed_manifest_sha256 == acquired.manifest_hash
+    assert first.id != second.id
+    assert first.verification_hash != second.verification_hash
+    with database.session() as session:
+        records = list(session.scalars(select(EvidenceVerificationRecord)))
+    assert len(records) == 2
+
+
+@pytest.mark.asyncio
+async def test_evidence_verification_records_mismatch_without_overwriting_expected_hash(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, job_id, acquired = await _acquire_timeline_fixture(database, principal)
+    expected_sha256 = acquired.sha256
+    evidence_path = database.data_dir / "evidence" / Path(acquired.storage_key)
+    evidence_path.write_bytes(b"tampered bytes")
+
+    verification = await EvidenceVerificationService().verify(
+        database, principal, case_id, job_id, acquired.id
+    )
+
+    assert verification.status == "mismatch"
+    assert verification.file_matches is False
+    assert verification.manifest_matches is True
+    assert verification.expected_file_sha256 == expected_sha256
+    assert verification.observed_file_sha256 == hashlib.sha256(b"tampered bytes").hexdigest()
+    with database.session() as session:
+        persisted = session.get(AcquiredEvidenceFileRecord, acquired.id)
+    assert persisted is not None
+    assert persisted.sha256 == expected_sha256
+
+
+@pytest.mark.asyncio
+async def test_evidence_verification_records_missing_manifest(database: Database) -> None:
+    principal = _principal(database)
+    case_id, job_id, acquired = await _acquire_timeline_fixture(database, principal)
+    manifest_path = database.data_dir / "evidence" / Path(acquired.manifest_storage_key)
+    manifest_path.unlink()
+
+    verification = await EvidenceVerificationService().verify(
+        database, principal, case_id, job_id, acquired.id
+    )
+
+    assert verification.status == "missing"
+    assert verification.file_matches is True
+    assert verification.manifest_matches is False
+    assert verification.error_code == "EVIDENCE_MISSING"

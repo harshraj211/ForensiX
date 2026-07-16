@@ -17,6 +17,7 @@ from forensix_api.schemas import (
     AcquisitionJobListResponse,
     AcquisitionJobPrepareRequest,
     AcquisitionJobResponse,
+    EvidenceVerificationResponse,
     JobEventResponse,
 )
 from forensix_forensic.adb import AdbClient
@@ -24,6 +25,7 @@ from forensix_server.acquisitions import (
     AcquisitionExecutionService,
     AcquisitionFileService,
     AcquisitionInventoryService,
+    EvidenceVerificationService,
     event_checkpoint,
     job_checkpoint,
 )
@@ -33,6 +35,7 @@ from forensix_server.db import (
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     Database,
+    EvidenceVerificationRecord,
     JobEventRecord,
     JobRecord,
 )
@@ -207,6 +210,47 @@ def list_acquired_files(
         return [_file_response(record) for record in records]
 
 
+@router.post(
+    "/{job_id}/files/{evidence_file_id}/verify",
+    response_model=EvidenceVerificationResponse,
+)
+async def verify_acquired_file(
+    case_id: str,
+    job_id: str,
+    evidence_file_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> EvidenceVerificationResponse:
+    verification = await EvidenceVerificationService().verify(
+        database,
+        authenticated.principal,
+        case_id,
+        job_id,
+        evidence_file_id,
+    )
+    return _verification_response(verification)
+
+
+@router.get(
+    "/{job_id}/verifications",
+    response_model=list[EvidenceVerificationResponse],
+)
+def list_evidence_verifications(
+    case_id: str,
+    job_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[EvidenceVerificationResponse]:
+    with database.session() as session:
+        records = EvidenceVerificationService().list_for_job(
+            session,
+            authenticated.principal,
+            case_id,
+            job_id,
+        )
+        return [_verification_response(record) for record in records]
+
+
 def _job_response(job: JobRecord) -> AcquisitionJobResponse:
     if job.case_id is None or job.plan_id is None or job.owner_id is None:
         raise RuntimeError("Acquisition jobs require case, plan, and owner references.")
@@ -321,4 +365,31 @@ def _file_response(record: AcquiredEvidenceFileRecord) -> AcquiredEvidenceFileRe
         error_message=record.error_message,
         started_at=record.started_at,
         completed_at=record.completed_at,
+    )
+
+
+def _verification_response(
+    record: EvidenceVerificationRecord,
+) -> EvidenceVerificationResponse:
+    status_value = record.status
+    if status_value not in {"verified", "mismatch", "missing", "error"}:
+        raise RuntimeError("Evidence verification has an invalid persisted status.")
+    return EvidenceVerificationResponse(
+        id=record.id,
+        evidence_file_id=record.evidence_file_id,
+        case_id=record.case_id,
+        job_id=record.job_id,
+        verified_by=record.verified_by,
+        status=cast(Literal["verified", "mismatch", "missing", "error"], status_value),
+        expected_file_sha256=record.expected_file_sha256,
+        observed_file_sha256=record.observed_file_sha256,
+        file_size_bytes=record.file_size_bytes,
+        file_matches=record.file_matches,
+        expected_manifest_sha256=record.expected_manifest_sha256,
+        observed_manifest_sha256=record.observed_manifest_sha256,
+        manifest_matches=record.manifest_matches,
+        error_code=record.error_code,
+        verification_hash=record.verification_hash,
+        tool_version=record.tool_version,
+        verified_at=record.verified_at,
     )

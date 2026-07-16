@@ -605,3 +605,47 @@ class AcquiredEvidenceFileRecord(Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+
+
+class EvidenceVerificationRecord(Base):
+    """Append-only known-answer re-verification of one file and its manifest."""
+
+    __tablename__ = "evidence_verifications"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('verified', 'mismatch', 'missing', 'error')",
+            name="ck_evidence_verifications_status",
+        ),
+        UniqueConstraint("verification_hash", name="uq_evidence_verifications_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_file_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("acquired_evidence_files.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    verified_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    expected_file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    observed_file_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_matches: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    expected_manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    observed_manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    manifest_matches: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verification_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    tool_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    verified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )

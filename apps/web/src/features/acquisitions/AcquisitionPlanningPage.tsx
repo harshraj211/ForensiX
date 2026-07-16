@@ -21,15 +21,18 @@ import {
   getCase,
   listAcquisitionJobs,
   listAcquiredFiles,
+  listEvidenceVerifications,
   listAcquisitionPlans,
   listCaseDeviceAssessments,
   listCaseDevices,
   prepareAcquisitionJob,
   runAcquisitionInventory,
+  verifyEvidenceFile,
   type AcquisitionJob,
   type AcquisitionModule,
   type AcquisitionPlan,
   type AcquisitionScope,
+  type EvidenceVerification,
 } from "../../lib/api";
 
 const scopeCopy: Record<AcquisitionScope, { label: string; description: string }> = {
@@ -475,10 +478,23 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
     queryKey: ["acquired-files", caseId, jobId],
     queryFn: () => listAcquiredFiles(caseId, jobId),
   });
+  const verificationsQuery = useQuery({
+    queryKey: ["evidence-verifications", caseId, jobId],
+    queryFn: () => listEvidenceVerifications(caseId, jobId),
+  });
   const acquireFile = useMutation({
     mutationFn: (itemId: string) => acquireInventoryFile(caseId, jobId, itemId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["acquired-files", caseId, jobId] });
+    },
+  });
+  const verifyFile = useMutation({
+    mutationFn: (evidenceFileId: string) =>
+      verifyEvidenceFile(caseId, jobId, evidenceFileId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["evidence-verifications", caseId, jobId],
+      });
     },
   });
   if (inventoryQuery.isPending) {
@@ -489,6 +505,12 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
   const acquiredByItem = new Map(
     (filesQuery.data ?? []).map((file) => [file.inventory_item_id, file]),
   );
+  const latestVerificationByFile = new Map<string, EvidenceVerification>();
+  for (const verification of verificationsQuery.data ?? []) {
+    if (!latestVerificationByFile.has(verification.evidence_file_id)) {
+      latestVerificationByFile.set(verification.evidence_file_id, verification);
+    }
+  }
   return (
     <div className="mt-3 rounded-lg border border-emerald-200/10 bg-emerald-200/5 p-3">
       <p className="text-xs font-semibold text-emerald-200">
@@ -503,6 +525,9 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
       <ul className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1 text-[11px] text-slate-400">
         {inventory.items.map((item) => {
           const acquired = acquiredByItem.get(item.id);
+          const verification = acquired
+            ? latestVerificationByFile.get(acquired.id)
+            : undefined;
           return (
             <li key={item.id} className="rounded border border-white/5 p-2">
               <p className="truncate font-mono" title={item.relative_path}>
@@ -514,6 +539,31 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
                   <p className="truncate font-mono" title={acquired.sha256 ?? undefined}>
                     SHA-256 {acquired.sha256}
                   </p>
+                  <button
+                    type="button"
+                    disabled={verifyFile.isPending || verificationsQuery.isPending}
+                    onClick={() => {
+                      verifyFile.mutate(acquired.id);
+                    }}
+                    className="mt-2 min-h-9 rounded border border-emerald-200/20 px-3 text-[10px] font-semibold text-emerald-100 disabled:opacity-40"
+                  >
+                    {verifyFile.isPending && verifyFile.variables === acquired.id
+                      ? "Verifying..."
+                      : "Verify integrity"}
+                  </button>
+                  {verification && (
+                    <p
+                      className={`mt-2 font-semibold ${
+                        verification.status === "verified"
+                          ? "text-emerald-200"
+                          : "text-rose-200"
+                      }`}
+                    >
+                      {verification.status === "verified"
+                        ? "Integrity verified"
+                        : `Integrity ${verification.status}`}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <button
@@ -542,7 +592,9 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
         })}
       </ul>
       {filesQuery.isError && <div className="mt-3"><CaseError error={filesQuery.error} /></div>}
+      {verificationsQuery.isError && <div className="mt-3"><CaseError error={verificationsQuery.error} /></div>}
       {acquireFile.isError && <div className="mt-3"><CaseError error={acquireFile.error} /></div>}
+      {verifyFile.isError && <div className="mt-3"><CaseError error={verifyFile.error} /></div>}
       {inventory.total > inventory.items.length && (
         <p className="mt-2 text-[10px] text-slate-600">
           Showing {inventory.items.length} of {inventory.total} paths.

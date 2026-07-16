@@ -243,6 +243,26 @@ class AcquiredEvidenceFileResponse(BaseModel):
     completed_at: datetime | None
 
 
+class EvidenceVerificationResponse(BaseModel):
+    id: str
+    evidence_file_id: str
+    case_id: str
+    job_id: str
+    verified_by: str
+    status: Literal["verified", "mismatch", "missing", "error"]
+    expected_file_sha256: str
+    observed_file_sha256: str | None
+    file_size_bytes: int | None
+    file_matches: bool
+    expected_manifest_sha256: str
+    observed_manifest_sha256: str | None
+    manifest_matches: bool
+    error_code: str | None
+    verification_hash: str
+    tool_version: str
+    verified_at: datetime
+
+
 class JobEventResponse(BaseModel):
     id: str
     job_id: str

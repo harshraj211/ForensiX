@@ -23,6 +23,7 @@ from .service import (
     plan_limitations,
     plan_modules,
 )
+from .verification import EvidenceVerificationError, EvidenceVerificationService
 
 __all__ = [
     "AcquisitionModule",
@@ -39,6 +40,8 @@ __all__ = [
     "AcquisitionScope",
     "DeviceIdentityChangedError",
     "EvidenceDiskSpaceError",
+    "EvidenceVerificationError",
+    "EvidenceVerificationService",
     "event_checkpoint",
     "job_checkpoint",
     "InventoryCancelledError",

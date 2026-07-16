@@ -475,6 +475,7 @@ describe("acquisition planning", () => {
     let created = false;
     let jobState: "ready" | "completed" | null = null;
     let fileAcquired = false;
+    let verificationComplete = false;
     const assessedAt = new Date().toISOString();
     const plan = {
       id: "plan-1",
@@ -691,6 +692,35 @@ describe("acquisition planning", () => {
           ),
         );
       }
+      if (url === "/api/v1/cases/case-1/acquisitions/job-1/verifications") {
+        return Promise.resolve(
+          jsonResponse(
+            verificationComplete
+              ? [
+                  {
+                    id: "verification-1",
+                    evidence_file_id: "file-1",
+                    case_id: "case-1",
+                    job_id: "job-1",
+                    verified_by: "user-1",
+                    status: "verified",
+                    expected_file_sha256: "e".repeat(64),
+                    observed_file_sha256: "e".repeat(64),
+                    file_size_bytes: 31,
+                    file_matches: true,
+                    expected_manifest_sha256: "f".repeat(64),
+                    observed_manifest_sha256: "f".repeat(64),
+                    manifest_matches: true,
+                    error_code: null,
+                    verification_hash: "a".repeat(64),
+                    tool_version: "0.1.0",
+                    verified_at: assessedAt,
+                  },
+                ]
+              : [],
+          ),
+        );
+      }
       if (
         url === "/api/v1/cases/case-1/acquisitions/job-1/inventory/items/item-1/acquire" &&
         init?.method === "POST"
@@ -725,6 +755,33 @@ describe("acquisition planning", () => {
           }),
         );
       }
+      if (
+        url === "/api/v1/cases/case-1/acquisitions/job-1/files/file-1/verify" &&
+        init?.method === "POST"
+      ) {
+        verificationComplete = true;
+        return Promise.resolve(
+          jsonResponse({
+            id: "verification-1",
+            evidence_file_id: "file-1",
+            case_id: "case-1",
+            job_id: "job-1",
+            verified_by: "user-1",
+            status: "verified",
+            expected_file_sha256: "e".repeat(64),
+            observed_file_sha256: "e".repeat(64),
+            file_size_bytes: 31,
+            file_matches: true,
+            expected_manifest_sha256: "f".repeat(64),
+            observed_manifest_sha256: "f".repeat(64),
+            manifest_matches: true,
+            error_code: null,
+            verification_hash: "a".repeat(64),
+            tool_version: "0.1.0",
+            verified_at: assessedAt,
+          }),
+        );
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -750,6 +807,8 @@ describe("acquisition planning", () => {
     await user.click(screen.getByRole("button", { name: "Acquire selected file" }));
     expect(await screen.findByText("31 bytes acquired")).toBeInTheDocument();
     expect(screen.getByText(`SHA-256 ${"e".repeat(64)}`)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Verify integrity" }));
+    expect(await screen.findByText("Integrity verified")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/cases/case-1/acquisition-plans",
       expect.objectContaining({
