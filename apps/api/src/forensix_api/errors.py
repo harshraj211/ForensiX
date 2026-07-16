@@ -21,6 +21,7 @@ from forensix_server.cases import (
     CaseNotFoundError,
     CaseVersionConflictError,
 )
+from forensix_server.evidence import ArtifactQueryError
 
 
 class ApiSecurityError(RuntimeError):
@@ -51,6 +52,8 @@ async def case_error_handler(request: Request, error: CaseError) -> JSONResponse
         status_code = 404
     elif isinstance(error, CaseAccessDeniedError):
         status_code = 403
+    elif isinstance(error, ArtifactQueryError):
+        status_code = 422
     elif isinstance(error, (CaseInvalidStateError, CaseVersionConflictError)):
         status_code = 409
     elif isinstance(error, CaseMemberError):

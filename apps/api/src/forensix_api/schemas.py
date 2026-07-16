@@ -264,6 +264,41 @@ class AcquisitionPartialResponse(BaseModel):
     disposition_at: datetime | None
 
 
+class ArtifactResponse(BaseModel):
+    id: str
+    evidence_file_id: str
+    case_id: str
+    device_id: str
+    job_id: str
+    category: Literal["image", "video", "audio", "document", "archive", "other"]
+    subtype: str
+    title: str
+    summary: str
+    source_relative_path: str
+    source_path_hash: str
+    extension: str | None
+    detected_mime: str
+    size_bytes: int
+    status: Literal["active", "deleted", "recovered", "partial", "corrupted", "unverified"]
+    primary_sha256: str
+    parser_id: str
+    parser_version: str
+    timestamp_confidence: str
+    collected_at: datetime
+    provenance: dict[str, Any]
+    metadata: dict[str, Any]
+    schema_version: str
+    created_at: datetime
+
+
+class ArtifactSearchResponse(BaseModel):
+    items: list[ArtifactResponse]
+    total: int
+    offset: int
+    limit: int
+    category_facets: dict[str, int]
+
+
 class EvidenceVerificationResponse(BaseModel):
     id: str
     evidence_file_id: str

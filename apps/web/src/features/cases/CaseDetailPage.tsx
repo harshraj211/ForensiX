@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ClipboardList, Link2, LoaderCircle, Plus, Smartphone } from "lucide-react";
+import { ArrowLeft, ClipboardList, Link2, LoaderCircle, Plus, ShieldCheck, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -140,6 +140,23 @@ export function CaseDetailPage() {
           className="inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-4 text-sm font-semibold text-cyan-100"
         >
           Open planning
+        </Link>
+      </section>
+      <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+        <div className="flex gap-4">
+          <ShieldCheck className="mt-1 shrink-0 text-cyan-300" size={21} aria-hidden="true" />
+          <div>
+            <h2 className="text-xl font-semibold text-white">Evidence explorer</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Search normalized metadata and inspect provenance without opening hostile content.
+            </p>
+          </div>
+        </div>
+        <Link
+          to={`/cases/${caseId}/evidence`}
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-4 text-sm font-semibold text-cyan-100"
+        >
+          Explore evidence
         </Link>
       </section>
       <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:p-8">

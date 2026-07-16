@@ -833,3 +833,92 @@ describe("acquisition planning", () => {
     );
   });
 });
+
+describe("evidence explorer", () => {
+  it("searches normalized metadata and shows provenance without rendering content", async () => {
+    const collectedAt = "2026-07-16T10:00:00Z";
+    const artifact = {
+      id: "artifact-1",
+      evidence_file_id: "file-1",
+      case_id: "case-1",
+      device_id: "device-1",
+      job_id: "job-1",
+      category: "document",
+      subtype: "file",
+      title: "timeline.csv",
+      summary: "Document file acquired from approved shared storage.",
+      source_relative_path: "Documents/timeline.csv",
+      source_path_hash: "d".repeat(64),
+      extension: "csv",
+      detected_mime: "text/csv",
+      size_bytes: 43,
+      status: "active",
+      primary_sha256: "e".repeat(64),
+      parser_id: "generic_file_metadata",
+      parser_version: "1.0.0",
+      timestamp_confidence: "high",
+      collected_at: collectedAt,
+      provenance: { evidence_file_id: "file-1", device_id: "device-1" },
+      metadata: {
+        content_parsed: false,
+        classification_basis: "filename_extension_only",
+        limitations: [
+          "Media type was mapped from the filename extension and was not content-sniffed.",
+        ],
+      },
+      schema_version: "1.0.0",
+      created_at: collectedAt,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-EVIDENCE",
+            title: "Evidence search case",
+            description: null,
+            legal_authority: null,
+            status: "active",
+            created_by: "user-1",
+            created_at: collectedAt,
+            updated_at: collectedAt,
+            closed_at: null,
+            version: 1,
+          }),
+        );
+      }
+      if (url.startsWith("/api/v1/cases/case-1/artifacts?")) {
+        return Promise.resolve(
+          jsonResponse({
+            items: [artifact],
+            total: 1,
+            offset: 0,
+            limit: 100,
+            category_facets: { document: 1 },
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/artifacts/artifact-1") {
+        return Promise.resolve(jsonResponse(artifact));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/cases/case-1/evidence");
+
+    expect(await screen.findByRole("heading", { name: "Evidence explorer" })).toBeInTheDocument();
+    expect((await screen.findAllByText("timeline.csv")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Documents/timeline.csv")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Extension-derived MIME")).toBeInTheDocument();
+    expect(screen.getByText("text/csv")).toBeInTheDocument();
+    expect(screen.getByText(/file bytes are not opened, executed, or rendered/i)).toBeInTheDocument();
+    expect(screen.getByText(`SHA-256`)).toBeInTheDocument();
+  });
+});

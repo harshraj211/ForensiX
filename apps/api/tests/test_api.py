@@ -111,6 +111,8 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
         "alembic_version",
         "acquired_evidence_files",
         "acquisition_partials",
+        "artifacts",
+        "artifact_search",
         "audit_logs",
         "acquisition_inventories",
         "acquisition_inventory_items",
@@ -762,6 +764,18 @@ def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
             headers=headers,
         )
         verifications = client.get(f"{endpoint}/{job['id']}/verifications")
+        artifacts = client.get(
+            f"/api/v1/cases/{case['id']}/artifacts",
+            params={
+                "q": "timeline",
+                "category": "document",
+                "status": "active",
+                "extension": "csv",
+            },
+        )
+        artifact_detail = client.get(
+            f"/api/v1/cases/{case['id']}/artifacts/{artifacts.json()['items'][0]['id']}"
+        )
 
     assert acquired.status_code == 200
     assert acquired.json()["status"] == "completed"
@@ -779,6 +793,13 @@ def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
     assert verified.json()["manifest_matches"] is True
     assert len(verified.json()["verification_hash"]) == 64
     assert [entry["id"] for entry in verifications.json()] == [verified.json()["id"]]
+    assert artifacts.status_code == 200
+    assert artifacts.json()["total"] == 1
+    assert artifacts.json()["category_facets"] == {"document": 1}
+    assert artifact_detail.status_code == 200
+    assert artifact_detail.json()["title"] == "timeline.csv"
+    assert artifact_detail.json()["primary_sha256"] == acquired.json()["sha256"]
+    assert artifact_detail.json()["metadata"]["content_parsed"] is False
 
 
 def test_interrupted_file_api_requires_review_and_restarts_from_zero(tmp_path: Path) -> None:
@@ -912,6 +933,23 @@ def test_custody_history_exposes_no_update_or_delete_operation(tmp_path: Path) -
 
     assert set(custody_path) == {"get", "post"}
     assert "requestBody" not in schema["paths"]["/api/v1/cases/{case_id}/custody/verify"]["get"]
+
+
+def test_artifact_api_is_read_only_and_rejects_unapproved_filters(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    schema = app.openapi()
+
+    assert set(schema["paths"]["/api/v1/cases/{case_id}/artifacts"]) == {"get"}
+    assert set(schema["paths"]["/api/v1/cases/{case_id}/artifacts/{artifact_id}"]) == {"get"}
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post("/api/v1/cases", headers=headers, json={"title": "Filter case"})
+        invalid = client.get(
+            f"/api/v1/cases/{case.json()['id']}/artifacts",
+            params={"category": "private_app_data"},
+        )
+
+    assert invalid.status_code == 422
 
 
 def test_file_acquisition_rejects_caller_supplied_or_unknown_item(tmp_path: Path) -> None:

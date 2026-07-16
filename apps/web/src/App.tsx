@@ -6,6 +6,7 @@ import { AuthBoundary } from "./features/auth/AuthBoundary";
 import { CaseDetailPage } from "./features/cases/CaseDetailPage";
 import { CasesPage } from "./features/cases/CasesPage";
 import { DeviceDetectionPage } from "./features/devices/DeviceDetectionPage";
+import { EvidenceCasesPage, EvidenceExplorerPage } from "./features/evidence/EvidenceExplorerPage";
 
 export function App() {
   return (
@@ -17,6 +18,8 @@ export function App() {
           <Route path="/cases/:caseId" element={<CaseDetailPage />} />
           <Route path="/cases/:caseId/devices" element={<DeviceDetectionPage />} />
           <Route path="/cases/:caseId/acquisitions" element={<AcquisitionPlanningPage />} />
+          <Route path="/cases/:caseId/evidence" element={<EvidenceExplorerPage />} />
+          <Route path="/evidence" element={<EvidenceCasesPage />} />
           <Route path="*" element={<Navigate to="/devices" replace />} />
         </Route>
       </Route>

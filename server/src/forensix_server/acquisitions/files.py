@@ -34,6 +34,7 @@ from forensix_server.db import (
     CaseEventRecord,
     Database,
 )
+from forensix_server.evidence import ArtifactService
 from forensix_server.jobs import JobState
 
 from .execution import AcquisitionExecutionService
@@ -406,6 +407,7 @@ class AcquisitionFileService:
             record.manifest_hash = manifest_sha256
             record.partial_preserved = False
             record.completed_at = completed_at
+            artifact = ArtifactService().normalize_completed(session, record, context.relative_path)
             CustodyService().append_automatic(
                 session,
                 case_id=context.case_id,
@@ -423,6 +425,14 @@ class AcquisitionFileService:
                         f"record_id={record.id};size_bytes={stored.size_bytes};"
                         f"sha256={stored.sha256}"
                     ),
+                )
+            )
+            session.add(
+                CaseEventRecord(
+                    case_id=context.case_id,
+                    actor_id=context.operator_id,
+                    event_type="artifact_normalized",
+                    safe_detail=f"artifact_id={artifact.id};evidence_file_id={record.id}",
                 )
             )
             session.flush()

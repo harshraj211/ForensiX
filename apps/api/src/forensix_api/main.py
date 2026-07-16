@@ -14,13 +14,14 @@ from forensix_api.errors import (
     security_error_handler,
 )
 from forensix_api.middleware import request_id_middleware
-from forensix_api.routers import acquisitions, auth, cases, custody, devices, health
+from forensix_api.routers import acquisitions, artifacts, auth, cases, custody, devices, health
 from forensix_forensic.adb import AdbClient, AdbError
 from forensix_server.acquisitions import AcquisitionRecoveryService
 from forensix_server.auth import AuthService
 from forensix_server.cases import CaseError
 from forensix_server.config import Settings
 from forensix_server.db import Database
+from forensix_server.evidence import ArtifactService
 from forensix_server.jobs import JobService
 
 
@@ -46,6 +47,8 @@ def create_app(
             auth_service.ensure_roles(session)
             JobService().recover_after_restart(session)
         AcquisitionRecoveryService().recover_after_restart(database)
+        with database.session() as session:
+            ArtifactService().backfill_completed(session)
         yield
         database.dispose()
 
@@ -77,6 +80,7 @@ def create_app(
     app.include_router(cases.router)
     app.include_router(custody.router)
     app.include_router(acquisitions.router)
+    app.include_router(artifacts.router)
     app.include_router(devices.router)
     return app
 

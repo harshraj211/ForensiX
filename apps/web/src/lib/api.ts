@@ -322,6 +322,44 @@ export interface AcquisitionPartial {
   disposition_at: string | null;
 }
 
+export type ArtifactCategory = "image" | "video" | "audio" | "document" | "archive" | "other";
+export type ArtifactStatus = "active" | "deleted" | "recovered" | "partial" | "corrupted" | "unverified";
+
+export interface Artifact {
+  id: string;
+  evidence_file_id: string;
+  case_id: string;
+  device_id: string;
+  job_id: string;
+  category: ArtifactCategory;
+  subtype: string;
+  title: string;
+  summary: string;
+  source_relative_path: string;
+  source_path_hash: string;
+  extension: string | null;
+  detected_mime: string;
+  size_bytes: number;
+  status: ArtifactStatus;
+  primary_sha256: string;
+  parser_id: string;
+  parser_version: string;
+  timestamp_confidence: string;
+  collected_at: string;
+  provenance: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  schema_version: string;
+  created_at: string;
+}
+
+export interface ArtifactSearchResult {
+  items: Artifact[];
+  total: number;
+  offset: number;
+  limit: number;
+  category_facets: Record<string, number>;
+}
+
 export interface EvidenceVerification {
   id: string;
   evidence_file_id: string;
@@ -593,6 +631,31 @@ export function listAcquisitionPartials(
 ): Promise<AcquisitionPartial[]> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/partials`,
+  );
+}
+
+export function searchArtifacts(
+  caseId: string,
+  filters: {
+    q?: string;
+    category?: ArtifactCategory;
+    status?: ArtifactStatus;
+    extension?: string;
+  },
+): Promise<ArtifactSearchResult> {
+  const parameters = new URLSearchParams({ offset: "0", limit: "100" });
+  if (filters.q) parameters.set("q", filters.q);
+  if (filters.category) parameters.set("category", filters.category);
+  if (filters.status) parameters.set("status", filters.status);
+  if (filters.extension) parameters.set("extension", filters.extension);
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts?${parameters.toString()}`,
+  );
+}
+
+export function getArtifact(caseId: string, artifactId: string): Promise<Artifact> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}`,
   );
 }
 

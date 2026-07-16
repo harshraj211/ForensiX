@@ -8,6 +8,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -654,6 +655,66 @@ class AcquisitionPartialRecord(Base):
         DateTime(timezone=True), nullable=True, index=True
     )
     disposition_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ArtifactRecord(Base):
+    """Immutable normalized metadata derived from one sealed evidence file."""
+
+    __tablename__ = "artifacts"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('image', 'video', 'audio', 'document', 'archive', 'other')",
+            name="ck_artifacts_category",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'deleted', 'recovered', 'partial', 'corrupted', 'unverified')",
+            name="ck_artifacts_status",
+        ),
+        CheckConstraint("size_bytes >= 0", name="ck_artifacts_size"),
+        UniqueConstraint("evidence_file_id", name="uq_artifacts_evidence_file"),
+        Index("ix_artifacts_case_category_collected", "case_id", "category", "collected_at"),
+        Index("ix_artifacts_case_status_collected", "case_id", "status", "collected_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_file_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("acquired_evidence_files.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("case_devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    category: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    subtype: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    summary: Mapped[str] = mapped_column(String(1000), nullable=False)
+    source_relative_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source_path_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    extension: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    detected_mime: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    primary_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    parser_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    parser_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    timestamp_confidence: Mapped[str] = mapped_column(String(16), nullable=False)
+    collected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    provenance_json: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
 
 
 class EvidenceVerificationRecord(Base):

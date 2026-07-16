@@ -45,12 +45,14 @@ from forensix_server.db import (
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     AcquisitionPartialRecord,
+    ArtifactRecord,
     AuditLogRecord,
     Database,
     EvidenceVerificationRecord,
     JobRecord,
     UserRecord,
 )
+from forensix_server.evidence import ArtifactError, ArtifactService
 from forensix_server.jobs import JobService, JobState
 
 
@@ -349,9 +351,14 @@ async def test_selected_inventory_item_is_pulled_hashed_and_manifested(
     case_id, _, job_id = _ready_job(database, principal)
     await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
     with database.session() as session:
+        inventory = session.scalar(
+            select(AcquisitionInventoryRecord).where(AcquisitionInventoryRecord.job_id == job_id)
+        )
+        assert inventory is not None
         item = session.scalar(
             select(AcquisitionInventoryItemRecord).where(
-                AcquisitionInventoryItemRecord.relative_path == "Documents/timeline.csv"
+                AcquisitionInventoryItemRecord.inventory_id == inventory.id,
+                AcquisitionInventoryItemRecord.relative_path == "Documents/timeline.csv",
             )
         )
         assert item is not None
@@ -377,6 +384,82 @@ async def test_selected_inventory_item_is_pulled_hashed_and_manifested(
     with database.session() as session:
         records = list(session.scalars(select(AcquiredEvidenceFileRecord)))
     assert len(records) == 1
+
+
+@pytest.mark.asyncio
+async def test_completed_file_is_normalized_and_searchable_without_content_parsing(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, job_id, acquired = await _acquire_timeline_fixture(database, principal)
+
+    with database.session() as session:
+        artifacts = list(session.scalars(select(ArtifactRecord)))
+        by_title = ArtifactService().search(
+            session,
+            principal,
+            case_id,
+            query="timeline",
+            category="document",
+            status="active",
+            extension=".CSV",
+        )
+        content_not_indexed = ArtifactService().search(
+            session, principal, case_id, query="timestamp"
+        )
+        backfilled = ArtifactService().backfill_completed(session)
+
+    assert len(artifacts) == 1
+    artifact = artifacts[0]
+    assert artifact.evidence_file_id == acquired.id
+    assert artifact.title == "timeline.csv"
+    assert artifact.source_relative_path == "Documents/timeline.csv"
+    assert artifact.category == "document"
+    assert artifact.detected_mime == "text/csv"
+    assert artifact.primary_sha256 == acquired.sha256
+    assert artifact.parser_id == "generic_file_metadata"
+    assert json.loads(artifact.metadata_json)["content_parsed"] is False
+    assert json.loads(artifact.metadata_json)["classification_basis"] == ("filename_extension_only")
+    assert by_title.total == 1
+    assert by_title.items[0].id == artifact.id
+    assert by_title.category_facets == {"document": 1}
+    assert content_not_indexed.total == 0
+    assert backfilled == 0
+
+
+@pytest.mark.asyncio
+async def test_artifact_search_is_case_scoped_bounded_and_reindexable(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, _ = await _acquire_timeline_fixture(database, principal)
+    other_case_id, _, _ = await _acquire_timeline_fixture(database, principal)
+
+    with database.session() as session:
+        first = session.scalar(select(ArtifactRecord).where(ArtifactRecord.case_id == case_id))
+        assert first is not None
+        session.execute(
+            text("DELETE FROM artifact_search WHERE artifact_id = :artifact_id"),
+            {"artifact_id": first.id},
+        )
+        assert ArtifactService().search(session, principal, case_id, query="timeline").total == 0
+        ArtifactService().backfill_completed(session)
+        restored = ArtifactService().search(session, principal, case_id, query="timeline")
+        other = ArtifactService().search(session, principal, other_case_id, query="timeline")
+        with pytest.raises(ArtifactError):
+            ArtifactService().get(session, principal, other_case_id, first.id)
+        with pytest.raises(ArtifactError, match="too complex"):
+            ArtifactService().search(
+                session,
+                principal,
+                case_id,
+                query="one two three four five six seven eight nine",
+            )
+
+    assert restored.total == 1
+    assert other.total == 1
+    assert restored.items[0].case_id == case_id
+    assert other.items[0].case_id == other_case_id
 
 
 @pytest.mark.asyncio
@@ -582,9 +665,14 @@ async def _acquire_timeline_fixture(
     case_id, _, job_id = _ready_job(database, principal)
     await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
     with database.session() as session:
+        inventory = session.scalar(
+            select(AcquisitionInventoryRecord).where(AcquisitionInventoryRecord.job_id == job_id)
+        )
+        assert inventory is not None
         item = session.scalar(
             select(AcquisitionInventoryItemRecord).where(
-                AcquisitionInventoryItemRecord.relative_path == "Documents/timeline.csv"
+                AcquisitionInventoryItemRecord.inventory_id == inventory.id,
+                AcquisitionInventoryItemRecord.relative_path == "Documents/timeline.csv",
             )
         )
         assert item is not None

@@ -23,6 +23,7 @@
 | Bounded shared-storage path inventory | fixed approved root, live identity/readiness revalidation, path/depth/time/output limits, durable result and canonical manifest hash, API and result UI | ADB parser/policy, service failure-state, migration, API, and UI coverage |
 | Selected evidence-file acquisition | opaque inventory-item selection, shell-free bounded pull, contained partial/seal, SHA-256, canonical JSON manifest, durable provenance/failure state, result UI | known-answer storage/ADB/service/API/UI tests; physical-device validation pending |
 | Interrupted-transfer recovery | durable attempt IDs, startup filesystem reconciliation, retained partial SHA-256, review-before-restart, verified discard, byte-zero retry | disconnect/process-termination/tamper/service/API/UI tests; physical-device validation pending |
+| Artifact normalization and search | one immutable artifact per sealed file, canonical provenance/limitations, extension-only classification, SQLite FTS5, case/category/status/extension filters, metadata-only explorer | known-answer/no-content-index/reindex/case-isolation/API/UI tests |
 | Evidence integrity re-verification | independent file/manifest re-hashing, append-only result history, mismatch/missing detection, preserved expected hashes, API and UI controls | known-answer, tampering, missing-object, API, and UI tests |
 | Custody and audit chains | automatic evidence/integrity custody events, manual transfers, amendments, per-case custody hashes, global audit hashes, verification APIs, case UI | service tampering tests, migration/API authorization, append-only route tests, UI checks |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
@@ -62,7 +63,7 @@
 
 - External audit anchoring, digital signatures, and write-once custody exports
 - Bulk acquisition and physical-device validation of byte-zero restart behavior
-- Artifact normalization, search, preview, and timeline
+- Sandboxed thumbnails/content preview and deterministic timeline materialization
 - Report generation and exports
 - Production packaging, signing, and forensic validation
 
@@ -73,5 +74,5 @@ These omissions are visible project status, not silent product claims. Real-devi
 1. Install Android Platform Tools and validate inventory plus selected pulls against controlled physical devices and hostile filename fixtures.
 2. Validate disconnect/restart recovery against physical devices on Windows, Linux, and macOS.
 3. Add external audit anchoring and signed/write-once custody exports before evidentiary claims.
-4. Normalize acquired files into evidence/artifact records without parsing hostile content in-process.
-5. Build evidence search, preview, and timeline views from validated normalized metadata.
+4. Add isolated, resource-bounded MIME sniffing and thumbnail generation for validated formats.
+5. Materialize timeline events from normalized timestamp claims without inventing missing source times.
