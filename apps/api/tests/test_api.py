@@ -91,9 +91,11 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
     assert {
         "alembic_version",
         "acquired_evidence_files",
+        "audit_logs",
         "acquisition_inventories",
         "acquisition_inventory_items",
         "acquisition_plans",
+        "custody_events",
         "evidence_verifications",
         "jobs",
         "job_events",
@@ -790,6 +792,68 @@ def test_verification_detects_modified_evidence_without_changing_expected_hash(
     assert verification.json()["manifest_matches"] is True
     assert verification.json()["expected_file_sha256"] == expected_hash
     assert unchanged["sha256"] == expected_hash
+
+
+def test_custody_history_is_chained_amended_and_audited(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+        inventory = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers).json()
+        acquired = client.post(
+            f"{endpoint}/{job['id']}/inventory/items/{inventory['items'][0]['id']}/acquire",
+            headers=headers,
+        ).json()
+        transfer = client.post(
+            f"/api/v1/cases/{case['id']}/custody",
+            headers=headers,
+            json={
+                "event_type": "transferred",
+                "evidence_file_id": acquired["id"],
+                "from_custodian": "Investigator A",
+                "to_custodian": "Forensic Lab",
+                "location": "Evidence locker 4",
+                "purpose": "Laboratory examination",
+            },
+        )
+        amendment = client.post(
+            f"/api/v1/cases/{case['id']}/custody",
+            headers=headers,
+            json={
+                "event_type": "amendment",
+                "evidence_file_id": acquired["id"],
+                "related_event_id": transfer.json()["id"],
+                "notes": "Correct locker reference is evidence locker 5.",
+            },
+        )
+        custody = client.get(f"/api/v1/cases/{case['id']}/custody")
+        custody_chain = client.get(f"/api/v1/cases/{case['id']}/custody/verify")
+        audit = client.get("/api/v1/audit-logs")
+        audit_chain = client.get("/api/v1/audit-logs/verify")
+
+    assert transfer.status_code == 201
+    assert amendment.status_code == 201
+    assert amendment.json()["related_event_id"] == transfer.json()["id"]
+    assert [event["event_type"] for event in custody.json()] == [
+        "evidence_registered",
+        "transferred",
+        "amendment",
+    ]
+    assert custody_chain.json()["valid"] is True
+    assert custody_chain.json()["record_count"] == 3
+    assert audit.status_code == 200
+    assert len(audit.json()) == 3
+    assert audit_chain.json()["valid"] is True
+
+
+def test_custody_history_exposes_no_update_or_delete_operation(tmp_path: Path) -> None:
+    schema = create_app(_settings(tmp_path), adb_client=MockAdbClient()).openapi()
+    custody_path = schema["paths"]["/api/v1/cases/{case_id}/custody"]
+
+    assert set(custody_path) == {"get", "post"}
+    assert "requestBody" not in schema["paths"]["/api/v1/cases/{case_id}/custody/verify"]["get"]
 
 
 def test_file_acquisition_rejects_caller_supplied_or_unknown_item(tmp_path: Path) -> None:

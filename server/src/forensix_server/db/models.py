@@ -649,3 +649,77 @@ class EvidenceVerificationRecord(Base):
     verified_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
+
+
+class CustodyEventRecord(Base):
+    """Append-only, per-case hash-chained custody history."""
+
+    __tablename__ = "custody_events"
+    __table_args__ = (
+        CheckConstraint("sequence >= 1", name="ck_custody_events_sequence"),
+        CheckConstraint(
+            "event_type IN ('evidence_registered', 'integrity_verified', "
+            "'integrity_exception', 'transferred', 'amendment')",
+            name="ck_custody_events_type",
+        ),
+        UniqueConstraint("case_id", "sequence", name="uq_custody_events_case_sequence"),
+        UniqueConstraint("event_hash", name="uq_custody_events_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    evidence_file_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("acquired_evidence_files.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    actor_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    from_custodian: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    to_custodian: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    purpose: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    related_event_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("custody_events.id", ondelete="RESTRICT"), nullable=True
+    )
+    previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class AuditLogRecord(Base):
+    """Global tamper-evident audit chain; local storage is not tamper-proof."""
+
+    __tablename__ = "audit_logs"
+    __table_args__ = (
+        CheckConstraint("sequence >= 1", name="ck_audit_logs_sequence"),
+        UniqueConstraint("sequence", name="uq_audit_logs_sequence"),
+        UniqueConstraint("entry_hash", name="uq_audit_logs_entry_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    case_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    actor_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    object_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    object_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    detail_json: Mapped[str] = mapped_column(Text, nullable=False)
+    previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    entry_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )

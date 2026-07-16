@@ -106,6 +106,31 @@ export interface CaseList {
   limit: number;
 }
 
+export interface CustodyEvent {
+  id: string;
+  case_id: string;
+  evidence_file_id: string | null;
+  actor_id: string;
+  sequence: number;
+  event_type: string;
+  from_custodian: string | null;
+  to_custodian: string | null;
+  location: string | null;
+  purpose: string | null;
+  notes: string | null;
+  related_event_id: string | null;
+  previous_hash: string;
+  event_hash: string;
+  created_at: string;
+}
+
+export interface ChainVerification {
+  valid: boolean;
+  record_count: number;
+  broken_sequence: number | null;
+  head_hash: string | null;
+}
+
 export interface CaseDevice {
   id: string;
   case_id: string;
@@ -384,6 +409,14 @@ export function listCases(): Promise<CaseList> {
 
 export function getCase(caseId: string): Promise<CaseRecord> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}`);
+}
+
+export function listCustodyEvents(caseId: string): Promise<CustodyEvent[]> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/custody`);
+}
+
+export function verifyCustodyChain(caseId: string): Promise<ChainVerification> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/custody/verify`);
 }
 
 export function createCase(input: {

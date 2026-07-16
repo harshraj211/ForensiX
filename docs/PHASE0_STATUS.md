@@ -23,6 +23,7 @@
 | Bounded shared-storage path inventory | fixed approved root, live identity/readiness revalidation, path/depth/time/output limits, durable result and canonical manifest hash, API and result UI | ADB parser/policy, service failure-state, migration, API, and UI coverage |
 | Selected evidence-file acquisition | opaque inventory-item selection, shell-free bounded pull, contained partial/seal, SHA-256, canonical JSON manifest, durable provenance/failure state, result UI | known-answer storage/ADB/service/API/UI tests; physical-device validation pending |
 | Evidence integrity re-verification | independent file/manifest re-hashing, append-only result history, mismatch/missing detection, preserved expected hashes, API and UI controls | known-answer, tampering, missing-object, API, and UI tests |
+| Custody and audit chains | automatic evidence/integrity custody events, manual transfers, amendments, per-case custody hashes, global audit hashes, verification APIs, case UI | service tampering tests, migration/API authorization, append-only route tests, UI checks |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
 
 ## Supported development behavior
@@ -52,11 +53,13 @@
 - Explicit `not_physically_validated` state on acquired files until the controlled device matrix is executed.
 - Append-only verification history with expected/observed file and manifest hashes, size comparison, canonical verification-record hash, actor, and timestamp.
 - Explicit mismatch and missing-object outcomes that never silently replace acquisition hashes.
+- Automatic evidence registration and integrity custody events plus manual transfers and correction-by-amendment; no custody update/delete API exists.
+- Per-case custody and global audit SHA-256 chains with canonical serialization, genesis linkage, sequence verification, and protected audit access.
 - Reconstructable progress history with monotonic sequence numbers and persisted restart interruption events.
 
 ## Not implemented yet
 
-- Custody and tamper-evident audit chain
+- External audit anchoring, digital signatures, and write-once custody exports
 - Bulk and resumable acquisition and validated partial-file recovery
 - Artifact normalization, search, preview, and timeline
 - Report generation and exports
@@ -68,6 +71,6 @@ These omissions are visible project status, not silent product claims. Real-devi
 
 1. Install Android Platform Tools and validate inventory plus selected pulls against controlled physical devices and hostile filename fixtures.
 2. Add partial-file recovery/cleanup tooling with reviewable retention decisions.
-3. Add custody and chained audit records before presenting outputs as forensic evidence.
+3. Add external audit anchoring and signed/write-once custody exports before evidentiary claims.
 4. Normalize acquired files into evidence/artifact records without parsing hostile content in-process.
 5. Build evidence search, preview, and timeline views from validated normalized metadata.

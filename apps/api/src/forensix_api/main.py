@@ -14,7 +14,7 @@ from forensix_api.errors import (
     security_error_handler,
 )
 from forensix_api.middleware import request_id_middleware
-from forensix_api.routers import acquisitions, auth, cases, devices, health
+from forensix_api.routers import acquisitions, auth, cases, custody, devices, health
 from forensix_forensic.adb import AdbClient, AdbError
 from forensix_server.acquisitions import AcquisitionFileService
 from forensix_server.auth import AuthService
@@ -75,6 +75,7 @@ def create_app(
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(cases.router)
+    app.include_router(custody.router)
     app.include_router(acquisitions.router)
     app.include_router(devices.router)
     return app

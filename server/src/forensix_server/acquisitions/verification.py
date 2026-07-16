@@ -18,6 +18,7 @@ from forensix_forensic.storage import (
 from forensix_server import __version__
 from forensix_server.auth import Permission, Principal
 from forensix_server.cases import CaseAccessDeniedError, CaseService
+from forensix_server.custody import CustodyService
 from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     CaseEventRecord,
@@ -191,6 +192,16 @@ class EvidenceVerificationService:
                 verified_at=verified_at,
             )
             session.add(record)
+            CustodyService().append_automatic(
+                session,
+                case_id=evidence.case_id,
+                actor_id=principal.user_id,
+                event_type=(
+                    "integrity_verified" if status == "verified" else "integrity_exception"
+                ),
+                evidence_file_id=evidence.id,
+                purpose=f"Evidence integrity verification outcome: {status}.",
+            )
             session.add(
                 CaseEventRecord(
                     case_id=evidence.case_id,

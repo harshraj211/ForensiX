@@ -25,6 +25,7 @@ from forensix_forensic.storage import EvidenceStore, StoredEvidence
 from forensix_server import __version__
 from forensix_server.auth import Permission, Principal
 from forensix_server.cases import CaseAccessDeniedError, CaseService, CaseStatus
+from forensix_server.custody import CustodyService
 from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
@@ -388,6 +389,14 @@ class AcquisitionFileService:
             record.manifest_hash = manifest_sha256
             record.partial_preserved = False
             record.completed_at = completed_at
+            CustodyService().append_automatic(
+                session,
+                case_id=context.case_id,
+                actor_id=context.operator_id,
+                event_type="evidence_registered",
+                evidence_file_id=record.id,
+                purpose="Evidence file acquired and sealed by ForensiX.",
+            )
             session.add(
                 CaseEventRecord(
                     case_id=context.case_id,

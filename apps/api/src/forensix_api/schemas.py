@@ -373,3 +373,55 @@ class CaseEventResponse(BaseModel):
     to_status: str | None
     safe_detail: str | None
     created_at: datetime
+
+
+class CustodyEventCreateRequest(BaseModel):
+    event_type: Literal["transferred", "amendment"]
+    evidence_file_id: str | None = Field(default=None, min_length=36, max_length=36)
+    from_custodian: str | None = Field(default=None, max_length=255)
+    to_custodian: str | None = Field(default=None, max_length=255)
+    location: str | None = Field(default=None, max_length=255)
+    purpose: str | None = Field(default=None, max_length=1000)
+    notes: str | None = Field(default=None, max_length=2000)
+    related_event_id: str | None = Field(default=None, min_length=36, max_length=36)
+
+
+class CustodyEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    case_id: str
+    evidence_file_id: str | None
+    actor_id: str
+    sequence: int
+    event_type: str
+    from_custodian: str | None
+    to_custodian: str | None
+    location: str | None
+    purpose: str | None
+    notes: str | None
+    related_event_id: str | None
+    previous_hash: str
+    event_hash: str
+    created_at: datetime
+
+
+class ChainVerificationResponse(BaseModel):
+    valid: bool
+    record_count: int
+    broken_sequence: int | None
+    head_hash: str | None
+
+
+class AuditLogResponse(BaseModel):
+    id: str
+    sequence: int
+    case_id: str | None
+    actor_id: str
+    event_type: str
+    object_type: str
+    object_id: str
+    detail: dict[str, Any]
+    previous_hash: str
+    entry_hash: str
+    created_at: datetime

@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ClipboardList, LoaderCircle, Plus, Smartphone } from "lucide-react";
+import { ArrowLeft, ClipboardList, Link2, LoaderCircle, Plus, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
   getCase,
+  listCustodyEvents,
   listCaseDevices,
   transitionCase,
+  verifyCustodyChain,
   type CaseDevice,
   type CaseStatus,
 } from "../../lib/api";
@@ -23,6 +25,16 @@ export function CaseDetailPage() {
   const devicesQuery = useQuery({
     queryKey: caseKeys.devices(caseId),
     queryFn: () => listCaseDevices(caseId),
+    enabled: Boolean(caseId),
+  });
+  const custodyQuery = useQuery({
+    queryKey: caseKeys.custody(caseId),
+    queryFn: () => listCustodyEvents(caseId),
+    enabled: Boolean(caseId),
+  });
+  const custodyVerificationQuery = useQuery({
+    queryKey: caseKeys.custodyVerification(caseId),
+    queryFn: () => verifyCustodyChain(caseId),
     enabled: Boolean(caseId),
   });
   const transition = useMutation({
@@ -129,6 +141,52 @@ export function CaseDetailPage() {
         >
           Open planning
         </Link>
+      </section>
+      <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:p-8">
+        <div className="flex items-start gap-4">
+          <Link2 className="mt-1 shrink-0 text-cyan-300" size={21} aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold text-white">Chain of custody</h2>
+              {custodyVerificationQuery.data && (
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    custodyVerificationQuery.data.valid
+                      ? "border-emerald-200/20 text-emerald-200"
+                      : "border-rose-200/20 text-rose-200"
+                  }`}
+                >
+                  {custodyVerificationQuery.data.valid ? "Chain verified" : "Chain broken"}
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Append-only evidence registration, integrity, transfer, and amendment history.
+            </p>
+            {custodyQuery.isPending && <p role="status" className="mt-4 text-sm text-slate-500">Loading custody history...</p>}
+            {custodyQuery.isError && <div className="mt-4"><CaseError error={custodyQuery.error} /></div>}
+            {custodyQuery.data?.length === 0 && <p className="mt-4 text-sm text-slate-600">No evidence custody events yet.</p>}
+            <ol className="mt-4 space-y-3">
+              {custodyQuery.data?.map((event) => (
+                <li key={event.id} className="rounded-lg border border-white/8 bg-black/10 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold text-slate-200">
+                      #{event.sequence} {event.event_type.replaceAll("_", " ")}
+                    </span>
+                    <time className="text-[10px] text-slate-600">
+                      {new Date(event.created_at).toLocaleString()}
+                    </time>
+                  </div>
+                  {event.purpose && <p className="mt-2 text-xs text-slate-500">{event.purpose}</p>}
+                  {event.notes && <p className="mt-2 text-xs text-amber-100/70">Amendment: {event.notes}</p>}
+                  <p className="mt-2 truncate font-mono text-[10px] text-slate-700" title={event.event_hash}>
+                    SHA-256 {event.event_hash}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
       </section>
     </div>
   );

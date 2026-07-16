@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from forensix_forensic.adb import (
     AdbDeviceNotFoundError,
@@ -33,10 +33,12 @@ from forensix_server.auth import Principal, RoleName
 from forensix_server.auth.domain import ROLE_PERMISSIONS
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseService
+from forensix_server.custody import AuditService, CustodyService
 from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
+    AuditLogRecord,
     Database,
     EvidenceVerificationRecord,
     JobRecord,
@@ -491,3 +493,102 @@ async def test_evidence_verification_records_missing_manifest(database: Database
     assert verification.file_matches is True
     assert verification.manifest_matches is False
     assert verification.error_code == "EVIDENCE_MISSING"
+
+
+@pytest.mark.asyncio
+async def test_acquisition_and_verification_append_chained_custody_and_audit(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, job_id, acquired = await _acquire_timeline_fixture(database, principal)
+    await EvidenceVerificationService().verify(database, principal, case_id, job_id, acquired.id)
+
+    with database.session() as session:
+        custody = CustodyService().list(session, principal, case_id)
+        custody_valid, broken = CustodyService().verify_chain(session, principal, case_id)
+        audits = list(session.scalars(select(AuditLogRecord).order_by(AuditLogRecord.sequence)))
+
+    assert [event.event_type for event in custody] == [
+        "evidence_registered",
+        "integrity_verified",
+    ]
+    assert custody[0].previous_hash == "0" * 64
+    assert custody[1].previous_hash == custody[0].event_hash
+    assert custody_valid is True
+    assert broken is None
+    assert len(audits) == 2
+    assert audits[1].previous_hash == audits[0].entry_hash
+
+
+@pytest.mark.asyncio
+async def test_custody_transfer_correction_is_append_only_amendment(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, acquired = await _acquire_timeline_fixture(database, principal)
+    with database.session() as session:
+        transfer = CustodyService().create_manual(
+            session,
+            principal,
+            case_id,
+            event_type="transferred",
+            evidence_file_id=acquired.id,
+            from_custodian="Investigator A",
+            to_custodian="Forensic Lab",
+            location="Evidence locker 4",
+            purpose="Laboratory examination",
+            notes=None,
+            related_event_id=None,
+        )
+        transfer_id = transfer.id
+    with database.session() as session:
+        amendment = CustodyService().create_manual(
+            session,
+            principal,
+            case_id,
+            event_type="amendment",
+            evidence_file_id=acquired.id,
+            from_custodian=None,
+            to_custodian=None,
+            location=None,
+            purpose=None,
+            notes="Correct locker reference is evidence locker 5.",
+            related_event_id=transfer_id,
+        )
+        events = CustodyService().list(session, principal, case_id)
+
+    assert amendment.related_event_id == transfer_id
+    assert [event.event_type for event in events] == [
+        "evidence_registered",
+        "transferred",
+        "amendment",
+    ]
+    assert events[1].location == "Evidence locker 4"
+
+
+@pytest.mark.asyncio
+async def test_custody_and_audit_verification_detect_database_tampering(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, _ = await _acquire_timeline_fixture(database, principal)
+    audit_principal = Principal(
+        user_id=principal.user_id,
+        username=principal.username,
+        display_name=principal.display_name,
+        roles=frozenset({RoleName.ADMINISTRATOR}),
+        permissions=ROLE_PERMISSIONS[RoleName.ADMINISTRATOR],
+    )
+    with database.engine.begin() as connection:
+        connection.execute(
+            text("UPDATE custody_events SET purpose = 'tampered' WHERE sequence = 1")
+        )
+        connection.execute(text("UPDATE audit_logs SET event_type = 'tampered' WHERE sequence = 1"))
+    with database.session() as session:
+        custody_valid, custody_broken = CustodyService().verify_chain(session, principal, case_id)
+        audit_valid, audit_broken = AuditService().verify(session, audit_principal)
+
+    assert custody_valid is False
+    assert custody_broken == 1
+    assert audit_valid is False
+    assert audit_broken == 1
