@@ -8,6 +8,7 @@ from .execution import (
     event_checkpoint,
     job_checkpoint,
 )
+from .files import AcquisitionFileError, AcquisitionFileService, EvidenceDiskSpaceError
 from .inventory import (
     AcquisitionInventoryError,
     AcquisitionInventoryService,
@@ -26,6 +27,8 @@ from .service import (
 __all__ = [
     "AcquisitionModule",
     "AcquisitionExecutionService",
+    "AcquisitionFileError",
+    "AcquisitionFileService",
     "AcquisitionJobInvalidStateError",
     "AcquisitionJobNotFoundError",
     "AcquisitionInventoryError",
@@ -35,6 +38,7 @@ __all__ = [
     "AcquisitionPlanValidationError",
     "AcquisitionScope",
     "DeviceIdentityChangedError",
+    "EvidenceDiskSpaceError",
     "event_checkpoint",
     "job_checkpoint",
     "InventoryCancelledError",

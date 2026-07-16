@@ -3,6 +3,7 @@
 from .base import Base
 from .database import Database
 from .models import (
+    AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     AcquisitionPlanRecord,
@@ -28,6 +29,7 @@ __all__ = [
     "AcquisitionInventoryItemRecord",
     "AcquisitionInventoryRecord",
     "AcquisitionPlanRecord",
+    "AcquiredEvidenceFileRecord",
     "AuthEventRecord",
     "AuthSessionRecord",
     "Base",

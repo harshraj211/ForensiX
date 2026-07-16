@@ -16,6 +16,7 @@ from forensix_api.errors import (
 from forensix_api.middleware import request_id_middleware
 from forensix_api.routers import acquisitions, auth, cases, devices, health
 from forensix_forensic.adb import AdbClient, AdbError
+from forensix_server.acquisitions import AcquisitionFileService
 from forensix_server.auth import AuthService
 from forensix_server.cases import CaseError
 from forensix_server.config import Settings
@@ -44,6 +45,7 @@ def create_app(
         with database.session() as session:
             auth_service.ensure_roles(session)
             JobService().recover_after_restart(session)
+            AcquisitionFileService().recover_interrupted(session)
         yield
         database.dispose()
 

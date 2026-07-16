@@ -3,7 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from forensix_forensic.adb.errors import AdbOutputLimitError, AdbTimeoutError
+from forensix_forensic.adb.errors import (
+    AdbOutputLimitError,
+    AdbTimeoutError,
+    AdbTransferLimitError,
+)
 from forensix_forensic.adb.runner import SubprocessAdbRunner
 
 
@@ -32,3 +36,20 @@ async def test_runner_returns_structured_result() -> None:
     assert result.exit_code == 0
     assert result.stdout.strip() == "ok"
     assert result.argv == ("-c", "print('ok')")
+
+
+@pytest.mark.asyncio
+async def test_runner_stops_pull_when_partial_exceeds_limit(tmp_path: Path) -> None:
+    runner = SubprocessAdbRunner(Path(sys.executable))
+    destination = tmp_path / "oversized.partial"
+    script = (
+        "import pathlib,sys,time; pathlib.Path(sys.argv[1]).write_bytes(b'x'*4096); time.sleep(2)"
+    )
+
+    with pytest.raises(AdbTransferLimitError):
+        await runner.run_to_file(
+            ("-c", script, str(destination)),
+            destination,
+            timeout_seconds=3,
+            max_file_bytes=32,
+        )

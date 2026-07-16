@@ -525,3 +525,83 @@ class AcquisitionInventoryItemRecord(Base):
     relative_path: Mapped[str] = mapped_column(Text, nullable=False)
     path_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     extension: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+
+
+class AcquiredEvidenceFileRecord(Base):
+    """Durable provenance and integrity result for one selected inventory item."""
+
+    __tablename__ = "acquired_evidence_files"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('acquiring', 'completed', 'failed', 'interrupted')",
+            name="ck_acquired_evidence_files_status",
+        ),
+        CheckConstraint(
+            "validation_state IN ('not_physically_validated')",
+            name="ck_acquired_evidence_files_validation_state",
+        ),
+        CheckConstraint(
+            "size_bytes IS NULL OR size_bytes >= 0",
+            name="ck_acquired_evidence_files_size",
+        ),
+        CheckConstraint(
+            "transfer_limit_bytes >= 1",
+            name="ck_acquired_evidence_files_transfer_limit",
+        ),
+        UniqueConstraint("inventory_item_id", name="uq_acquired_evidence_files_item"),
+        UniqueConstraint("storage_key", name="uq_acquired_evidence_files_storage_key"),
+        UniqueConstraint(
+            "manifest_storage_key", name="uq_acquired_evidence_files_manifest_storage_key"
+        ),
+        UniqueConstraint("manifest_hash", name="uq_acquired_evidence_files_manifest_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    inventory_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("acquisition_inventories.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    inventory_item_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("acquisition_inventory_items.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    job_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("jobs.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    plan_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("acquisition_plans.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("case_devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    acquired_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    source_root_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_path_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    manifest_storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    manifest_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    transfer_limit_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    tool_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    validation_state: Mapped[str] = mapped_column(String(32), nullable=False)
+    partial_preserved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )

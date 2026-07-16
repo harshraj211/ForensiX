@@ -216,6 +216,33 @@ class AcquisitionInventoryResponse(BaseModel):
     limit: int
 
 
+class AcquiredEvidenceFileResponse(BaseModel):
+    id: str
+    inventory_id: str
+    inventory_item_id: str
+    job_id: str
+    case_id: str
+    plan_id: str
+    device_id: str
+    acquired_by: str
+    status: Literal["acquiring", "completed", "failed", "interrupted"]
+    source_root_id: str
+    source_path_hash: str
+    storage_key: str
+    manifest_storage_key: str
+    size_bytes: int | None
+    sha256: str | None
+    manifest_hash: str | None
+    transfer_limit_bytes: int
+    tool_version: str
+    validation_state: Literal["not_physically_validated"]
+    partial_preserved: bool
+    error_code: str | None
+    error_message: str | None
+    started_at: datetime
+    completed_at: datetime | None
+
+
 class JobEventResponse(BaseModel):
     id: str
     job_id: str

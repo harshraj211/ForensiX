@@ -1,3 +1,4 @@
+import asyncio
 from collections import deque
 from pathlib import Path
 from typing import cast
@@ -25,6 +26,18 @@ class RecordingRunner:
         self, arguments: tuple[str, ...], *, timeout_seconds: float | None = None
     ) -> AdbCommandResult:
         self.calls.append((arguments, timeout_seconds))
+        return self.results.popleft()
+
+    async def run_to_file(
+        self,
+        arguments: tuple[str, ...],
+        destination: Path,
+        *,
+        timeout_seconds: float,
+        max_file_bytes: int,
+    ) -> AdbCommandResult:
+        self.calls.append((arguments, timeout_seconds))
+        await asyncio.to_thread(destination.write_bytes, b"known-answer")
         return self.results.popleft()
 
 
@@ -85,6 +98,40 @@ def test_inventory_policy_is_fixed_bounded_and_has_no_shell_composition() -> Non
     assert all(token not in command.arguments for token in {"pull", "sh", "-c", "|", ";"})
 
 
+def test_pull_policy_uses_shell_free_inventory_path_and_absolute_destination(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "partial.bin"
+    command = AdbCommandPolicy.pull_inventory_file(
+        "FX-DEMO-001",
+        SharedStorageRoot.EMULATED_PRIMARY,
+        "DCIM/Camera/image name;$(safe).jpg",
+        destination,
+    )
+
+    assert command.arguments[:3] == ("-s", "FX-DEMO-001", "pull")
+    assert command.arguments[3] == "/storage/emulated/0/DCIM/Camera/image name;$(safe).jpg"
+    assert command.arguments[4] == str(destination.absolute())
+    assert "shell" not in command.arguments
+    assert command.timeout_seconds == 120.0
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    ["", "/absolute.jpg", "../escape.jpg", "DCIM//file.jpg", "a/b/c/d/e/f/g.jpg", "bad\nname"],
+)
+def test_pull_policy_rejects_paths_outside_inventory_policy(
+    tmp_path: Path, relative_path: str
+) -> None:
+    with pytest.raises(ValueError):
+        AdbCommandPolicy.pull_inventory_file(
+            "FX-DEMO-001",
+            SharedStorageRoot.PRIMARY_ALIAS,
+            relative_path,
+            tmp_path / "partial.bin",
+        )
+
+
 @pytest.mark.parametrize("serial", ["", "bad serial", "bad\nserial", "x" * 256])
 def test_policy_rejects_invalid_serials(serial: str) -> None:
     with pytest.raises(ValueError):
@@ -131,3 +178,22 @@ async def test_system_inventory_parses_paths_without_running_path_derived_comman
     ]
     assert len(runner.calls) == 1
     assert runner.calls[0][0][3] == "find"
+
+
+@pytest.mark.asyncio
+async def test_system_pull_writes_only_to_supplied_partial_path(tmp_path: Path) -> None:
+    runner = RecordingRunner([_result(0, stdout="1 file pulled")])
+    client = SystemAdbClient(cast(SubprocessAdbRunner, runner))
+    destination = tmp_path / "partial.bin"
+
+    result = await client.pull_inventory_file(
+        "FX-DEMO-001",
+        SharedStorageRoot.PRIMARY_ALIAS,
+        "Download/report.pdf",
+        destination,
+    )
+
+    assert destination.read_bytes() == b"known-answer"
+    assert result.size_bytes == 12
+    assert runner.calls[0][0][2] == "pull"
+    assert "shell" not in runner.calls[0][0]

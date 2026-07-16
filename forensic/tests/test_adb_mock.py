@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from forensix_forensic.adb.errors import AdbTimeoutError
@@ -48,3 +50,18 @@ async def test_mock_inventory_is_content_free_and_deterministic() -> None:
         "Documents/timeline.csv",
         "Download/incident-notes.pdf",
     ]
+
+
+@pytest.mark.asyncio
+async def test_mock_pull_produces_known_answer_bytes(tmp_path: Path) -> None:
+    destination = tmp_path / "fixture.partial"
+
+    result = await MockAdbClient().pull_inventory_file(
+        "FX-DEMO-001",
+        SharedStorageRoot.EMULATED_PRIMARY,
+        "Documents/timeline.csv",
+        destination,
+    )
+
+    assert destination.read_bytes().startswith(b"timestamp,event")
+    assert result.size_bytes == destination.stat().st_size

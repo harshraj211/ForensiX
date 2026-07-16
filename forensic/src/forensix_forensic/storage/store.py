@@ -72,6 +72,14 @@ class EvidenceStore:
             raise EvidenceAlreadyExistsError(storage_key)
         return AtomicEvidenceWriter(self, storage_key, target)
 
+    def reserve_external(self, storage_key: str) -> "ExternalEvidenceReservation":
+        """Reserve a contained partial destination for a trusted local subprocess."""
+        target = self.resolve(storage_key)
+        self._create_safe_directories(target.parent)
+        if target.exists():
+            raise EvidenceAlreadyExistsError(storage_key)
+        return ExternalEvidenceReservation(self, storage_key, target)
+
     def hash(self, storage_key: str) -> HashResult:
         path = self.resolve(storage_key, require_file=True)
         return sha256_file(path)
@@ -180,6 +188,70 @@ class AtomicEvidenceWriter:
             self._partial.unlink(missing_ok=True)
 
     def __enter__(self) -> "AtomicEvidenceWriter":
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close(preserve_partial=exception_type is not None)
+
+
+class ExternalEvidenceReservation:
+    """Seals a subprocess-created partial file into append-only evidence storage."""
+
+    def __init__(self, store: EvidenceStore, storage_key: str, target: Path) -> None:
+        self._store = store
+        self.storage_key = storage_key
+        self._target = target
+        token = sha256(storage_key.encode("utf-8")).hexdigest()[:20]
+        self._partial = target.parent / f".forensix-{token}-{os.urandom(8).hex()}.partial"
+        self._lock = target.parent / f".forensix-{token}.lock"
+        self._sealed = False
+
+    @property
+    def partial_path(self) -> Path:
+        return self._partial
+
+    def seal(self) -> StoredEvidence:
+        if self._sealed:
+            raise ValueError("cannot seal an evidence reservation twice")
+        self._store._assert_safe_existing_chain(self._partial)
+        if (
+            not self._partial.exists()
+            or _is_link_or_reparse_point(self._partial)
+            or not self._partial.is_file()
+        ):
+            raise StorageBoundaryError("the external evidence partial is not a regular file")
+        _restrict_permissions(self._partial, directory=False)
+        hash_result = sha256_file(self._partial)
+        lock_descriptor: int | None = None
+        try:
+            lock_descriptor = os.open(self._lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            if self._target.exists() or self._target.is_symlink():
+                raise EvidenceAlreadyExistsError(self.storage_key)
+            self._store._assert_safe_existing_chain(self._target)
+            os.replace(self._partial, self._target)
+            _restrict_permissions(self._target, directory=False)
+            _sync_directory(self._target.parent)
+        finally:
+            if lock_descriptor is not None:
+                os.close(lock_descriptor)
+            self._lock.unlink(missing_ok=True)
+        self._sealed = True
+        return StoredEvidence(
+            storage_key=self.storage_key,
+            size_bytes=hash_result.size_bytes,
+            sha256=hash_result.hexdigest,
+        )
+
+    def close(self, *, preserve_partial: bool = True) -> None:
+        if not preserve_partial and not self._sealed:
+            self._partial.unlink(missing_ok=True)
+
+    def __enter__(self) -> "ExternalEvidenceReservation":
         return self
 
     def __exit__(

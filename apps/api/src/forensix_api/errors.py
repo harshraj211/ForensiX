@@ -11,6 +11,7 @@ from forensix_forensic.adb import (
     AdbError,
     AdbOutputLimitError,
     AdbTimeoutError,
+    AdbTransferLimitError,
 )
 from forensix_server.cases import (
     CaseAccessDeniedError,
@@ -72,6 +73,8 @@ async def adb_error_handler(request: Request, error: AdbError) -> JSONResponse:
     status_code = 503
     if isinstance(error, AdbTimeoutError):
         status_code = 504
+    elif isinstance(error, AdbTransferLimitError):
+        status_code = 413
     elif isinstance(error, AdbDeviceNotFoundError):
         status_code = 404
     elif isinstance(error, AdbDeviceNotAuthorizedError):

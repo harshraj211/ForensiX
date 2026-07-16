@@ -90,6 +90,7 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
     assert ready.status_code == 200
     assert {
         "alembic_version",
+        "acquired_evidence_files",
         "acquisition_inventories",
         "acquisition_inventory_items",
         "acquisition_plans",
@@ -227,7 +228,11 @@ def test_openapi_exposes_no_arbitrary_shell_operation(tmp_path: Path) -> None:
 
     assert all("shell" not in path for path in schema["paths"])
     detect = schema["paths"]["/api/v1/devices/detect"]["post"]
+    acquire = schema["paths"][
+        "/api/v1/cases/{case_id}/acquisitions/{job_id}/inventory/items/{item_id}/acquire"
+    ]["post"]
     assert "requestBody" not in detect
+    assert "requestBody" not in acquire
 
 
 def test_first_run_bootstrap_creates_secure_local_session(tmp_path: Path) -> None:
@@ -703,6 +708,58 @@ def test_metadata_only_plan_cannot_run_storage_inventory(tmp_path: Path) -> None
 
     assert rejected.status_code == 409
     assert rejected.json()["error"]["code"] == "ACQUISITION_INVENTORY_INVALID"
+
+
+def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+        inventory = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers).json()
+        item = next(
+            entry
+            for entry in inventory["items"]
+            if entry["relative_path"] == "Documents/timeline.csv"
+        )
+        acquire_url = f"{endpoint}/{job['id']}/inventory/items/{item['id']}/acquire"
+
+        acquired = client.post(acquire_url, headers=headers)
+        repeated = client.post(acquire_url, headers=headers)
+        listed = client.get(f"{endpoint}/{job['id']}/files")
+
+    assert acquired.status_code == 200
+    assert acquired.json()["status"] == "completed"
+    assert acquired.json()["inventory_item_id"] == item["id"]
+    assert len(acquired.json()["sha256"]) == 64
+    assert len(acquired.json()["manifest_hash"]) == 64
+    assert acquired.json()["validation_state"] == "not_physically_validated"
+    assert acquired.json()["storage_key"].startswith("c/")
+    assert repeated.json()["id"] == acquired.json()["id"]
+    assert listed.status_code == 200
+    assert [entry["id"] for entry in listed.json()] == [acquired.json()["id"]]
+
+
+def test_file_acquisition_rejects_caller_supplied_or_unknown_item(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+        client.post(f"{endpoint}/{job['id']}/inventory", headers=headers)
+
+        rejected = client.post(
+            f"{endpoint}/{job['id']}/inventory/items/00000000-0000-0000-0000-000000000000/acquire",
+            headers=headers,
+            json={"remote_path": "/sdcard/forged"},
+        )
+
+    assert rejected.status_code == 409
+    assert rejected.json()["error"]["code"] == "ACQUISITION_FILE_INVALID"
 
 
 def test_prepared_acquisition_job_can_be_cancelled_without_execution(tmp_path: Path) -> None:

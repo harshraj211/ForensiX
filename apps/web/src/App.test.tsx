@@ -474,6 +474,7 @@ describe("acquisition planning", () => {
   it("creates a frozen plan without starting acquisition", async () => {
     let created = false;
     let jobState: "ready" | "completed" | null = null;
+    let fileAcquired = false;
     const assessedAt = new Date().toISOString();
     const plan = {
       id: "plan-1",
@@ -654,6 +655,76 @@ describe("acquisition planning", () => {
           }),
         );
       }
+      if (url === "/api/v1/cases/case-1/acquisitions/job-1/files") {
+        return Promise.resolve(
+          jsonResponse(
+            fileAcquired
+              ? [
+                  {
+                    id: "file-1",
+                    inventory_id: "inventory-1",
+                    inventory_item_id: "item-1",
+                    job_id: "job-1",
+                    case_id: "case-1",
+                    plan_id: "plan-1",
+                    device_id: "device-1",
+                    acquired_by: "user-1",
+                    status: "completed",
+                    source_root_id: "primary_alias",
+                    source_path_hash: "d".repeat(64),
+                    storage_key: "c/case-1/r/file-1.jpg",
+                    manifest_storage_key: "c/case-1/m/file-1.json",
+                    size_bytes: 31,
+                    sha256: "e".repeat(64),
+                    manifest_hash: "f".repeat(64),
+                    transfer_limit_bytes: 104857600,
+                    tool_version: "0.1.0",
+                    validation_state: "not_physically_validated",
+                    partial_preserved: false,
+                    error_code: null,
+                    error_message: null,
+                    started_at: assessedAt,
+                    completed_at: assessedAt,
+                  },
+                ]
+              : [],
+          ),
+        );
+      }
+      if (
+        url === "/api/v1/cases/case-1/acquisitions/job-1/inventory/items/item-1/acquire" &&
+        init?.method === "POST"
+      ) {
+        fileAcquired = true;
+        return Promise.resolve(
+          jsonResponse({
+            id: "file-1",
+            inventory_id: "inventory-1",
+            inventory_item_id: "item-1",
+            job_id: "job-1",
+            case_id: "case-1",
+            plan_id: "plan-1",
+            device_id: "device-1",
+            acquired_by: "user-1",
+            status: "completed",
+            source_root_id: "primary_alias",
+            source_path_hash: "d".repeat(64),
+            storage_key: "c/case-1/r/file-1.jpg",
+            manifest_storage_key: "c/case-1/m/file-1.json",
+            size_bytes: 31,
+            sha256: "e".repeat(64),
+            manifest_hash: "f".repeat(64),
+            transfer_limit_bytes: 104857600,
+            tool_version: "0.1.0",
+            validation_state: "not_physically_validated",
+            partial_preserved: false,
+            error_code: null,
+            error_message: null,
+            started_at: assessedAt,
+            completed_at: assessedAt,
+          }),
+        );
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -676,6 +747,9 @@ describe("acquisition planning", () => {
     await user.click(screen.getByRole("button", { name: "Run bounded path inventory" }));
     expect(await screen.findByText("3 path records · completed")).toBeInTheDocument();
     expect(screen.getByText("DCIM/Camera/IMG_0001.jpg")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Acquire selected file" }));
+    expect(await screen.findByText("31 bytes acquired")).toBeInTheDocument();
+    expect(screen.getByText(`SHA-256 ${"e".repeat(64)}`)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/cases/case-1/acquisition-plans",
       expect.objectContaining({

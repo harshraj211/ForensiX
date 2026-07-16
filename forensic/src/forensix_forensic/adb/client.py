@@ -1,11 +1,14 @@
 """High-level ADB client limited to registered forensic operations."""
 
+import asyncio
+from pathlib import Path
 from typing import Protocol
 
 from .errors import AdbCommandError
 from .models import (
     AdbServerInfo,
     DeviceTransport,
+    PulledFileResult,
     SharedStorageRootProbe,
     StorageInventoryResult,
     StorageProbeStatus,
@@ -20,6 +23,7 @@ from .parser import (
 from .policy import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_ITEMS,
+    MAX_ACQUIRED_FILE_BYTES,
     AdbCommandPolicy,
     ApprovedAdbCommand,
     SharedStorageRoot,
@@ -41,6 +45,14 @@ class AdbClient(Protocol):
     async def inventory_shared_storage(
         self, serial: str, root: SharedStorageRoot
     ) -> StorageInventoryResult: ...
+
+    async def pull_inventory_file(
+        self,
+        serial: str,
+        root: SharedStorageRoot,
+        relative_path: str,
+        destination: Path,
+    ) -> PulledFileResult: ...
 
 
 class SystemAdbClient:
@@ -124,6 +136,31 @@ class SystemAdbClient:
             max_depth=INVENTORY_MAX_DEPTH,
         )
 
+    async def pull_inventory_file(
+        self,
+        serial: str,
+        root: SharedStorageRoot,
+        relative_path: str,
+        destination: Path,
+    ) -> PulledFileResult:
+        command = AdbCommandPolicy.pull_inventory_file(serial, root, relative_path, destination)
+        result = await self._runner.run_to_file(
+            command.arguments,
+            destination,
+            timeout_seconds=command.timeout_seconds,
+            max_file_bytes=MAX_ACQUIRED_FILE_BYTES,
+        )
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        size_bytes = await asyncio.to_thread(_regular_file_size, destination)
+        if size_bytes is None:
+            raise AdbCommandError(result.exit_code, "ADB did not create a regular local file.")
+        return PulledFileResult(
+            root_id=root.value,
+            relative_path=relative_path,
+            size_bytes=size_bytes,
+        )
+
     async def _run(self, command: ApprovedAdbCommand) -> AdbCommandResult:
         return await self._runner.run(command.arguments, timeout_seconds=command.timeout_seconds)
 
@@ -137,3 +174,9 @@ class SystemAdbClient:
 def _safe_summary(stderr: str) -> str:
     compact = " ".join(stderr.split())
     return compact[:240] or "No error details were provided."
+
+
+def _regular_file_size(path: Path) -> int | None:
+    if path.is_symlink() or not path.is_file():
+        return None
+    return path.stat().st_size

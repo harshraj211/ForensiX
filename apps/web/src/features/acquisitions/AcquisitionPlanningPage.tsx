@@ -15,10 +15,12 @@ import { caseKeys } from "../cases/caseKeys";
 import { CaseError } from "../cases/CasesPage";
 import {
   cancelAcquisitionJob,
+  acquireInventoryFile,
   createAcquisitionPlan,
   getAcquisitionInventory,
   getCase,
   listAcquisitionJobs,
+  listAcquiredFiles,
   listAcquisitionPlans,
   listCaseDeviceAssessments,
   listCaseDevices,
@@ -464,15 +466,29 @@ function PlanHistory({
 }
 
 function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string }) {
+  const queryClient = useQueryClient();
   const inventoryQuery = useQuery({
     queryKey: ["acquisition-inventory", caseId, jobId],
     queryFn: () => getAcquisitionInventory(caseId, jobId),
+  });
+  const filesQuery = useQuery({
+    queryKey: ["acquired-files", caseId, jobId],
+    queryFn: () => listAcquiredFiles(caseId, jobId),
+  });
+  const acquireFile = useMutation({
+    mutationFn: (itemId: string) => acquireInventoryFile(caseId, jobId, itemId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["acquired-files", caseId, jobId] });
+    },
   });
   if (inventoryQuery.isPending) {
     return <p role="status" className="mt-3 text-xs text-slate-500">Loading inventory manifest...</p>;
   }
   if (inventoryQuery.isError) return <div className="mt-3"><CaseError error={inventoryQuery.error} /></div>;
   const inventory = inventoryQuery.data;
+  const acquiredByItem = new Map(
+    (filesQuery.data ?? []).map((file) => [file.inventory_item_id, file]),
+  );
   return (
     <div className="mt-3 rounded-lg border border-emerald-200/10 bg-emerald-200/5 p-3">
       <p className="text-xs font-semibold text-emerald-200">
@@ -481,14 +497,57 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
       <p className="mt-1 truncate font-mono text-[10px] text-slate-500" title={inventory.manifest_hash}>
         Manifest SHA-256 {inventory.manifest_hash}
       </p>
-      <ul className="mt-3 space-y-1 text-[11px] text-slate-400">
-        {inventory.items.slice(0, 5).map((item) => (
-          <li key={item.id} className="truncate font-mono" title={item.relative_path}>
-            {item.relative_path}
-          </li>
-        ))}
+      <p className="mt-2 text-[10px] leading-4 text-amber-200/80">
+        File acquisition is limited to 100 MiB per selected path and is not physically validated.
+      </p>
+      <ul className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1 text-[11px] text-slate-400">
+        {inventory.items.map((item) => {
+          const acquired = acquiredByItem.get(item.id);
+          return (
+            <li key={item.id} className="rounded border border-white/5 p-2">
+              <p className="truncate font-mono" title={item.relative_path}>
+                {item.relative_path}
+              </p>
+              {acquired?.status === "completed" ? (
+                <div className="mt-2 text-[10px] text-emerald-200">
+                  <p>{acquired.size_bytes} bytes acquired</p>
+                  <p className="truncate font-mono" title={acquired.sha256 ?? undefined}>
+                    SHA-256 {acquired.sha256}
+                  </p>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={acquireFile.isPending || filesQuery.isPending}
+                  onClick={() => {
+                    acquireFile.mutate(item.id);
+                  }}
+                  className="mt-2 min-h-9 rounded border border-cyan-200/15 px-3 text-[10px] font-semibold text-cyan-200 disabled:opacity-40"
+                >
+                  {acquireFile.isPending && acquireFile.variables === item.id
+                    ? "Acquiring..."
+                    : acquired?.status === "failed" || acquired?.status === "interrupted"
+                      ? "Retry selected file"
+                      : "Acquire selected file"}
+                </button>
+              )}
+              {acquired && acquired.status !== "completed" && (
+                <p className="mt-1 text-[10px] text-rose-200">
+                  {acquired.error_code ?? acquired.status}
+                  {acquired.partial_preserved ? " · partial preserved" : ""}
+                </p>
+              )}
+            </li>
+          );
+        })}
       </ul>
-      {inventory.total > 5 && <p className="mt-2 text-[10px] text-slate-600">Showing 5 of {inventory.total} paths.</p>}
+      {filesQuery.isError && <div className="mt-3"><CaseError error={filesQuery.error} /></div>}
+      {acquireFile.isError && <div className="mt-3"><CaseError error={acquireFile.error} /></div>}
+      {inventory.total > inventory.items.length && (
+        <p className="mt-2 text-[10px] text-slate-600">
+          Showing {inventory.items.length} of {inventory.total} paths.
+        </p>
+      )}
     </div>
   );
 }

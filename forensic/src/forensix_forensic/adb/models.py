@@ -70,3 +70,11 @@ class StorageInventoryResult(BaseModel):
     truncated: bool
     max_items: int = Field(ge=1)
     max_depth: int = Field(ge=1)
+
+
+class PulledFileResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    root_id: str
+    relative_path: str
+    size_bytes: int = Field(ge=0)

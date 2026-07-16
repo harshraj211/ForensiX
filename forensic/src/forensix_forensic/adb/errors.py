@@ -34,6 +34,14 @@ class AdbOutputLimitError(AdbError):
         self.limit_bytes = limit_bytes
 
 
+class AdbTransferLimitError(AdbError):
+    code = "ADB_TRANSFER_LIMIT_EXCEEDED"
+
+    def __init__(self, limit_bytes: int) -> None:
+        super().__init__(f"ADB file transfer exceeded the configured {limit_bytes} byte limit.")
+        self.limit_bytes = limit_bytes
+
+
 class AdbCommandError(AdbError):
     code = "ADB_COMMAND_FAILED"
 

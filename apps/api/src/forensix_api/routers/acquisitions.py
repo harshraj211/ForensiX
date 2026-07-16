@@ -1,6 +1,6 @@
 """Protected durable acquisition-job preparation and observation endpoints."""
 
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
@@ -11,6 +11,7 @@ from forensix_api.dependencies import (
     require_csrf_session,
 )
 from forensix_api.schemas import (
+    AcquiredEvidenceFileResponse,
     AcquisitionInventoryItemResponse,
     AcquisitionInventoryResponse,
     AcquisitionJobListResponse,
@@ -21,12 +22,14 @@ from forensix_api.schemas import (
 from forensix_forensic.adb import AdbClient
 from forensix_server.acquisitions import (
     AcquisitionExecutionService,
+    AcquisitionFileService,
     AcquisitionInventoryService,
     event_checkpoint,
     job_checkpoint,
 )
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.db import (
+    AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     Database,
@@ -164,6 +167,46 @@ def get_acquisition_inventory(
         return _inventory_response(inventory, items, total, offset=offset, limit=limit)
 
 
+@router.post(
+    "/{job_id}/inventory/items/{item_id}/acquire",
+    response_model=AcquiredEvidenceFileResponse,
+)
+async def acquire_inventory_file(
+    case_id: str,
+    job_id: str,
+    item_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+) -> AcquiredEvidenceFileResponse:
+    record = await AcquisitionFileService().acquire(
+        database,
+        authenticated.principal,
+        case_id,
+        job_id,
+        item_id,
+        adb_client,
+    )
+    return _file_response(record)
+
+
+@router.get("/{job_id}/files", response_model=list[AcquiredEvidenceFileResponse])
+def list_acquired_files(
+    case_id: str,
+    job_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[AcquiredEvidenceFileResponse]:
+    with database.session() as session:
+        records = AcquisitionFileService().list_for_job(
+            session,
+            authenticated.principal,
+            case_id,
+            job_id,
+        )
+        return [_file_response(record) for record in records]
+
+
 def _job_response(job: JobRecord) -> AcquisitionJobResponse:
     if job.case_id is None or job.plan_id is None or job.owner_id is None:
         raise RuntimeError("Acquisition jobs require case, plan, and owner references.")
@@ -246,4 +289,36 @@ def _inventory_response(
         total=total,
         offset=offset,
         limit=limit,
+    )
+
+
+def _file_response(record: AcquiredEvidenceFileRecord) -> AcquiredEvidenceFileResponse:
+    status_value = record.status
+    if status_value not in {"acquiring", "completed", "failed", "interrupted"}:
+        raise RuntimeError("Acquired evidence file has an invalid persisted status.")
+    return AcquiredEvidenceFileResponse(
+        id=record.id,
+        inventory_id=record.inventory_id,
+        inventory_item_id=record.inventory_item_id,
+        job_id=record.job_id,
+        case_id=record.case_id,
+        plan_id=record.plan_id,
+        device_id=record.device_id,
+        acquired_by=record.acquired_by,
+        status=cast(Literal["acquiring", "completed", "failed", "interrupted"], status_value),
+        source_root_id=record.source_root_id,
+        source_path_hash=record.source_path_hash,
+        storage_key=record.storage_key,
+        manifest_storage_key=record.manifest_storage_key,
+        size_bytes=record.size_bytes,
+        sha256=record.sha256,
+        manifest_hash=record.manifest_hash,
+        transfer_limit_bytes=record.transfer_limit_bytes,
+        tool_version=record.tool_version,
+        validation_state="not_physically_validated",
+        partial_preserved=record.partial_preserved,
+        error_code=record.error_code,
+        error_message=record.error_message,
+        started_at=record.started_at,
+        completed_at=record.completed_at,
     )

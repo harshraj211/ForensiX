@@ -8,13 +8,14 @@ from .errors import (
     StorageError,
 )
 from .hashing import HashResult, sha256_file
-from .store import AtomicEvidenceWriter, EvidenceStore, StoredEvidence
+from .store import AtomicEvidenceWriter, EvidenceStore, ExternalEvidenceReservation, StoredEvidence
 
 __all__ = [
     "AtomicEvidenceWriter",
     "EvidenceAlreadyExistsError",
     "EvidenceNotFoundError",
     "EvidenceStore",
+    "ExternalEvidenceReservation",
     "HashResult",
     "InvalidStorageKeyError",
     "StorageBoundaryError",

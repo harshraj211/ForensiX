@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from .errors import AdbOutputLimitError, AdbTimeoutError
+from .errors import AdbOutputLimitError, AdbTimeoutError, AdbTransferLimitError
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +84,65 @@ class SubprocessAdbRunner:
             duration_seconds=time.monotonic() - started,
         )
 
+    async def run_to_file(
+        self,
+        arguments: Sequence[str],
+        destination: Path,
+        *,
+        timeout_seconds: float,
+        max_file_bytes: int,
+    ) -> AdbCommandResult:
+        """Run an approved pull while enforcing a local partial-file size ceiling."""
+        if max_file_bytes <= 0:
+            raise ValueError("max_file_bytes must be positive")
+        argv = tuple(arguments)
+        self._validate_arguments(argv)
+        started = time.monotonic()
+        creation_flags = 0
+        if os.name == "nt":
+            creation_flags = 0x08000000 | 0x00000200
+        process = await asyncio.create_subprocess_exec(  # noqa: S603
+            str(self._adb_path),
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            creationflags=creation_flags,
+        )
+        assert process.stdout is not None
+        assert process.stderr is not None
+        communication = asyncio.gather(
+            self._read_limited(process.stdout),
+            self._read_limited(process.stderr),
+        )
+        try:
+            async with asyncio.timeout(timeout_seconds):
+                while not communication.done():
+                    await asyncio.sleep(0.05)
+                    size_bytes = await asyncio.to_thread(_file_size, destination)
+                    if size_bytes is not None and size_bytes > max_file_bytes:
+                        await self._terminate(process)
+                        raise AdbTransferLimitError(max_file_bytes)
+                stdout_bytes, stderr_bytes = await communication
+                exit_code = await process.wait()
+        except TimeoutError as error:
+            await self._terminate(process)
+            communication.cancel()
+            raise AdbTimeoutError(timeout_seconds) from error
+        except (AdbOutputLimitError, AdbTransferLimitError):
+            await self._terminate(process)
+            communication.cancel()
+            raise
+        size_bytes = await asyncio.to_thread(_file_size, destination)
+        if size_bytes is not None and size_bytes > max_file_bytes:
+            raise AdbTransferLimitError(max_file_bytes)
+        return AdbCommandResult(
+            argv=argv,
+            exit_code=exit_code,
+            stdout=stdout_bytes.decode("utf-8", errors="replace"),
+            stderr=stderr_bytes.decode("utf-8", errors="replace"),
+            duration_seconds=time.monotonic() - started,
+        )
+
     async def _read_limited(self, stream: asyncio.StreamReader) -> bytes:
         chunks: list[bytes] = []
         size = 0
@@ -109,3 +168,10 @@ class SubprocessAdbRunner:
         for argument in arguments:
             if "\x00" in argument or "\r" in argument or "\n" in argument:
                 raise ValueError("ADB arguments may not contain control separators")
+
+
+def _file_size(path: Path) -> int | None:
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return None

@@ -253,6 +253,33 @@ export interface AcquisitionInventory {
   limit: number;
 }
 
+export interface AcquiredEvidenceFile {
+  id: string;
+  inventory_id: string;
+  inventory_item_id: string;
+  job_id: string;
+  case_id: string;
+  plan_id: string;
+  device_id: string;
+  acquired_by: string;
+  status: "acquiring" | "completed" | "failed" | "interrupted";
+  source_root_id: string;
+  source_path_hash: string;
+  storage_key: string;
+  manifest_storage_key: string;
+  size_bytes: number | null;
+  sha256: string | null;
+  manifest_hash: string | null;
+  transfer_limit_bytes: number;
+  tool_version: string;
+  validation_state: "not_physically_validated";
+  partial_preserved: boolean;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
 export interface AcquisitionJobEvent {
   id: string;
   job_id: string;
@@ -453,12 +480,40 @@ export function runAcquisitionInventory(
   );
 }
 
-export function getAcquisitionInventory(
+export async function getAcquisitionInventory(
   caseId: string,
   jobId: string,
 ): Promise<AcquisitionInventory> {
+  const base = `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/inventory`;
+  const first = await apiRequest<AcquisitionInventory>(`${base}?offset=0&limit=100`);
+  const items = [...first.items];
+  while (items.length < first.total) {
+    const page = await apiRequest<AcquisitionInventory>(
+      `${base}?offset=${String(items.length)}&limit=100`,
+    );
+    if (page.items.length === 0) break;
+    items.push(...page.items);
+  }
+  return { ...first, items, offset: 0, limit: items.length };
+}
+
+export function acquireInventoryFile(
+  caseId: string,
+  jobId: string,
+  itemId: string,
+): Promise<AcquiredEvidenceFile> {
   return apiRequest(
-    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/inventory?offset=0&limit=100`,
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/inventory/items/${encodeURIComponent(itemId)}/acquire`,
+    { method: "POST" },
+  );
+}
+
+export function listAcquiredFiles(
+  caseId: string,
+  jobId: string,
+): Promise<AcquiredEvidenceFile[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/files`,
   );
 }
 

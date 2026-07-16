@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,6 +20,8 @@ from forensix_forensic.capabilities import (
 )
 from forensix_server.acquisitions import (
     AcquisitionExecutionService,
+    AcquisitionFileError,
+    AcquisitionFileService,
     AcquisitionInventoryError,
     AcquisitionInventoryService,
     AcquisitionPlanService,
@@ -29,6 +33,7 @@ from forensix_server.auth.domain import ROLE_PERMISSIONS
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseService
 from forensix_server.db import (
+    AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     Database,
@@ -295,3 +300,108 @@ async def test_cancellation_preserves_completed_inventory_metadata(database: Dat
     assert job.state == JobState.CANCELLED.value
     assert job.result_reference == inventory.id
     assert inventory.persisted_count == 3
+
+
+@pytest.mark.asyncio
+async def test_selected_inventory_item_is_pulled_hashed_and_manifested(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, job_id = _ready_job(database, principal)
+    await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
+    with database.session() as session:
+        item = session.scalar(
+            select(AcquisitionInventoryItemRecord).where(
+                AcquisitionInventoryItemRecord.relative_path == "Documents/timeline.csv"
+            )
+        )
+        assert item is not None
+        item_id = item.id
+
+    service = AcquisitionFileService()
+    acquired = await service.acquire(database, principal, case_id, job_id, item_id, MockAdbClient())
+    repeated = await service.acquire(database, principal, case_id, job_id, item_id, MockAdbClient())
+
+    payload = b"timestamp,event\n2026-07-16T00:00:00Z,test\n"
+    evidence_path = database.data_dir / "evidence" / Path(acquired.storage_key)
+    manifest_path = database.data_dir / "evidence" / Path(acquired.manifest_storage_key)
+    assert repeated.id == acquired.id
+    assert acquired.status == "completed"
+    assert acquired.size_bytes == len(payload)
+    assert acquired.sha256 == hashlib.sha256(payload).hexdigest()
+    assert acquired.manifest_hash == hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    assert evidence_path.read_bytes() == payload
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["source_relative_path"] == "Documents/timeline.csv"
+    assert manifest["file_sha256"] == acquired.sha256
+    assert manifest["validation_state"] == "not_physically_validated"
+    with database.session() as session:
+        records = list(session.scalars(select(AcquiredEvidenceFileRecord)))
+    assert len(records) == 1
+
+
+@pytest.mark.asyncio
+async def test_file_acquisition_revalidates_device_and_records_failure(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, job_id = _ready_job(database, principal)
+    await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
+    with database.session() as session:
+        item = session.scalar(select(AcquisitionInventoryItemRecord))
+        assert item is not None
+        item_id = item.id
+
+    with pytest.raises(AdbDeviceNotFoundError):
+        await AcquisitionFileService().acquire(
+            database,
+            principal,
+            case_id,
+            job_id,
+            item_id,
+            MockAdbClient(MockAdbScenario.NO_DEVICES),
+        )
+
+    with database.session() as session:
+        record = session.scalar(select(AcquiredEvidenceFileRecord))
+    assert record is not None
+    assert record.status == "failed"
+    assert record.error_code == "DEVICE_NOT_FOUND"
+    assert record.sha256 is None
+
+
+@pytest.mark.asyncio
+async def test_file_acquisition_rejects_inventory_item_from_another_job(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, job_id = _ready_job(database, principal)
+    await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
+    other_case_id, _, other_job_id = _ready_job(database, principal)
+    await AcquisitionInventoryService().run(
+        database, principal, other_case_id, other_job_id, MockAdbClient()
+    )
+    with database.session() as session:
+        other_inventory = session.scalar(
+            select(AcquisitionInventoryRecord).where(
+                AcquisitionInventoryRecord.job_id == other_job_id
+            )
+        )
+        assert other_inventory is not None
+        other_item = session.scalar(
+            select(AcquisitionInventoryItemRecord).where(
+                AcquisitionInventoryItemRecord.inventory_id == other_inventory.id
+            )
+        )
+        assert other_item is not None
+        other_item_id = other_item.id
+
+    with pytest.raises(AcquisitionFileError, match="not issued"):
+        await AcquisitionFileService().acquire(
+            database,
+            principal,
+            case_id,
+            job_id,
+            other_item_id,
+            MockAdbClient(),
+        )

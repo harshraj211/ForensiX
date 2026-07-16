@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path, PurePosixPath
 
 
 class AdbOperation(StrEnum):
@@ -12,6 +13,7 @@ class AdbOperation(StrEnum):
     STORAGE_ROOT_EXISTS = "storage_root_exists"
     STORAGE_ROOT_READABLE = "storage_root_readable"
     INVENTORY_STORAGE_PATHS = "inventory_storage_paths"
+    PULL_INVENTORY_FILE = "pull_inventory_file"
 
 
 class SharedStorageRoot(StrEnum):
@@ -26,6 +28,7 @@ _STORAGE_PATHS: dict[SharedStorageRoot, str] = {
 
 INVENTORY_MAX_DEPTH = 6
 INVENTORY_MAX_ITEMS = 250
+MAX_ACQUIRED_FILE_BYTES = 100 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +99,25 @@ class AdbCommandPolicy:
         )
 
     @staticmethod
+    def pull_inventory_file(
+        serial: str,
+        root: SharedStorageRoot,
+        relative_path: str,
+        destination: Path,
+    ) -> ApprovedAdbCommand:
+        _validate_serial(serial)
+        _validate_inventory_relative_path(relative_path)
+        destination = destination.absolute()
+        if any(character in str(destination) for character in ("\x00", "\r", "\n")):
+            raise ValueError("ADB pull destination must be a safe absolute local path")
+        remote_path = f"{_STORAGE_PATHS[root].rstrip('/')}/{relative_path}"
+        return ApprovedAdbCommand(
+            AdbOperation.PULL_INVENTORY_FILE,
+            ("-s", serial, "pull", remote_path, str(destination)),
+            120.0,
+        )
+
+    @staticmethod
     def display_path(root: SharedStorageRoot) -> str:
         return _STORAGE_PATHS[root]
 
@@ -119,3 +141,17 @@ def _validate_serial(serial: str) -> None:
         raise ValueError("ADB serial must contain between 1 and 255 characters")
     if any(character.isspace() or ord(character) < 32 for character in serial):
         raise ValueError("ADB serial contains a prohibited control character")
+
+
+def _validate_inventory_relative_path(relative_path: str) -> None:
+    if not relative_path or len(relative_path) > 1024:
+        raise ValueError("Inventory relative path must contain between 1 and 1024 characters")
+    path = PurePosixPath(relative_path)
+    parts = relative_path.split("/")
+    if (
+        path.is_absolute()
+        or len(parts) > INVENTORY_MAX_DEPTH
+        or any(part in {"", ".", ".."} for part in parts)
+        or any(ord(character) < 32 or ord(character) == 127 for character in relative_path)
+    ):
+        raise ValueError("Inventory relative path is outside the approved path policy")

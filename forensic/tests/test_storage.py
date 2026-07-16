@@ -87,6 +87,19 @@ def test_writer_removes_unsealed_partial_after_clean_exit(tmp_path: Path) -> Non
     assert not partial_path.exists()
 
 
+def test_external_reservation_seals_subprocess_created_bytes(tmp_path: Path) -> None:
+    store = EvidenceStore(tmp_path / "evidence")
+
+    with store.reserve_external("cases/case-1/raw/file.bin") as reservation:
+        reservation.partial_path.write_bytes(b"known external bytes")
+        result = reservation.seal()
+
+    assert (
+        store.resolve(result.storage_key, require_file=True).read_bytes() == b"known external bytes"
+    )
+    assert result.sha256 == hashlib.sha256(b"known external bytes").hexdigest()
+
+
 def test_store_rejects_symlink_component(tmp_path: Path) -> None:
     store = EvidenceStore(tmp_path / "evidence")
     outside = tmp_path / "outside"

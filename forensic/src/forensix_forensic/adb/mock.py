@@ -1,12 +1,15 @@
 """Deterministic ADB scenarios for development and acceptance tests."""
 
+import asyncio
 from enum import StrEnum
+from pathlib import Path
 
-from .errors import AdbTimeoutError
+from .errors import AdbCommandError, AdbTimeoutError
 from .models import (
     AdbServerInfo,
     DeviceState,
     DeviceTransport,
+    PulledFileResult,
     SharedStorageRootProbe,
     StorageInventoryEntry,
     StorageInventoryResult,
@@ -115,6 +118,30 @@ class MockAdbClient:
             truncated=False,
             max_items=INVENTORY_MAX_ITEMS,
             max_depth=INVENTORY_MAX_DEPTH,
+        )
+
+    async def pull_inventory_file(
+        self,
+        serial: str,
+        root: SharedStorageRoot,
+        relative_path: str,
+        destination: Path,
+    ) -> PulledFileResult:
+        await self._require_authorized(serial)
+        AdbCommandPolicy.pull_inventory_file(serial, root, relative_path, destination)
+        fixtures = {
+            "DCIM/Camera/IMG_0001.jpg": b"ForensiX synthetic JPEG fixture\x00\x01",
+            "Documents/timeline.csv": b"timestamp,event\n2026-07-16T00:00:00Z,test\n",
+            "Download/incident-notes.pdf": b"%PDF-1.4\n% ForensiX synthetic fixture\n",
+        }
+        payload = fixtures.get(relative_path)
+        if payload is None:
+            raise AdbCommandError(1, "The selected mock inventory file is unavailable.")
+        await asyncio.to_thread(destination.write_bytes, payload)
+        return PulledFileResult(
+            root_id=root.value,
+            relative_path=relative_path,
+            size_bytes=len(payload),
         )
 
     async def _require_authorized(self, serial: str) -> DeviceTransport:

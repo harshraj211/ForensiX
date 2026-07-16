@@ -21,6 +21,7 @@
 | Immutable acquisition planning | exact readiness-snapshot binding, freshness/capability gates, preset and custom scopes, canonical plan/snapshot hashes, limitation acknowledgement, REST API and planning history UI | service/API/migration coverage plus 11 frontend tests |
 | Durable acquisition-job preparation | restrictive case/plan/operator links, idempotent preparation, bounded checkpoints, sequenced append-only events, cancellation, restart interruption records, status UI | service/API/migration/UI coverage |
 | Bounded shared-storage path inventory | fixed approved root, live identity/readiness revalidation, path/depth/time/output limits, durable result and canonical manifest hash, API and result UI | ADB parser/policy, service failure-state, migration, API, and UI coverage |
+| Selected evidence-file acquisition | opaque inventory-item selection, shell-free bounded pull, contained partial/seal, SHA-256, canonical JSON manifest, durable provenance/failure state, result UI | known-answer storage/ADB/service/API/UI tests; physical-device validation pending |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
 
 ## Supported development behavior
@@ -45,12 +46,15 @@
 - Content-free path inventory under one approved shared-storage root, capped at depth 6, 250 persisted paths, 30 seconds, and the ADB runner output limit.
 - Live serial-hash, authorization, build-fingerprint, readable-root, and workstation free-space checks immediately before inventory.
 - Durable relative paths, extensions, per-path hashes, counts, and a canonical inventory-manifest hash without Android file bytes.
+- Selected acquisition of an inventory-issued path only; no browser-supplied remote path or arbitrary ADB command.
+- Per-file 100 MiB and 120-second limits, contained partial handling, final file SHA-256, and separately hashed canonical manifest.
+- Explicit `not_physically_validated` state on acquired files until the controlled device matrix is executed.
 - Reconstructable progress history with monotonic sequence numbers and persisted restart interruption events.
 
 ## Not implemented yet
 
 - Custody and tamper-evident audit chain
-- Android file-content pulling, evidence-file manifests, and verification records
+- Bulk and resumable acquisition, post-acquisition re-verification records, and validated partial-file recovery
 - Artifact normalization, search, preview, and timeline
 - Report generation and exports
 - Production packaging, signing, and forensic validation
@@ -59,8 +63,8 @@ These omissions are visible project status, not silent product claims. Real-devi
 
 ## Next critical-path slice
 
-1. Validate the bounded inventory against controlled physical devices and hostile filename fixtures.
-2. Define a safe item-metadata strategy that never interpolates device filenames into a shell command.
-3. Add evidence-file manifests and item-level SHA-256 verification records.
-4. Enable the first controlled shared-storage pull only after physical-device validation.
-5. Add custody and chained audit records before presenting outputs as forensic evidence.
+1. Install Android Platform Tools and validate inventory plus selected pulls against controlled physical devices and hostile filename fixtures.
+2. Add explicit post-acquisition SHA-256 verification records and partial-file recovery/cleanup tooling.
+3. Add custody and chained audit records before presenting outputs as forensic evidence.
+4. Normalize acquired files into evidence/artifact records without parsing hostile content in-process.
+5. Build evidence search, preview, and timeline views from validated normalized metadata.
