@@ -110,6 +110,7 @@ export interface CustodyEvent {
   id: string;
   case_id: string;
   evidence_file_id: string | null;
+  report_id: string | null;
   actor_id: string;
   sequence: number;
   event_type: string;
@@ -129,6 +130,30 @@ export interface ChainVerification {
   record_count: number;
   broken_sequence: number | null;
   head_hash: string | null;
+}
+
+export interface ReportOutput {
+  format: "pdf" | "json" | "csv";
+  media_type: string;
+  filename: string;
+  size_bytes: number;
+  sha256: string;
+  created_at: string;
+}
+
+export interface PreliminaryReport {
+  id: string;
+  case_id: string;
+  generated_by: string;
+  report_type: "preliminary";
+  status: "available";
+  title: string;
+  schema_version: string;
+  template_version: string;
+  snapshot_size_bytes: number;
+  snapshot_sha256: string;
+  generated_at: string;
+  outputs: ReportOutput[];
 }
 
 export interface CaseDevice {
@@ -812,6 +837,24 @@ export function getTimeline(caseId: string): Promise<TimelineSearchResult> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/timeline?offset=0&limit=200`,
   );
+}
+
+export function listReports(caseId: string): Promise<PreliminaryReport[]> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/reports`);
+}
+
+export function generateReport(caseId: string): Promise<PreliminaryReport> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/reports`, {
+    method: "POST",
+  });
+}
+
+export function reportDownloadUrl(
+  caseId: string,
+  reportId: string,
+  format: ReportOutput["format"],
+): string {
+  return `/api/v1/cases/${encodeURIComponent(caseId)}/reports/${encodeURIComponent(reportId)}/download/${format}`;
 }
 
 export function resumeEvidenceFile(

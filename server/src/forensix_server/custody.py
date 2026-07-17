@@ -15,6 +15,7 @@ from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     AuditLogRecord,
     CustodyEventRecord,
+    ReportRecord,
 )
 
 GENESIS_HASH = "0" * 64
@@ -24,6 +25,7 @@ CustodyEventType = Literal[
     "integrity_exception",
     "transferred",
     "amendment",
+    "report_generated",
 ]
 
 
@@ -155,6 +157,7 @@ class CustodyService:
             actor_id=principal.user_id,
             event_type=event_type,
             evidence_file_id=evidence_file_id,
+            report_id=None,
             from_custodian=from_custodian,
             to_custodian=to_custodian,
             location=location,
@@ -179,6 +182,31 @@ class CustodyService:
             actor_id=actor_id,
             event_type=event_type,
             evidence_file_id=evidence_file_id,
+            report_id=None,
+            from_custodian=None,
+            to_custodian=None,
+            location=None,
+            purpose=purpose,
+            notes=None,
+            related_event_id=None,
+        )
+
+    def append_report_generated(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        actor_id: str,
+        report_id: str,
+        purpose: str,
+    ) -> CustodyEventRecord:
+        return self._append(
+            session,
+            case_id=case_id,
+            actor_id=actor_id,
+            event_type="report_generated",
+            evidence_file_id=None,
+            report_id=report_id,
             from_custodian=None,
             to_custodian=None,
             location=None,
@@ -225,6 +253,7 @@ class CustodyService:
         actor_id: str,
         event_type: CustodyEventType,
         evidence_file_id: str | None,
+        report_id: str | None,
         from_custodian: str | None,
         to_custodian: str | None,
         location: str | None,
@@ -236,6 +265,10 @@ class CustodyService:
             evidence = session.get(AcquiredEvidenceFileRecord, evidence_file_id)
             if evidence is None or evidence.case_id != case_id:
                 raise CustodyError("The custody evidence does not belong to this case.")
+        if report_id:
+            report = session.get(ReportRecord, report_id)
+            if report is None or report.case_id != case_id:
+                raise CustodyError("The custody report does not belong to this case.")
         previous = session.scalar(
             select(CustodyEventRecord)
             .where(CustodyEventRecord.case_id == case_id)
@@ -249,6 +282,7 @@ class CustodyService:
             id=str(uuid4()),
             case_id=case_id,
             evidence_file_id=evidence_file_id,
+            report_id=report_id,
             actor_id=actor_id,
             sequence=sequence,
             event_type=event_type,
@@ -280,23 +314,24 @@ class CustodyService:
 
 
 def _custody_hash(record: CustodyEventRecord, previous_hash: str) -> str:
-    canonical = _canonical_json(
-        {
-            "actor_id": record.actor_id,
-            "case_id": record.case_id,
-            "created_at": _iso(record.created_at),
-            "event_type": record.event_type,
-            "evidence_file_id": record.evidence_file_id,
-            "from_custodian": record.from_custodian,
-            "id": record.id,
-            "location": record.location,
-            "notes": record.notes,
-            "purpose": record.purpose,
-            "related_event_id": record.related_event_id,
-            "sequence": record.sequence,
-            "to_custodian": record.to_custodian,
-        }
-    )
+    payload = {
+        "actor_id": record.actor_id,
+        "case_id": record.case_id,
+        "created_at": _iso(record.created_at),
+        "event_type": record.event_type,
+        "evidence_file_id": record.evidence_file_id,
+        "from_custodian": record.from_custodian,
+        "id": record.id,
+        "location": record.location,
+        "notes": record.notes,
+        "purpose": record.purpose,
+        "related_event_id": record.related_event_id,
+        "sequence": record.sequence,
+        "to_custodian": record.to_custodian,
+    }
+    if record.report_id is not None:
+        payload["report_id"] = record.report_id
+    canonical = _canonical_json(payload)
     return sha256((previous_hash + canonical).encode("utf-8")).hexdigest()
 
 

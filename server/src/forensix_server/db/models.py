@@ -944,6 +944,67 @@ class EvidenceVerificationRecord(Base):
     )
 
 
+class ReportRecord(Base):
+    """Immutable report snapshot and generation result."""
+
+    __tablename__ = "reports"
+    __table_args__ = (
+        CheckConstraint("status IN ('available')", name="ck_reports_status"),
+        CheckConstraint("report_type IN ('preliminary')", name="ck_reports_type"),
+        CheckConstraint("snapshot_size_bytes >= 1", name="ck_reports_snapshot_size"),
+        UniqueConstraint("snapshot_storage_key", name="uq_reports_snapshot_storage_key"),
+        UniqueConstraint("snapshot_sha256", name="uq_reports_snapshot_sha256"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    generated_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    report_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    template_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    snapshot_storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    snapshot_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    snapshot_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class ReportOutputRecord(Base):
+    """One sealed, hashed rendering of an immutable report snapshot."""
+
+    __tablename__ = "report_outputs"
+    __table_args__ = (
+        CheckConstraint("format IN ('pdf', 'json', 'csv')", name="ck_report_outputs_format"),
+        CheckConstraint("size_bytes >= 1", name="ck_report_outputs_size"),
+        UniqueConstraint("report_id", "format", name="uq_report_outputs_report_format"),
+        UniqueConstraint("storage_key", name="uq_report_outputs_storage_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    report_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("reports.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    format: Mapped[str] = mapped_column(String(8), nullable=False, index=True)
+    media_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class CustodyEventRecord(Base):
     """Append-only, per-case hash-chained custody history."""
 
@@ -952,7 +1013,7 @@ class CustodyEventRecord(Base):
         CheckConstraint("sequence >= 1", name="ck_custody_events_sequence"),
         CheckConstraint(
             "event_type IN ('evidence_registered', 'integrity_verified', "
-            "'integrity_exception', 'transferred', 'amendment')",
+            "'integrity_exception', 'transferred', 'amendment', 'report_generated')",
             name="ck_custody_events_type",
         ),
         UniqueConstraint("case_id", "sequence", name="uq_custody_events_case_sequence"),
@@ -968,6 +1029,9 @@ class CustodyEventRecord(Base):
         ForeignKey("acquired_evidence_files.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
+    )
+    report_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("reports.id", ondelete="RESTRICT"), nullable=True, index=True
     )
     actor_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True

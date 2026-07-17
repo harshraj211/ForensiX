@@ -6,10 +6,10 @@ import { authKeys } from "../features/auth/authKeys";
 import { getCurrentUser, logout } from "../lib/api";
 
 const navigation = [
-  { label: "Device readiness", to: "/devices", icon: Activity },
-  { label: "Cases", to: "/cases", icon: Boxes },
-  { label: "Evidence", to: "/evidence", icon: ShieldCheck },
-  { label: "Reports", to: "/reports", icon: BookOpenText, disabled: true },
+  { label: "Device readiness", to: "/devices", icon: Activity, disabled: false },
+  { label: "Cases", to: "/cases", icon: Boxes, disabled: false },
+  { label: "Evidence", to: "/evidence", icon: ShieldCheck, disabled: false },
+  { label: "Reports", to: "/reports", icon: BookOpenText, disabled: false },
 ];
 
 export function AppShell() {

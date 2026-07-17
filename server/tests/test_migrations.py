@@ -50,6 +50,8 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "jobs",
         "job_events",
         "roles",
+        "reports",
+        "report_outputs",
         "system_events",
         "user_roles",
         "users",
@@ -92,6 +94,8 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     assert "case_device_detections" not in downgraded_tables
     assert "case_devices" not in downgraded_tables
     assert "system_events" not in downgraded_tables
+    assert "reports" not in downgraded_tables
+    assert "report_outputs" not in downgraded_tables
     downgraded_engine.dispose()
 
 
@@ -133,7 +137,7 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "custody_events" in inspector.get_table_names()
     assert "audit_logs" in inspector.get_table_names()
     assert {"case_id", "plan_id", "checkpoint_json", "last_event_sequence"} <= job_columns
-    assert revision == "0016_safe_previews"
+    assert revision == "0017_reports_exports"
     database.dispose()
 
 

@@ -544,6 +544,7 @@ class CustodyEventResponse(BaseModel):
     id: str
     case_id: str
     evidence_file_id: str | None
+    report_id: str | None
     actor_id: str
     sequence: int
     event_type: str
@@ -556,6 +557,32 @@ class CustodyEventResponse(BaseModel):
     previous_hash: str
     event_hash: str
     created_at: datetime
+
+
+class ReportOutputResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    format: Literal["pdf", "json", "csv"]
+    media_type: str
+    filename: str
+    size_bytes: int
+    sha256: str
+    created_at: datetime
+
+
+class ReportResponse(BaseModel):
+    id: str
+    case_id: str
+    generated_by: str
+    report_type: Literal["preliminary"]
+    status: Literal["available"]
+    title: str
+    schema_version: str
+    template_version: str
+    snapshot_size_bytes: int
+    snapshot_sha256: str
+    generated_at: datetime
+    outputs: list[ReportOutputResponse]
 
 
 class ChainVerificationResponse(BaseModel):

@@ -8,6 +8,7 @@ import { CasesPage } from "./features/cases/CasesPage";
 import { DeviceDetectionPage } from "./features/devices/DeviceDetectionPage";
 import { EvidenceCasesPage, EvidenceExplorerPage } from "./features/evidence/EvidenceExplorerPage";
 import { TimelinePage } from "./features/evidence/TimelinePage";
+import { CaseReportsPage, ReportsCasesPage } from "./features/reports/ReportsPage";
 
 export function App() {
   return (
@@ -22,6 +23,8 @@ export function App() {
           <Route path="/cases/:caseId/evidence" element={<EvidenceExplorerPage />} />
           <Route path="/cases/:caseId/timeline" element={<TimelinePage />} />
           <Route path="/evidence" element={<EvidenceCasesPage />} />
+          <Route path="/reports" element={<ReportsCasesPage />} />
+          <Route path="/cases/:caseId/reports" element={<CaseReportsPage />} />
           <Route path="*" element={<Navigate to="/devices" replace />} />
         </Route>
       </Route>

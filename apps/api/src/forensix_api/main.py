@@ -22,6 +22,7 @@ from forensix_api.routers import (
     custody,
     devices,
     health,
+    reports,
     timeline,
 )
 from forensix_forensic.adb import AdbClient, AdbError
@@ -92,6 +93,7 @@ def create_app(
     app.include_router(acquisitions.router)
     app.include_router(artifacts.router)
     app.include_router(timeline.router)
+    app.include_router(reports.router)
     app.include_router(devices.router)
     return app
 

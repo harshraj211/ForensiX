@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ClipboardList, Clock3, Link2, LoaderCircle, Plus, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowLeft, BookOpenText, ClipboardList, Clock3, Link2, LoaderCircle, Plus, ShieldCheck, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -124,6 +124,16 @@ export function CaseDetailPage() {
           )}
         </div>
         <CaseDevices devices={devicesQuery.data ?? []} isPending={devicesQuery.isPending} error={devicesQuery.error} />
+      </section>
+      <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+        <div className="flex gap-4">
+          <BookOpenText className="mt-1 shrink-0 text-cyan-300" size={21} aria-hidden="true" />
+          <div>
+            <h2 className="text-xl font-semibold text-white">Preliminary reports</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">Freeze versioned PDF, JSON, and CSV outputs with recorded SHA-256 values.</p>
+          </div>
+        </div>
+        <Link to={`/cases/${caseId}/reports`} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-4 text-sm font-semibold text-cyan-100">Open reports</Link>
       </section>
       <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
         <div className="flex gap-4">

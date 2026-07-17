@@ -152,7 +152,42 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
         "evidence_verifications",
         "jobs",
         "job_events",
+        "reports",
+        "report_outputs",
     } <= tables
+
+
+def test_preliminary_report_generation_and_verified_downloads(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post("/api/v1/cases", headers=headers, json={"title": "Report case"}).json()
+        generated = client.post(f"/api/v1/cases/{case['id']}/reports", headers=headers)
+        assert generated.status_code == 201
+        report = generated.json()
+        assert report["report_type"] == "preliminary"
+        assert report["schema_version"] == "1.0.0"
+        assert {item["format"] for item in report["outputs"]} == {"pdf", "json", "csv"}
+
+        listed = client.get(f"/api/v1/cases/{case['id']}/reports")
+        assert listed.status_code == 200
+        assert [item["id"] for item in listed.json()] == [report["id"]]
+
+        for output in report["outputs"]:
+            downloaded = client.get(
+                f"/api/v1/cases/{case['id']}/reports/{report['id']}/download/{output['format']}"
+            )
+            assert downloaded.status_code == 200
+            assert downloaded.headers["x-forensix-output-sha256"] == output["sha256"]
+            assert downloaded.headers["cache-control"] == "no-store, private"
+            assert downloaded.content
+        assert client.get(
+            f"/api/v1/cases/{case['id']}/reports/{report['id']}/download/pdf"
+        ).content.startswith(b"%PDF-")
+
+        custody = client.get(f"/api/v1/cases/{case['id']}/custody").json()
+        assert custody[-1]["event_type"] == "report_generated"
+        assert custody[-1]["report_id"] == report["id"]
 
 
 @pytest.mark.parametrize(
