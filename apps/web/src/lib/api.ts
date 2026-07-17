@@ -360,6 +360,24 @@ export interface ArtifactSearchResult {
   category_facets: Record<string, number>;
 }
 
+export interface ArtifactPreview {
+  id: string | null;
+  artifact_id: string;
+  status: "not_generated" | "available" | "rejected" | "failed";
+  detected_mime: string | null;
+  extension_mismatch: boolean;
+  output_mime: string | null;
+  output_size_bytes: number | null;
+  output_sha256: string | null;
+  width: number | null;
+  height: number | null;
+  worker_version: string | null;
+  limits: Record<string, unknown>;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string | null;
+}
+
 export interface TimelineEvent {
   id: string;
   case_id: string;
@@ -712,6 +730,29 @@ export function getArtifact(caseId: string, artifactId: string): Promise<Artifac
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}`,
   );
+}
+
+export function getArtifactPreview(
+  caseId: string,
+  artifactId: string,
+): Promise<ArtifactPreview> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/preview`,
+  );
+}
+
+export function generateArtifactPreview(
+  caseId: string,
+  artifactId: string,
+): Promise<ArtifactPreview> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/preview`,
+    { method: "POST" },
+  );
+}
+
+export function artifactPreviewContentUrl(caseId: string, artifactId: string): string {
+  return `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/preview/content`;
 }
 
 export function getArtifactAnnotations(

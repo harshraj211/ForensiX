@@ -1,6 +1,6 @@
 # Phase 0 Implementation Status
 
-**Updated:** 16 July 2026
+**Updated:** 17 July 2026
 **Branch:** `agent/phase0-foundation`
 
 ## Completed slices
@@ -25,6 +25,7 @@
 | Interrupted-transfer recovery | durable attempt IDs, startup filesystem reconciliation, retained partial SHA-256, review-before-restart, verified discard, byte-zero retry | disconnect/process-termination/tamper/service/API/UI tests; physical-device validation pending |
 | Artifact normalization and search | one immutable artifact per sealed file, canonical provenance/limitations, extension-only classification, SQLite FTS5, case/category/status/extension filters, metadata-only explorer | known-answer/no-content-index/reindex/case-isolation/API/UI tests |
 | Timeline and analyst annotations | deterministic acquisition-time events, stable hashes/backfill, UTC/confidence/source links, bookmarks, normalized tags, append-only notes and supersession | determinism/idempotency/case-scope/source-immutability/API/UI tests |
+| Safe image derivatives | bounded magic-byte detection, isolated worker, source re-verification, JPEG/PNG/GIF/WebP decode, pixel/byte/time ceilings, metadata-stripped PNG, derivative hash, protected serving and UI | corrupt/truncated/oversized/decompression-bomb/active-content/mismatch/tamper/API/UI tests |
 | Evidence integrity re-verification | independent file/manifest re-hashing, append-only result history, mismatch/missing detection, preserved expected hashes, API and UI controls | known-answer, tampering, missing-object, API, and UI tests |
 | Custody and audit chains | automatic evidence/integrity custody events, manual transfers, amendments, per-case custody hashes, global audit hashes, verification APIs, case UI | service tampering tests, migration/API authorization, append-only route tests, UI checks |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
@@ -59,12 +60,15 @@
 - Automatic evidence registration and integrity custody events plus manual transfers and correction-by-amendment; no custody update/delete API exists.
 - Per-case custody and global audit SHA-256 chains with canonical serialization, genesis linkage, sequence verification, and protected audit access.
 - Reconstructable progress history with monotonic sequence numbers and persisted restart interruption events.
+- Explicit preview requests that re-hash the sealed source, run a fixed isolated worker, and persist an audited available/rejected/failed outcome without changing the artifact.
+- Only a sealed, independently hashed PNG derivative can reach the browser; original evidence, SVG, PDF, archives, Office documents, executables, audio, and video are never previewed.
+- Eight-second, 25 MiB input, 40-megapixel, 1024-edge, and 5 MiB output preview limits, with additional POSIX process limits where supported.
 
 ## Not implemented yet
 
 - External audit anchoring, digital signatures, and write-once custody exports
 - Bulk acquisition and physical-device validation of byte-zero restart behavior
-- Sandboxed thumbnails/content preview and device-side timestamp extraction from validated sources
+- Device-side timestamp extraction from validated sources
 - Report generation and exports
 - Production packaging, signing, and forensic validation
 
@@ -75,5 +79,5 @@ These omissions are visible project status, not silent product claims. Real-devi
 1. Install Android Platform Tools and validate inventory plus selected pulls against controlled physical devices and hostile filename fixtures.
 2. Validate disconnect/restart recovery against physical devices on Windows, Linux, and macOS.
 3. Add external audit anchoring and signed/write-once custody exports before evidentiary claims.
-4. Add isolated, resource-bounded MIME sniffing and thumbnail generation for validated formats.
-5. Add validated source timestamp claims to the existing deterministic timeline without inventing missing values.
+4. Add validated source timestamp claims to the existing deterministic timeline without inventing missing values.
+5. Add the report data snapshot, Preliminary PDF, and schema-validated JSON/CSV exports.

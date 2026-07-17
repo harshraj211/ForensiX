@@ -1,9 +1,11 @@
 import asyncio
+import io
 from pathlib import Path
 from typing import NoReturn
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import delete, inspect, select
 
 from forensix_api.main import create_app
@@ -41,6 +43,29 @@ class _PartialDisconnectClient(MockAdbClient):
     ) -> NoReturn:
         await asyncio.to_thread(destination.write_bytes, b"API interrupted partial")
         raise AdbCommandError(1, "The controlled device disconnected during transfer.")
+
+
+class _PngEvidenceClient(MockAdbClient):
+    async def pull_inventory_file(
+        self,
+        serial: str,
+        root: SharedStorageRoot,
+        relative_path: str,
+        destination: Path,
+    ):
+        if relative_path != "DCIM/Camera/IMG_0001.jpg":
+            return await super().pull_inventory_file(serial, root, relative_path, destination)
+        buffer = io.BytesIO()
+        Image.new("RGB", (32, 24), color=(12, 74, 96)).save(buffer, format="PNG")
+        payload = buffer.getvalue()
+        await asyncio.to_thread(destination.write_bytes, payload)
+        from forensix_forensic.adb import PulledFileResult
+
+        return PulledFileResult(
+            root_id=root.value,
+            relative_path=relative_path,
+            size_bytes=len(payload),
+        )
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -113,6 +138,7 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
         "acquisition_partials",
         "artifacts",
         "artifact_search",
+        "artifact_previews",
         "artifact_tags",
         "analyst_notes",
         "bookmarks",
@@ -845,6 +871,88 @@ def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
         "Initial observation.",
         "Corrected observation.",
     ]
+
+
+def test_preview_api_serves_only_verified_png_derivative_with_security_headers(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path), adb_client=_PngEvidenceClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+        inventory = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers).json()
+        item = next(
+            entry
+            for entry in inventory["items"]
+            if entry["relative_path"] == "DCIM/Camera/IMG_0001.jpg"
+        )
+        acquired = client.post(
+            f"{endpoint}/{job['id']}/inventory/items/{item['id']}/acquire",
+            headers=headers,
+        ).json()
+        artifact = client.get(f"/api/v1/cases/{case['id']}/artifacts").json()["items"][0]
+        preview_url = f"/api/v1/cases/{case['id']}/artifacts/{artifact['id']}/preview"
+
+        initial = client.get(preview_url)
+        missing_csrf = client.post(preview_url)
+        generated = client.post(preview_url, headers=headers)
+        repeated = client.post(preview_url, headers=headers)
+        content = client.get(f"{preview_url}/content")
+        source_path = tmp_path / "evidence" / Path(acquired["storage_key"])
+        source_after_preview = source_path.read_bytes()
+        derivative_path = (
+            tmp_path / "evidence" / "c" / str(case["id"])[:8] / "d" / f"{artifact['id']}.png"
+        )
+        derivative_path.write_bytes(b"tampered derivative")
+        tampered_content = client.get(f"{preview_url}/content")
+
+    assert initial.json()["status"] == "not_generated"
+    assert missing_csrf.status_code == 403
+    assert generated.status_code == 200
+    assert generated.json()["status"] == "available"
+    assert generated.json()["detected_mime"] == "image/png"
+    assert generated.json()["extension_mismatch"] is True
+    assert repeated.json()["id"] == generated.json()["id"]
+    assert source_after_preview.startswith(b"\x89PNG\r\n\x1a\n")
+    assert content.status_code == 200
+    assert content.headers["content-type"] == "image/png"
+    assert content.headers["x-content-type-options"] == "nosniff"
+    assert content.headers["cross-origin-resource-policy"] == "same-origin"
+    assert content.headers["cache-control"] == "no-store, private"
+    assert content.headers["x-forensix-derivative-sha256"] == generated.json()["output_sha256"]
+    assert content.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert tampered_content.status_code == 409
+    assert tampered_content.json()["error"]["code"] == "PREVIEW_NOT_AVAILABLE"
+
+
+def test_preview_api_rejects_non_image_without_serving_source_bytes(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+        inventory = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers).json()
+        item = next(
+            entry
+            for entry in inventory["items"]
+            if entry["relative_path"] == "Documents/timeline.csv"
+        )
+        client.post(
+            f"{endpoint}/{job['id']}/inventory/items/{item['id']}/acquire",
+            headers=headers,
+        )
+        artifact = client.get(f"/api/v1/cases/{case['id']}/artifacts").json()["items"][0]
+        preview_url = f"/api/v1/cases/{case['id']}/artifacts/{artifact['id']}/preview"
+        rejected = client.post(preview_url, headers=headers)
+        content = client.get(f"{preview_url}/content")
+
+    assert rejected.json()["status"] == "rejected"
+    assert rejected.json()["error_code"] == "UNSUPPORTED_MEDIA_TYPE"
+    assert content.status_code == 409
+    assert content.json()["error"]["code"] == "PREVIEW_NOT_AVAILABLE"
 
 
 def test_interrupted_file_api_requires_review_and_restarts_from_zero(tmp_path: Path) -> None:

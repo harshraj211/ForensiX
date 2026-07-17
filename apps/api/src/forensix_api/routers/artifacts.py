@@ -4,6 +4,7 @@ import json
 from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi.responses import FileResponse
 
 from forensix_api.dependencies import (
     get_authenticated_session,
@@ -14,6 +15,7 @@ from forensix_api.schemas import (
     AnalystNoteRequest,
     AnalystNoteResponse,
     ArtifactAnnotationsResponse,
+    ArtifactPreviewResponse,
     ArtifactResponse,
     ArtifactSearchResponse,
     BookmarkRequest,
@@ -24,12 +26,13 @@ from forensix_api.schemas import (
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.db import (
     AnalystNoteRecord,
+    ArtifactPreviewRecord,
     ArtifactRecord,
     BookmarkRecord,
     Database,
     TagRecord,
 )
-from forensix_server.evidence import AnalysisService, ArtifactService
+from forensix_server.evidence import AnalysisService, ArtifactPreviewService, ArtifactService
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/artifacts", tags=["artifacts"])
 
@@ -81,6 +84,58 @@ def get_artifact(
     with database.session() as session:
         record = ArtifactService().get(session, authenticated.principal, case_id, artifact_id)
         return _artifact_response(record)
+
+
+@router.get("/{artifact_id}/preview", response_model=ArtifactPreviewResponse)
+def get_artifact_preview(
+    case_id: str,
+    artifact_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> ArtifactPreviewResponse:
+    with database.session() as session:
+        record = ArtifactPreviewService().get_status(
+            session, authenticated.principal, case_id, artifact_id
+        )
+        return _preview_response(record, artifact_id)
+
+
+@router.post("/{artifact_id}/preview", response_model=ArtifactPreviewResponse)
+def generate_artifact_preview(
+    case_id: str,
+    artifact_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> ArtifactPreviewResponse:
+    record = ArtifactPreviewService().generate(
+        database, authenticated.principal, case_id, artifact_id
+    )
+    return _preview_response(record, artifact_id)
+
+
+@router.get("/{artifact_id}/preview/content", response_class=FileResponse)
+def get_artifact_preview_content(
+    case_id: str,
+    artifact_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> FileResponse:
+    content = ArtifactPreviewService().content(
+        database, authenticated.principal, case_id, artifact_id
+    )
+    return FileResponse(
+        content.path,
+        media_type=content.media_type,
+        filename="forensix-preview.png",
+        content_disposition_type="inline",
+        headers={
+            "Cache-Control": "no-store, private",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "X-Content-Type-Options": "nosniff",
+            "X-ForensiX-Derivative-SHA256": content.sha256,
+        },
+    )
 
 
 @router.get("/{artifact_id}/annotations", response_model=ArtifactAnnotationsResponse)
@@ -213,6 +268,47 @@ def _json_object(value: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise RuntimeError("Normalized artifact JSON must be an object.")
     return cast(dict[str, Any], parsed)
+
+
+def _preview_response(
+    record: ArtifactPreviewRecord | None, artifact_id: str
+) -> ArtifactPreviewResponse:
+    if record is None:
+        return ArtifactPreviewResponse(
+            id=None,
+            artifact_id=artifact_id,
+            status="not_generated",
+            detected_mime=None,
+            extension_mismatch=False,
+            output_mime=None,
+            output_size_bytes=None,
+            output_sha256=None,
+            width=None,
+            height=None,
+            worker_version=None,
+            limits={},
+            error_code=None,
+            error_message=None,
+            created_at=None,
+        )
+    preview_status = cast(Literal["available", "rejected", "failed"], record.status)
+    return ArtifactPreviewResponse(
+        id=record.id,
+        artifact_id=record.artifact_id,
+        status=preview_status,
+        detected_mime=record.detected_mime,
+        extension_mismatch=record.extension_mismatch,
+        output_mime=record.output_mime,
+        output_size_bytes=record.output_size_bytes,
+        output_sha256=record.output_sha256,
+        width=record.width,
+        height=record.height,
+        worker_version=record.worker_version,
+        limits=_json_object(record.limits_json),
+        error_code=record.error_code,
+        error_message=record.error_message,
+        created_at=record.created_at,
+    )
 
 
 def _annotations_response(

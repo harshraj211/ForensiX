@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bookmark, FileSearch, LoaderCircle, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Bookmark, FileSearch, ImageIcon, LoaderCircle, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -8,6 +8,7 @@ import { caseKeys } from "../cases/caseKeys";
 import {
   getArtifact,
   getArtifactAnnotations,
+  getArtifactPreview,
   getCase,
   listCases,
   searchArtifacts,
@@ -15,6 +16,8 @@ import {
   addArtifactTag,
   bookmarkArtifact,
   removeArtifactBookmark,
+  artifactPreviewContentUrl,
+  generateArtifactPreview,
   type Artifact,
   type ArtifactCategory,
   type ArtifactStatus,
@@ -110,12 +113,12 @@ export function EvidenceExplorerPage() {
         <p className="font-mono text-xs text-cyan-300/65">{caseQuery.data?.case_number ?? "Case evidence"}</p>
         <h1 className="mt-2 text-3xl font-semibold text-white">Evidence explorer</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-          Search extension-classified metadata and inspect the acquisition provenance of sealed files.
+          Search normalized metadata, inspect provenance, and request bounded derivatives for supported images.
         </p>
       </header>
       <div className="mt-6 flex gap-3 rounded-xl border border-amber-200/15 bg-amber-200/5 p-4 text-xs leading-5 text-amber-100/75">
         <ShieldAlert size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
-        Content preview is intentionally disabled in this milestone. Media types come from filename extensions; file bytes are not opened, executed, or rendered.
+        Original evidence is never rendered. Preview requests run in an isolated, resource-bounded worker and the browser receives only a verified PNG derivative.
       </div>
       <div className="mt-6 grid gap-3 md:grid-cols-[1fr_180px_140px]">
         <label className="text-xs text-slate-400">
@@ -209,6 +212,15 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
     queryKey: annotationKey,
     queryFn: () => getArtifactAnnotations(caseId, artifact.id),
   });
+  const previewKey = ["artifact-preview", caseId, artifact.id] as const;
+  const preview = useQuery({
+    queryKey: previewKey,
+    queryFn: () => getArtifactPreview(caseId, artifact.id),
+  });
+  const generatePreview = useMutation({
+    mutationFn: () => generateArtifactPreview(caseId, artifact.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: previewKey }),
+  });
   const refresh = () => queryClient.invalidateQueries({ queryKey: annotationKey });
   const bookmark = useMutation({
     mutationFn: async () => {
@@ -235,7 +247,7 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
     },
   });
   const limitations = Array.isArray(artifact.metadata.limitations) ? artifact.metadata.limitations.map(String) : [];
-  const actionError = annotations.error ?? bookmark.error ?? addTag.error ?? addNote.error;
+  const actionError = annotations.error ?? preview.error ?? generatePreview.error ?? bookmark.error ?? addTag.error ?? addNote.error;
   return (
     <aside className="min-w-0 rounded-2xl border border-white/8 bg-white/[0.025] p-5">
       <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300">Normalized metadata</p>
@@ -250,6 +262,43 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
         <Detail label="Evidence file ID" value={artifact.evidence_file_id} mono />
         <Detail label="Device ID" value={artifact.device_id} mono />
       </dl>
+      <section className="mt-6 rounded-xl border border-cyan-200/10 bg-cyan-300/[0.025] p-4" aria-label="Safe evidence preview">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-2 text-xs font-semibold text-cyan-100"><ShieldCheck size={14} />Safe derivative preview</p>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">Signature checked, decoded out of process, re-encoded without source metadata.</p>
+          </div>
+          {preview.data?.status === "not_generated" && (
+            <button
+              type="button"
+              disabled={generatePreview.isPending}
+              onClick={() => { generatePreview.mutate(); }}
+              className="inline-flex min-h-9 shrink-0 items-center gap-2 rounded border border-cyan-200/15 px-3 text-[11px] text-cyan-100 disabled:opacity-40"
+            >
+              {generatePreview.isPending ? <LoaderCircle size={13} className="animate-spin" /> : <ImageIcon size={13} />}
+              Inspect safely
+            </button>
+          )}
+        </div>
+        {preview.isPending && <p role="status" className="mt-4 text-[11px] text-slate-500">Checking preview status...</p>}
+        {preview.data?.status === "available" && (
+          <div className="mt-4">
+            <img
+              src={artifactPreviewContentUrl(caseId, artifact.id)}
+              alt={`Safe derivative preview of ${artifact.title}`}
+              className="max-h-80 w-full rounded-lg border border-white/8 bg-black/30 object-contain"
+            />
+            <p className="mt-2 break-all font-mono text-[9px] text-slate-600">Derivative SHA-256: {preview.data.output_sha256}</p>
+            {preview.data.extension_mismatch && <p className="mt-2 text-[11px] text-amber-200">The file signature does not match its extension-derived MIME label.</p>}
+          </div>
+        )}
+        {(preview.data?.status === "rejected" || preview.data?.status === "failed") && (
+          <div className="mt-4 flex gap-2 rounded border border-amber-200/10 bg-amber-200/5 p-3 text-[11px] leading-5 text-amber-100/75">
+            <ShieldAlert size={15} className="mt-0.5 shrink-0" />
+            <div><p className="font-semibold">Preview {preview.data.status}</p><p>{preview.data.error_message}</p><p className="mt-1 font-mono text-[9px]">{preview.data.error_code}</p></div>
+          </div>
+        )}
+      </section>
       {limitations.length > 0 && (
         <div className="mt-6 rounded-lg border border-amber-200/12 bg-amber-200/5 p-3 text-[11px] leading-5 text-amber-100/70">
           <p className="font-semibold text-amber-100">Normalization limitations</p>

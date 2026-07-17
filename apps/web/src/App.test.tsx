@@ -910,6 +910,25 @@ describe("evidence explorer", () => {
       if (url === "/api/v1/cases/case-1/artifacts/artifact-1/annotations") {
         return Promise.resolve(jsonResponse({ bookmark: null, tags: [], notes: [] }));
       }
+      if (url === "/api/v1/cases/case-1/artifacts/artifact-1/preview") {
+        return Promise.resolve(jsonResponse({
+          id: null,
+          artifact_id: "artifact-1",
+          status: "not_generated",
+          detected_mime: null,
+          extension_mismatch: false,
+          output_mime: null,
+          output_size_bytes: null,
+          output_sha256: null,
+          width: null,
+          height: null,
+          worker_version: null,
+          limits: {},
+          error_code: null,
+          error_message: null,
+          created_at: null,
+        }));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -921,7 +940,8 @@ describe("evidence explorer", () => {
     expect((await screen.findAllByText("Documents/timeline.csv")).length).toBeGreaterThan(0);
     expect(await screen.findByText("Extension-derived MIME")).toBeInTheDocument();
     expect(screen.getByText("text/csv")).toBeInTheDocument();
-    expect(screen.getByText(/file bytes are not opened, executed, or rendered/i)).toBeInTheDocument();
+    expect(screen.getByText(/Original evidence is never rendered/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Inspect safely/i })).toBeInTheDocument();
     expect(screen.getByText(`SHA-256`)).toBeInTheDocument();
   });
 

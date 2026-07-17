@@ -717,6 +717,57 @@ class ArtifactRecord(Base):
     )
 
 
+class ArtifactPreviewRecord(Base):
+    """Append-only metadata for a safe derivative; never the source evidence object."""
+
+    __tablename__ = "artifact_previews"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('available', 'rejected', 'failed')",
+            name="ck_artifact_previews_status",
+        ),
+        CheckConstraint(
+            "output_size_bytes IS NULL OR output_size_bytes >= 1",
+            name="ck_artifact_previews_output_size",
+        ),
+        UniqueConstraint("artifact_id", name="uq_artifact_previews_artifact"),
+        UniqueConstraint("output_storage_key", name="uq_artifact_previews_storage_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    artifact_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    evidence_file_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("acquired_evidence_files.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    generated_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    extension_mismatch: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    detected_mime: Mapped[str] = mapped_column(String(255), nullable=False)
+    output_mime: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    output_storage_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    output_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    worker_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    limits_json: Mapped[str] = mapped_column(Text, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
 class TimelineEventRecord(Base):
     """Deterministic timestamp claim materialized from one normalized artifact."""
 

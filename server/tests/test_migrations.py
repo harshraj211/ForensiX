@@ -25,6 +25,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "acquisition_partials",
         "artifacts",
         "artifact_search",
+        "artifact_previews",
         "artifact_tags",
         "analyst_notes",
         "bookmarks",
@@ -67,6 +68,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     assert "acquisition_partials" not in downgraded_tables
     assert "artifacts" not in downgraded_tables
     assert "artifact_search" not in downgraded_tables
+    assert "artifact_previews" not in downgraded_tables
     assert "artifact_tags" not in downgraded_tables
     assert "analyst_notes" not in downgraded_tables
     assert "bookmarks" not in downgraded_tables
@@ -121,6 +123,7 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "acquisition_partials" in inspector.get_table_names()
     assert "artifacts" in inspector.get_table_names()
     assert "artifact_search" in inspector.get_table_names()
+    assert "artifact_previews" in inspector.get_table_names()
     assert "artifact_tags" in inspector.get_table_names()
     assert "analyst_notes" in inspector.get_table_names()
     assert "bookmarks" in inspector.get_table_names()
@@ -130,7 +133,7 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "custody_events" in inspector.get_table_names()
     assert "audit_logs" in inspector.get_table_names()
     assert {"case_id", "plan_id", "checkpoint_json", "last_event_sequence"} <= job_columns
-    assert revision == "0015_timeline_analysis"
+    assert revision == "0016_safe_previews"
     database.dispose()
 
 

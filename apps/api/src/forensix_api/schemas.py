@@ -299,6 +299,24 @@ class ArtifactSearchResponse(BaseModel):
     category_facets: dict[str, int]
 
 
+class ArtifactPreviewResponse(BaseModel):
+    id: str | None
+    artifact_id: str
+    status: Literal["not_generated", "available", "rejected", "failed"]
+    detected_mime: str | None
+    extension_mismatch: bool
+    output_mime: str | None
+    output_size_bytes: int | None
+    output_sha256: str | None
+    width: int | None
+    height: int | None
+    worker_version: str | None
+    limits: dict[str, Any]
+    error_code: str | None
+    error_message: str | None
+    created_at: datetime | None
+
+
 class TimelineEventResponse(BaseModel):
     id: str
     case_id: str
