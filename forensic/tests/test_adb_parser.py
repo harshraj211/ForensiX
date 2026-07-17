@@ -89,3 +89,37 @@ def test_inventory_parser_rejects_unsafe_paths_and_enforces_item_limit() -> None
     assert inventory.discovered_count == 7
     assert inventory.skipped_count == 4
     assert inventory.truncated is True
+
+
+def test_inventory_parser_preserves_validated_stat_metadata() -> None:
+    inventory = parse_storage_inventory(
+        "/sdcard/Documents/report:final.pdf:4096:1784160000\n",
+        root_id="primary_alias",
+        display_path="/sdcard",
+        max_items=10,
+        max_depth=6,
+    )
+
+    assert len(inventory.entries) == 1
+    entry = inventory.entries[0]
+    assert entry.relative_path == "Documents/report:final.pdf"
+    assert entry.size_bytes == 4096
+    assert entry.modified_time_raw == "1784160000"
+    assert entry.modified_at is not None
+    assert entry.modified_at.isoformat() == "2026-07-16T00:00:00+00:00"
+    assert entry.timestamp_source == "android_stat_mtime_epoch"
+    assert entry.timestamp_confidence == "medium"
+
+
+def test_inventory_parser_skips_malformed_or_out_of_range_stat_records() -> None:
+    inventory = parse_storage_inventory(
+        "/sdcard/bad.txt:not-a-size:1784160000\n/sdcard/future.txt:10:999999999999999\n",
+        root_id="primary_alias",
+        display_path="/sdcard",
+        max_items=10,
+        max_depth=6,
+    )
+
+    assert inventory.entries == ()
+    assert inventory.discovered_count == 2
+    assert inventory.skipped_count == 2

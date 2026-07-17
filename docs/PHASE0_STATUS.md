@@ -27,6 +27,7 @@
 | Timeline and analyst annotations | deterministic acquisition-time events, stable hashes/backfill, UTC/confidence/source links, bookmarks, normalized tags, append-only notes and supersession | determinism/idempotency/case-scope/source-immutability/API/UI tests |
 | Safe image derivatives | bounded magic-byte detection, isolated worker, source re-verification, JPEG/PNG/GIF/WebP decode, pixel/byte/time ceilings, metadata-stripped PNG, derivative hash, protected serving and UI | corrupt/truncated/oversized/decompression-bomb/active-content/mismatch/tamper/API/UI tests |
 | Versioned preliminary reports | strict immutable snapshot, deterministic Preliminary PDF, validated JSON, formula-neutralized CSV, sealed SHA-256 outputs, verified downloads, audit/custody linkage, Reports UI | renderer known-answer tests, reversible migration, API/download/integrity tests, Poppler visual inspection |
+| Validated source timestamps | fixed bounded `find -exec stat`, source size/original epoch/UTC preservation, medium-confidence modification event, size-conflict disclosure, inventory/artifact/report/UI propagation | command-policy/parser edge tests, reversible migration, manifest/provenance/timeline/API known-answer tests; physical-device matrix pending |
 | Evidence integrity re-verification | independent file/manifest re-hashing, append-only result history, mismatch/missing detection, preserved expected hashes, API and UI controls | known-answer, tampering, missing-object, API, and UI tests |
 | Custody and audit chains | automatic evidence/integrity custody events, manual transfers, amendments, per-case custody hashes, global audit hashes, verification APIs, case UI | service tampering tests, migration/API authorization, append-only route tests, UI checks |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
@@ -65,12 +66,12 @@
 - Only a sealed, independently hashed PNG derivative can reach the browser; original evidence, SVG, PDF, archives, Office documents, executables, audio, and video are never previewed.
 - Eight-second, 25 MiB input, 40-megapixel, 1024-edge, and 5 MiB output preview limits, with additional POSIX process limits where supported.
 - Versioned report snapshots rendered into sealed PDF, JSON, and selected-bookmark CSV outputs, with formula-injection neutralization and SHA-256 verification before download.
+- Android-reported shared-storage modification epochs retained separately from high-confidence workstation collection times, with explicit source, precision, confidence, and device-clock limitations.
 
 ## Not implemented yet
 
 - External audit anchoring, digital signatures, and write-once custody exports
 - Bulk acquisition and physical-device validation of byte-zero restart behavior
-- Device-side timestamp extraction from validated sources
 - Production packaging, signing, and forensic validation
 
 These omissions are visible project status, not silent product claims. Real-device testing remains a controlled Phase 0 activity.
@@ -80,5 +81,5 @@ These omissions are visible project status, not silent product claims. Real-devi
 1. Install Android Platform Tools and validate inventory plus selected pulls against controlled physical devices and hostile filename fixtures.
 2. Validate disconnect/restart recovery against physical devices on Windows, Linux, and macOS.
 3. Add external audit anchoring and signed/write-once custody exports before evidentiary claims.
-4. Add validated source timestamp claims to the existing deterministic timeline without inventing missing values.
+4. Validate source modification-time collection against the controlled Android/OEM matrix and document variance.
 5. Add report approval, redaction, external signing, and reproducibility validation for production release.

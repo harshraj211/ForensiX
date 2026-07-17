@@ -282,7 +282,7 @@ class AcquisitionInventoryService:
     ) -> AcquisitionInventoryRecord:
         completed_at = datetime.now(UTC)
         inventory_id = str(uuid4())
-        item_payload = []
+        item_payload: list[dict[str, Any]] = []
         ordered_entries = sorted(result.entries, key=lambda item: item.relative_path)
         for ordinal, entry in enumerate(ordered_entries, 1):
             path_hash = sha256(entry.relative_path.encode("utf-8")).hexdigest()
@@ -292,6 +292,15 @@ class AcquisitionInventoryService:
                     "ordinal": ordinal,
                     "path_hash": path_hash,
                     "relative_path": entry.relative_path,
+                    "size_bytes": entry.size_bytes,
+                    "modified_time_raw": entry.modified_time_raw,
+                    "modified_at": (
+                        entry.modified_at.astimezone(UTC).isoformat()
+                        if entry.modified_at is not None
+                        else None
+                    ),
+                    "timestamp_source": entry.timestamp_source,
+                    "timestamp_confidence": entry.timestamp_confidence,
                 }
             )
         manifest_payload = {
@@ -346,6 +355,15 @@ class AcquisitionInventoryService:
                     relative_path=item["relative_path"],
                     path_hash=item["path_hash"],
                     extension=item["extension"],
+                    size_bytes=item["size_bytes"],
+                    modified_time_raw=item["modified_time_raw"],
+                    modified_at=(
+                        datetime.fromisoformat(item["modified_at"])
+                        if item["modified_at"] is not None
+                        else None
+                    ),
+                    timestamp_source=item["timestamp_source"],
+                    timestamp_confidence=item["timestamp_confidence"],
                 )
                 for item in item_payload
             )

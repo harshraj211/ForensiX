@@ -44,9 +44,15 @@ class Database:
             "sqlalchemy.url",
             self.engine.url.render_as_string(hide_password=False).replace("%", "%%"),
         )
-        tables = set(inspect(self.engine).get_table_names())
+        inspector = inspect(self.engine)
+        tables = set(inspector.get_table_names())
         if tables and "alembic_version" not in tables:
-            legacy_revision = _legacy_revision(tables)
+            inventory_columns = (
+                {column["name"] for column in inspector.get_columns("acquisition_inventory_items")}
+                if "acquisition_inventory_items" in tables
+                else set()
+            )
+            legacy_revision = _legacy_revision(tables, inventory_columns)
             command.stamp(config, legacy_revision)
         command.upgrade(config, "head")
 
@@ -95,8 +101,10 @@ def sqlite_pragmas(engine: Engine) -> dict[str, int | str]:
         }
 
 
-def _legacy_revision(tables: set[str]) -> str:
+def _legacy_revision(tables: set[str], inventory_columns: set[str]) -> str:
     """Identify the newest schema marker created before migration tracking was enabled."""
+    if "report_outputs" in tables and "modified_at" in inventory_columns:
+        return "0018_source_timestamps"
     markers = (
         ("report_outputs", "0017_reports_exports"),
         ("artifact_previews", "0016_safe_previews"),

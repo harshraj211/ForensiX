@@ -783,7 +783,17 @@ def test_bounded_inventory_runs_live_revalidation_and_returns_path_metadata(
         "relative_path",
         "path_hash",
         "extension",
+        "size_bytes",
+        "modified_time_raw",
+        "modified_at",
+        "timestamp_source",
+        "timestamp_confidence",
     }
+    assert inventory.json()["items"][0]["size_bytes"] == 33
+    assert inventory.json()["items"][0]["modified_time_raw"] == "1784160000"
+    assert inventory.json()["items"][0]["modified_at"].endswith(("Z", "+00:00"))
+    assert inventory.json()["items"][0]["timestamp_source"] == "android_stat_mtime_epoch"
+    assert inventory.json()["items"][0]["timestamp_confidence"] == "medium"
     assert len(inventory.json()["manifest_hash"]) == 64
     assert repeated.json()["id"] == inventory.json()["id"]
     assert fetched.json()["manifest_hash"] == inventory.json()["manifest_hash"]
@@ -892,9 +902,13 @@ def test_inventory_item_file_acquisition_is_selected_hashed_and_idempotent(
     assert artifact_detail.json()["title"] == "timeline.csv"
     assert artifact_detail.json()["primary_sha256"] == acquired.json()["sha256"]
     assert artifact_detail.json()["metadata"]["content_parsed"] is False
+    assert artifact_detail.json()["metadata"]["source_timestamp"]["original_epoch_seconds"] == (
+        "1784246400"
+    )
     assert timeline.status_code == 200
-    assert timeline.json()["total"] == 1
+    assert timeline.json()["total"] == 2
     assert timeline.json()["items"][0]["timestamp_type"] == "acquisition_collected_at"
+    assert timeline.json()["items"][1]["timestamp_type"] == "source_file_modified_at"
     assert bookmark.status_code == 201
     assert tag.status_code == 201
     assert note.status_code == 201

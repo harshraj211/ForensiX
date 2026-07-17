@@ -553,6 +553,13 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
               <p className="truncate font-mono" title={item.relative_path}>
                 {item.relative_path}
               </p>
+              {item.modified_at && (
+                <p className="mt-1 text-[10px] text-slate-500">
+                  Android-reported modified {new Date(item.modified_at).toLocaleString()}
+                  {item.size_bytes !== null ? ` · ${String(item.size_bytes)} bytes` : ""}
+                  {item.timestamp_confidence ? ` · ${item.timestamp_confidence} confidence` : ""}
+                </p>
+              )}
               {acquired?.status === "completed" ? (
                 <div className="mt-2 text-[10px] text-emerald-200">
                   <p>{acquired.size_bytes} bytes acquired</p>

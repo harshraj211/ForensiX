@@ -3,6 +3,7 @@
 import json
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 
 from sqlalchemy import func, select, text
@@ -119,6 +120,14 @@ class ArtifactService:
         extension = source.suffix.lower().removeprefix(".")[:16] or None
         detected_mime = _MIME_BY_EXTENSION.get(extension or "", "application/octet-stream")
         category = _category(extension, detected_mime)
+        inventory_item = session.get(AcquisitionInventoryItemRecord, evidence.inventory_item_id)
+        if inventory_item is None:
+            raise ArtifactError("The source inventory metadata is unavailable.")
+        source_modified_at = (
+            _aware_utc(inventory_item.modified_at)
+            if inventory_item.modified_at is not None
+            else None
+        )
         provenance = {
             "acquired_by": evidence.acquired_by,
             "device_id": evidence.device_id,
@@ -134,6 +143,13 @@ class ArtifactService:
             "storage_key": evidence.storage_key,
             "tool_version": evidence.tool_version,
             "validation_state": evidence.validation_state,
+            "inventory_source_size_bytes": inventory_item.size_bytes,
+            "source_modified_time_raw": inventory_item.modified_time_raw,
+            "source_modified_at": (
+                source_modified_at.isoformat() if source_modified_at is not None else None
+            ),
+            "source_timestamp_source": inventory_item.timestamp_source,
+            "source_timestamp_confidence": inventory_item.timestamp_confidence,
         }
         metadata = {
             "classification_basis": "filename_extension_only",
@@ -142,7 +158,28 @@ class ArtifactService:
             "limitations": [
                 "Media type was mapped from the filename extension and was not content-sniffed.",
                 "No hostile evidence content was opened or rendered during normalization.",
+                "Android stat modification time depends on the device clock and "
+                "filesystem metadata.",
             ],
+            "source_timestamp": {
+                "original_epoch_seconds": inventory_item.modified_time_raw,
+                "normalized_utc": (
+                    source_modified_at.isoformat() if source_modified_at is not None else None
+                ),
+                "source": inventory_item.timestamp_source,
+                "confidence": inventory_item.timestamp_confidence,
+                "precision": "second" if inventory_item.modified_at is not None else None,
+            },
+            "inventory_size_matches_acquired_size": (
+                inventory_item.size_bytes == evidence.size_bytes
+                if inventory_item.size_bytes is not None
+                else None
+            ),
+            "source_modified_after_collection": (
+                source_modified_at > _aware_utc(evidence.completed_at)
+                if source_modified_at is not None
+                else None
+            ),
         }
         artifact = ArtifactRecord(
             evidence_file_id=evidence.id,
@@ -321,3 +358,7 @@ def _compile_fts_query(query: str) -> str:
 
 def _canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def _aware_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)

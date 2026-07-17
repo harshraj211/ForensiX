@@ -190,6 +190,11 @@ class AcquisitionInventoryItemResponse(BaseModel):
     relative_path: str
     path_hash: str
     extension: str | None
+    size_bytes: int | None
+    modified_time_raw: str | None
+    modified_at: datetime | None
+    timestamp_source: str | None
+    timestamp_confidence: Literal["medium"] | None
 
 
 class AcquisitionInventoryResponse(BaseModel):

@@ -50,6 +50,9 @@ async def test_mock_inventory_is_content_free_and_deterministic() -> None:
         "Documents/timeline.csv",
         "Download/incident-notes.pdf",
     ]
+    assert all(entry.size_bytes is not None for entry in inventory.entries)
+    assert all(entry.modified_at is not None for entry in inventory.entries)
+    assert all(entry.timestamp_source == "android_stat_mtime_epoch" for entry in inventory.entries)
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 """Immutable transport and server models."""
 
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -57,6 +58,11 @@ class StorageInventoryEntry(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     relative_path: str = Field(min_length=1, max_length=1024)
+    size_bytes: int | None = Field(default=None, ge=0)
+    modified_time_raw: str | None = Field(default=None, max_length=32)
+    modified_at: datetime | None = None
+    timestamp_source: str | None = Field(default=None, max_length=64)
+    timestamp_confidence: str | None = Field(default=None, max_length=16)
 
 
 class StorageInventoryResult(BaseModel):

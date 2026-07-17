@@ -221,6 +221,11 @@ async def test_bounded_inventory_revalidates_persists_and_hashes_paths(
     ]
     assert all(len(item.path_hash) == 64 for item in items)
     assert [item.extension for item in items] == ["jpg", "csv", "pdf"]
+    assert all(item.size_bytes is not None for item in items)
+    assert all(item.modified_time_raw is not None for item in items)
+    assert all(item.modified_at is not None for item in items)
+    assert all(item.timestamp_source == "android_stat_mtime_epoch" for item in items)
+    assert all(item.timestamp_confidence == "medium" for item in items)
     assert events[-1].state == JobState.COMPLETED.value
     assert events[-1].checkpoint_json is not None
 
@@ -425,6 +430,13 @@ async def test_completed_file_is_normalized_and_searchable_without_content_parsi
     assert artifact.parser_id == "generic_file_metadata"
     assert json.loads(artifact.metadata_json)["content_parsed"] is False
     assert json.loads(artifact.metadata_json)["classification_basis"] == ("filename_extension_only")
+    metadata = json.loads(artifact.metadata_json)
+    provenance = json.loads(artifact.provenance_json)
+    assert metadata["source_timestamp"]["original_epoch_seconds"] == "1784246400"
+    assert metadata["source_timestamp"]["confidence"] == "medium"
+    assert metadata["inventory_size_matches_acquired_size"] is True
+    assert metadata["source_modified_after_collection"] is False
+    assert provenance["source_timestamp_source"] == "android_stat_mtime_epoch"
     assert by_title.total == 1
     assert by_title.items[0].id == artifact.id
     assert by_title.category_facets == {"document": 1}
@@ -468,7 +480,7 @@ async def test_artifact_search_is_case_scoped_bounded_and_reindexable(
 
 
 @pytest.mark.asyncio
-async def test_timeline_is_deterministic_and_contains_only_collection_claim(
+async def test_timeline_is_deterministic_and_preserves_source_modified_claim(
     database: Database,
 ) -> None:
     principal = _principal(database)
@@ -488,16 +500,29 @@ async def test_timeline_is_deterministic_and_contains_only_collection_claim(
             category="file",
             confidence="high",
         )
+        source_result = TimelineService().search(
+            session,
+            principal,
+            case_id,
+            category="file",
+            confidence="medium",
+        )
         backfilled = TimelineService().backfill(session)
 
     assert repeated.id == first.id
     assert repeated.event_hash == first.event_hash
     assert result.total == 1
-    assert result.category_facets == {"file": 1}
+    assert result.category_facets == {"file": 2}
     assert result.items[0].timestamp_type == "acquisition_collected_at"
     assert result.items[0].event_time == artifact.collected_at
     assert result.items[0].timezone_basis == "UTC recorded by acquisition workstation"
-    assert "modified" not in result.items[0].timestamp_type
+    assert source_result.total == 1
+    assert source_result.items[0].timestamp_type == "source_file_modified_at"
+    assert source_result.items[0].original_time == "1784246400"
+    assert source_result.items[0].timezone_basis == (
+        "UTC derived from Unix epoch reported by Android stat"
+    )
+    assert source_result.items[0].precision == "second"
     assert backfilled == 0
 
 

@@ -277,6 +277,11 @@ export interface AcquisitionInventoryItem {
   relative_path: string;
   path_hash: string;
   extension: string | null;
+  size_bytes: number | null;
+  modified_time_raw: string | null;
+  modified_at: string | null;
+  timestamp_source: string | null;
+  timestamp_confidence: "medium" | null;
 }
 
 export interface AcquisitionInventory {

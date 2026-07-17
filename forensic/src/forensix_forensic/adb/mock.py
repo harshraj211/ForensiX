@@ -1,6 +1,7 @@
 """Deterministic ADB scenarios for development and acceptance tests."""
 
 import asyncio
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
@@ -106,11 +107,18 @@ class MockAdbClient:
             root_id=root.value,
             display_path=AdbCommandPolicy.display_path(root),
             entries=tuple(
-                StorageInventoryEntry(relative_path=path)
-                for path in (
-                    "DCIM/Camera/IMG_0001.jpg",
-                    "Documents/timeline.csv",
-                    "Download/incident-notes.pdf",
+                StorageInventoryEntry(
+                    relative_path=path,
+                    size_bytes=size_bytes,
+                    modified_time_raw=epoch,
+                    modified_at=datetime.fromtimestamp(int(epoch), tz=UTC),
+                    timestamp_source="android_stat_mtime_epoch",
+                    timestamp_confidence="medium",
+                )
+                for path, size_bytes, epoch in (
+                    ("DCIM/Camera/IMG_0001.jpg", 33, "1784160000"),
+                    ("Documents/timeline.csv", 42, "1784246400"),
+                    ("Download/incident-notes.pdf", 38, "1784332800"),
                 )
             ),
             discovered_count=3,

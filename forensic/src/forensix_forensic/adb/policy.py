@@ -93,7 +93,12 @@ class AdbCommandPolicy:
                 str(INVENTORY_MAX_DEPTH),
                 "-type",
                 "f",
-                "-print0",
+                "-exec",
+                "stat",
+                "-c",
+                "%n:%s:%Y",
+                "{}",
+                "+",
             ),
             30.0,
         )

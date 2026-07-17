@@ -509,6 +509,14 @@ class AcquisitionInventoryItemRecord(Base):
     __tablename__ = "acquisition_inventory_items"
     __table_args__ = (
         CheckConstraint("ordinal >= 1", name="ck_acquisition_inventory_items_ordinal"),
+        CheckConstraint(
+            "size_bytes IS NULL OR size_bytes >= 0",
+            name="ck_acquisition_inventory_items_size",
+        ),
+        CheckConstraint(
+            "timestamp_confidence IS NULL OR timestamp_confidence IN ('medium')",
+            name="ck_acquisition_inventory_items_timestamp_confidence",
+        ),
         UniqueConstraint("inventory_id", "ordinal", name="uq_acquisition_inventory_items_ordinal"),
         UniqueConstraint(
             "inventory_id", "path_hash", name="uq_acquisition_inventory_items_path_hash"
@@ -526,6 +534,13 @@ class AcquisitionInventoryItemRecord(Base):
     relative_path: Mapped[str] = mapped_column(Text, nullable=False)
     path_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     extension: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    modified_time_raw: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    modified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    timestamp_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    timestamp_confidence: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class AcquiredEvidenceFileRecord(Base):

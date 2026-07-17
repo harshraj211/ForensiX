@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from .errors import AdbProtocolError
 from .models import (
@@ -95,16 +96,27 @@ def parse_storage_inventory(
     max_items: int,
     max_depth: int,
 ) -> StorageInventoryResult:
-    """Parse NUL-delimited find output without reusing paths as command arguments."""
+    """Parse fixed stat records without reusing device paths as command arguments."""
     if max_items < 1 or max_depth < 1:
         raise ValueError("inventory limits must be positive")
     prefix = display_path.rstrip("/") + "/"
-    discovered = [item for item in output.split("\x00") if item]
+    legacy_nul_format = "\x00" in output
+    records = (
+        [item for item in output.split("\x00") if item]
+        if "\x00" in output
+        else [item for item in output.splitlines() if item]
+    )
     accepted: list[StorageInventoryEntry] = []
     seen: set[str] = set()
     skipped = 0
     truncated = False
-    for absolute_path in discovered:
+    for record in records:
+        absolute_path, size_bytes, modified_raw, modified_at = _inventory_record(
+            record, parse_metadata=not legacy_nul_format
+        )
+        if absolute_path is None:
+            skipped += 1
+            continue
         if not absolute_path.startswith(prefix):
             skipped += 1
             continue
@@ -126,17 +138,46 @@ def parse_storage_inventory(
         if len(accepted) >= max_items:
             truncated = True
             continue
-        accepted.append(StorageInventoryEntry(relative_path=relative_path))
+        accepted.append(
+            StorageInventoryEntry(
+                relative_path=relative_path,
+                size_bytes=size_bytes,
+                modified_time_raw=modified_raw,
+                modified_at=modified_at,
+                timestamp_source=("android_stat_mtime_epoch" if modified_at is not None else None),
+                timestamp_confidence="medium" if modified_at is not None else None,
+            )
+        )
     return StorageInventoryResult(
         root_id=root_id,
         display_path=display_path,
         entries=tuple(accepted),
-        discovered_count=len(discovered),
+        discovered_count=len(records),
         skipped_count=skipped,
         truncated=truncated,
         max_items=max_items,
         max_depth=max_depth,
     )
+
+
+def _inventory_record(
+    record: str, *, parse_metadata: bool
+) -> tuple[str | None, int | None, str | None, datetime | None]:
+    """Decode `path:size:mtime` while retaining legacy path-only fixtures."""
+    if parse_metadata and record.count(":") >= 2:
+        path, size_raw, modified_raw = record.rsplit(":", 2)
+        try:
+            size_bytes = int(size_raw)
+            epoch_seconds = int(modified_raw)
+            if size_bytes < 0 or not 0 <= epoch_seconds <= 253_402_300_799:
+                raise ValueError
+            modified_at = datetime.fromtimestamp(epoch_seconds, tz=UTC)
+            return path, size_bytes, modified_raw, modified_at
+        except (OverflowError, OSError, ValueError):
+            return None, None, None, None
+    if parse_metadata:
+        return None, None, None, None
+    return record, None, None, None
 
 
 def _device_lines(lines: Iterable[str]) -> Iterable[str]:

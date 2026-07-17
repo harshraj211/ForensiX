@@ -10,9 +10,14 @@ from sqlalchemy.orm import Session
 
 from forensix_server.auth import Permission, Principal
 from forensix_server.cases import CaseAccessDeniedError, CaseService
-from forensix_server.db import ArtifactRecord, TimelineEventRecord
+from forensix_server.db import (
+    AcquiredEvidenceFileRecord,
+    AcquisitionInventoryItemRecord,
+    ArtifactRecord,
+    TimelineEventRecord,
+)
 
-TIMELINE_BUILDER_VERSION = "1.0.0"
+TIMELINE_BUILDER_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +38,7 @@ class TimelineService:
             )
         )
         if existing is not None:
+            self._materialize_source_modified(session, artifact)
             return existing
         event_time = _aware_utc(artifact.collected_at)
         category = "media" if artifact.category in {"image", "video", "audio"} else "file"
@@ -62,6 +68,74 @@ class TimelineService:
             timezone_basis="UTC recorded by acquisition workstation",
             precision="microsecond",
             confidence="high",
+            summary=summary,
+            builder_version=TIMELINE_BUILDER_VERSION,
+            event_hash=sha256(_canonical_json(payload).encode("utf-8")).hexdigest(),
+        )
+        session.add(record)
+        session.flush()
+        self._materialize_source_modified(session, artifact)
+        return record
+
+    @staticmethod
+    def _materialize_source_modified(
+        session: Session, artifact: ArtifactRecord
+    ) -> TimelineEventRecord | None:
+        existing = session.scalar(
+            select(TimelineEventRecord).where(
+                TimelineEventRecord.artifact_id == artifact.id,
+                TimelineEventRecord.timestamp_type == "source_file_modified_at",
+            )
+        )
+        if existing is not None:
+            return existing
+        evidence = session.get(AcquiredEvidenceFileRecord, artifact.evidence_file_id)
+        item = (
+            session.get(AcquisitionInventoryItemRecord, evidence.inventory_item_id)
+            if evidence is not None
+            else None
+        )
+        if (
+            item is None
+            or item.modified_at is None
+            or item.modified_time_raw is None
+            or item.timestamp_source != "android_stat_mtime_epoch"
+        ):
+            return None
+        event_time = _aware_utc(item.modified_at)
+        category = "media" if artifact.category in {"image", "video", "audio"} else "file"
+        source_after_collection = event_time > _aware_utc(artifact.collected_at)
+        confidence = "low" if source_after_collection else item.timestamp_confidence or "medium"
+        summary = f"Android shared storage reported {artifact.title} as modified."
+        if source_after_collection:
+            summary += (
+                " The source time is after workstation collection and may reflect clock skew."
+            )
+        payload = {
+            "artifact_id": artifact.id,
+            "builder_version": TIMELINE_BUILDER_VERSION,
+            "case_id": artifact.case_id,
+            "category": category,
+            "confidence": confidence,
+            "event_time": event_time.isoformat(),
+            "job_id": artifact.job_id,
+            "original_time": item.modified_time_raw,
+            "precision": "second",
+            "summary": summary,
+            "timestamp_type": "source_file_modified_at",
+            "timezone_basis": "UTC derived from Unix epoch reported by Android stat",
+        }
+        record = TimelineEventRecord(
+            case_id=artifact.case_id,
+            artifact_id=artifact.id,
+            job_id=artifact.job_id,
+            category=category,
+            timestamp_type="source_file_modified_at",
+            event_time=event_time,
+            original_time=item.modified_time_raw,
+            timezone_basis="UTC derived from Unix epoch reported by Android stat",
+            precision="second",
+            confidence=confidence,
             summary=summary,
             builder_version=TIMELINE_BUILDER_VERSION,
             event_hash=sha256(_canonical_json(payload).encode("utf-8")).hexdigest(),

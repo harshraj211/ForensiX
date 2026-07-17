@@ -67,6 +67,11 @@ class _FileContext:
     root: SharedStorageRoot
     relative_path: str
     source_path_hash: str
+    source_size_bytes: int | None
+    source_modified_time_raw: str | None
+    source_modified_at: datetime | None
+    source_timestamp_source: str | None
+    source_timestamp_confidence: str | None
     storage_key: str
     manifest_storage_key: str
     started_at: datetime
@@ -301,6 +306,11 @@ class AcquisitionFileService:
                     root=root,
                     relative_path=item.relative_path,
                     source_path_hash=item.path_hash,
+                    source_size_bytes=item.size_bytes,
+                    source_modified_time_raw=item.modified_time_raw,
+                    source_modified_at=item.modified_at,
+                    source_timestamp_source=item.timestamp_source,
+                    source_timestamp_confidence=item.timestamp_confidence,
                     storage_key=storage_key,
                     manifest_storage_key=manifest_storage_key,
                     started_at=started_at,
@@ -372,6 +382,15 @@ class AcquisitionFileService:
             "source_path_hash": context.source_path_hash,
             "source_relative_path": context.relative_path,
             "source_root_id": context.root.value,
+            "source_size_bytes_at_inventory": context.source_size_bytes,
+            "source_modified_time_raw": context.source_modified_time_raw,
+            "source_modified_at": (
+                context.source_modified_at.astimezone(UTC).isoformat()
+                if context.source_modified_at is not None
+                else None
+            ),
+            "source_timestamp_source": context.source_timestamp_source,
+            "source_timestamp_confidence": context.source_timestamp_confidence,
             "started_at": context.started_at.isoformat(),
             "storage_key": stored.storage_key,
             "tool_version": __version__,

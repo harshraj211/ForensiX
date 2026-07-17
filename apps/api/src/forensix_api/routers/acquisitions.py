@@ -1,5 +1,6 @@
 """Protected durable acquisition-job preparation and observation endpoints."""
 
+from datetime import UTC, datetime
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Response, status
@@ -391,6 +392,13 @@ def _inventory_response(
                 relative_path=item.relative_path,
                 path_hash=item.path_hash,
                 extension=item.extension,
+                size_bytes=item.size_bytes,
+                modified_time_raw=item.modified_time_raw,
+                modified_at=(
+                    _aware_utc(item.modified_at) if item.modified_at is not None else None
+                ),
+                timestamp_source=item.timestamp_source,
+                timestamp_confidence=("medium" if item.timestamp_confidence == "medium" else None),
             )
             for item in items
         ],
@@ -482,3 +490,7 @@ def _verification_response(
         tool_version=record.tool_version,
         verified_at=record.verified_at,
     )
+
+
+def _aware_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)

@@ -92,10 +92,15 @@ def test_inventory_policy_is_fixed_bounded_and_has_no_shell_composition() -> Non
         "6",
         "-type",
         "f",
-        "-print0",
+        "-exec",
+        "stat",
+        "-c",
+        "%n:%s:%Y",
+        "{}",
+        "+",
     )
     assert command.timeout_seconds == 30.0
-    assert all(token not in command.arguments for token in {"pull", "sh", "-c", "|", ";"})
+    assert all(token not in command.arguments for token in {"pull", "sh", "|", ";"})
 
 
 def test_pull_policy_uses_shell_free_inventory_path_and_absolute_destination(
@@ -164,7 +169,7 @@ async def test_system_probe_does_not_treat_command_failure_as_missing_storage() 
 
 @pytest.mark.asyncio
 async def test_system_inventory_parses_paths_without_running_path_derived_commands() -> None:
-    output = "/sdcard/DCIM/IMG_1.jpg\x00/sdcard/Download/report.pdf\x00"
+    output = "/sdcard/DCIM/IMG_1.jpg:128:1784160000\n/sdcard/Download/report.pdf:256:1784246400\n"
     runner = RecordingRunner([_result(0, stdout=output)])
     client = SystemAdbClient(cast(SubprocessAdbRunner, runner))
 
@@ -178,6 +183,11 @@ async def test_system_inventory_parses_paths_without_running_path_derived_comman
     ]
     assert len(runner.calls) == 1
     assert runner.calls[0][0][3] == "find"
+    assert runner.calls[0][0][-6:] == ("-exec", "stat", "-c", "%n:%s:%Y", "{}", "+")
+    assert inventory.entries[0].size_bytes == 128
+    assert inventory.entries[0].modified_time_raw == "1784160000"
+    assert inventory.entries[0].modified_at is not None
+    assert inventory.entries[0].timestamp_confidence == "medium"
 
 
 @pytest.mark.asyncio

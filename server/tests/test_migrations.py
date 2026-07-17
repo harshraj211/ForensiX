@@ -18,6 +18,9 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     command.upgrade(config, "head")
     engine = create_engine(f"sqlite:///{database_path.as_posix()}")
     tables = set(inspect(engine).get_table_names())
+    inventory_item_columns = {
+        column["name"] for column in inspect(engine).get_columns("acquisition_inventory_items")
+    }
 
     assert {
         "alembic_version",
@@ -56,6 +59,13 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "user_roles",
         "users",
     } <= tables
+    assert {
+        "size_bytes",
+        "modified_time_raw",
+        "modified_at",
+        "timestamp_source",
+        "timestamp_confidence",
+    } <= inventory_item_columns
 
     engine.dispose()
     command.downgrade(config, "base")
@@ -137,7 +147,7 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "custody_events" in inspector.get_table_names()
     assert "audit_logs" in inspector.get_table_names()
     assert {"case_id", "plan_id", "checkpoint_json", "last_event_sequence"} <= job_columns
-    assert revision == "0017_reports_exports"
+    assert revision == "0018_source_timestamps"
     database.dispose()
 
 
