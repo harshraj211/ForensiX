@@ -107,7 +107,7 @@ export function CaseReportsPage() {
             <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
               <div>
                 <span className="rounded-full border border-amber-300/25 bg-amber-300/7 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-200">Preliminary</span>
-                <span className="ml-2 rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-300">{report.approval_state ?? "unreviewed"}</span>
+                <span className="ml-2 rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-300">{report.approval_state}</span>
                 <h2 className="mt-3 font-semibold text-white">{report.title}</h2>
                 <p className="mt-1 text-xs text-slate-500">Generated {new Date(report.generated_at).toLocaleString()}</p>
               </div>
@@ -122,7 +122,7 @@ export function CaseReportsPage() {
             <dl className="mt-5 grid gap-4 border-t border-white/8 pt-4 text-xs sm:grid-cols-2">
               <div><dt className="text-slate-600">Snapshot SHA-256</dt><dd className="mt-1 break-all font-mono text-slate-400">{report.snapshot_sha256}</dd></div>
               <div><dt className="text-slate-600">Contract versions</dt><dd className="mt-1 text-slate-400">Schema {report.schema_version} / template {report.template_version}</dd></div>
-              <div><dt className="text-slate-600">Redaction profile</dt><dd className="mt-1 text-slate-400">{(report.redaction_profile ?? "full").replaceAll("_", " ")}</dd></div>
+              <div><dt className="text-slate-600">Redaction profile</dt><dd className="mt-1 text-slate-400">{report.redaction_profile.replaceAll("_", " ")}</dd></div>
               {report.latest_review && <div><dt className="text-slate-600">Latest supervisory review</dt><dd className="mt-1 text-slate-400">{report.latest_review.decision}: {report.latest_review.note}</dd><dd className="mt-1 break-all font-mono text-[9px] text-slate-600">{report.latest_review.event_hash}</dd></div>}
             </dl>
             {currentUser.data?.permissions.includes("reports:approve") && currentUser.data.user_id !== report.generated_by && (

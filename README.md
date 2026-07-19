@@ -111,6 +111,10 @@ Encrypted workstation backups can be created, independently verified, and safely
 storage still relies on BitLocker, FileVault, or LUKS until an OS-keychain and agency-escrow design
 is formally validated.
 
+Create a privacy-preserving, integrity-sealed mock or controlled-device validation record with
+`scripts/run-forensic-validation.py`; see [forensic validation](docs/FORENSIC_VALIDATION.md). A
+passing mock run is regression evidence and does not replace the physical-device release matrix.
+
 Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, `storage_blocked`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
 
 ## Validation commands

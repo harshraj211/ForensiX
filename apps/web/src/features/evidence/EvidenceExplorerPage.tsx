@@ -266,7 +266,7 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
       <dl className="mt-5 space-y-4 text-xs">
         <Detail label="Source path" value={artifact.source_relative_path} mono />
         <Detail label="SHA-256" value={artifact.primary_sha256} mono />
-        <Detail label="Exact duplicates" value={artifact.duplicate_count > 1 ? `${artifact.duplicate_count} artifacts share this hash` : "No exact duplicate in this case"} />
+        <Detail label="Exact duplicates" value={artifact.duplicate_count > 1 ? `${String(artifact.duplicate_count)} artifacts share this hash` : "No exact duplicate in this case"} />
         <Detail label="Size" value={`${formatBytes(artifact.size_bytes)} (${String(artifact.size_bytes)} bytes)`} />
         <Detail label="Extension-derived MIME" value={artifact.detected_mime} />
         <Detail label="Collected" value={new Date(artifact.collected_at).toLocaleString()} />
@@ -303,7 +303,7 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
             <p className="mt-2 break-all font-mono text-[9px] text-slate-600">Derivative SHA-256: {preview.data.output_sha256}</p>
             <div className="mt-3 grid grid-cols-2 gap-2 rounded border border-white/7 bg-black/15 p-3 text-[10px] text-slate-400">
               <Detail label="Source dimensions" value={`${String(preview.data.source_width)} x ${String(preview.data.source_height)}`} />
-              <Detail label="Format" value={String(preview.data.media_metadata.format ?? preview.data.detected_mime)} />
+              <Detail label="Format" value={typeof preview.data.media_metadata.format === "string" ? preview.data.media_metadata.format : (preview.data.detected_mime ?? "Unknown")} />
               {typeof preview.data.media_metadata.frame_count === "number" && <Detail label="Frames" value={String(preview.data.media_metadata.frame_count)} />}
               {typeof preview.data.media_metadata.gps_present === "boolean" && <Detail label="GPS metadata" value={preview.data.media_metadata.gps_present ? "Present" : "Not present"} />}
             </div>

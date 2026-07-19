@@ -22,6 +22,7 @@ data/
 *.fxb
 logs/
 tmp/
+validation-results/
 
 # Local configuration
 .env
