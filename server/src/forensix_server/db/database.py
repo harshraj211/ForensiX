@@ -1,5 +1,6 @@
 """SQLite engine lifecycle with forensic-safe durability defaults."""
 
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -37,7 +38,7 @@ class Database:
 
     def migrate(self) -> None:
         """Upgrade a workstation database, safely adopting legacy create-all schemas."""
-        server_dir = Path(__file__).resolve().parents[3]
+        server_dir = _migration_root()
         config = Config(str(server_dir / "alembic.ini"))
         config.set_main_option("script_location", str(server_dir / "alembic"))
         config.set_main_option(
@@ -101,6 +102,14 @@ def _configure_sqlite_connection(dbapi_connection: object, _: object) -> None:
         cursor.execute("PRAGMA busy_timeout=5000")
     finally:
         cursor.close()
+
+
+def _migration_root() -> Path:
+    """Locate source migrations or the immutable copy included in a frozen bundle."""
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if isinstance(bundle_root, str):
+        return Path(bundle_root) / "migrations"
+    return Path(__file__).resolve().parents[3]
 
 
 def sqlite_pragmas(engine: Engine) -> dict[str, int | str]:

@@ -1,0 +1,5 @@
+-e ./forensic
+-e ./server
+-e ./apps/api
+pyinstaller==6.21.0
+cyclonedx-bom==7.3.0

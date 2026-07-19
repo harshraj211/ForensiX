@@ -115,6 +115,10 @@ Create a privacy-preserving, integrity-sealed mock or controlled-device validati
 `scripts/run-forensic-validation.py`; see [forensic validation](docs/FORENSIC_VALIDATION.md). A
 passing mock run is regression evidence and does not replace the physical-device release matrix.
 
+Unsigned portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, and GitHub build
+attestations are defined in [release packaging](docs/RELEASE_PACKAGING.md). Native code signing,
+notarization, and a production installer remain explicit release gates.
+
 Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, `storage_blocked`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
 
 ## Validation commands

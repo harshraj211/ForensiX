@@ -15,5 +15,8 @@ dependencies = [
   "uvicorn[standard]>=0.41,<0.42"
 ]
 
+[project.scripts]
+forensix-desktop = "forensix_api.desktop:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -18,6 +18,14 @@ def test_settings_reject_wildcard_origin() -> None:
         Settings(allowed_origins=("*",))
 
 
+def test_plain_http_transport_is_loopback_only() -> None:
+    assert not Settings(environment="production").secure_cookies
+    assert Settings(deployment_transport="https").secure_cookies
+
+    with pytest.raises(ValidationError, match="restricted to a loopback host"):
+        Settings(api_host=".".join(["0"] * 4))
+
+
 def test_settings_require_complete_aleapp_pin(tmp_path: Path) -> None:
     program = tmp_path / "aleapp.py"
     program.write_text("print('fixture')", encoding="utf-8")

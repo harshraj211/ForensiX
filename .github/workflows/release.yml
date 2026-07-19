@@ -1,0 +1,61 @@
+name: Portable release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic release version
+        required: true
+        type: string
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pnpm install --frozen-lockfile
+      - run: python -m pip install -r requirements-release.txt
+      - name: Resolve version
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "VERSION=${{ inputs.version }}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          fi
+      - run: python scripts/build-release.py --version "$VERSION" --output-dir release
+        shell: bash
+      - uses: actions/attest@v4
+        with:
+          subject-path: "release/*.zip"
+          sbom-path: "release/*.cdx.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forensix-${{ matrix.os }}
+          path: |
+            release/*.zip
+            release/*.zip.sha256
+            release/*.cdx.json
+          if-no-files-found: error

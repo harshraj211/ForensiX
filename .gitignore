@@ -23,6 +23,8 @@ data/
 logs/
 tmp/
 validation-results/
+build/
+release/
 
 # Local configuration
 .env

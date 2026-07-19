@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     allowed_origins: tuple[str, ...] = ("http://127.0.0.1:5173",)
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8765, ge=1024, le=65535)
+    deployment_transport: Literal["loopback_http", "https"] = "loopback_http"
     session_ttl_minutes: int = Field(default=480, ge=15, le=1440)
     login_max_failures: int = Field(default=5, ge=3, le=20)
     login_lockout_minutes: int = Field(default=15, ge=1, le=1440)
@@ -55,6 +56,12 @@ class Settings(BaseSettings):
     def validate_aleapp_pair(self) -> "Settings":
         if (self.aleapp_program_path is None) != (self.aleapp_expected_sha256 is None):
             raise ValueError("ALEAPP program path and expected SHA-256 must be configured together")
+        if self.deployment_transport == "loopback_http" and self.api_host not in {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }:
+            raise ValueError("Plain HTTP deployment is restricted to a loopback host")
         return self
 
     @property
@@ -69,7 +76,7 @@ class Settings(BaseSettings):
 
     @property
     def secure_cookies(self) -> bool:
-        return self.environment == "production"
+        return self.deployment_transport == "https"
 
     def aleapp_runner(self) -> AleappRunner | None:
         if self.aleapp_program_path is None or self.aleapp_expected_sha256 is None:
