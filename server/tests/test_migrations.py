@@ -50,6 +50,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "case_members",
         "cases",
         "custody_events",
+        "custody_checkpoints",
         "device_capability_runs",
         "device_detection_runs",
         "evidence_verifications",
@@ -121,6 +122,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     assert "audit_logs" not in downgraded_tables
     assert "cases" not in downgraded_tables
     assert "custody_events" not in downgraded_tables
+    assert "custody_checkpoints" not in downgraded_tables
     assert "case_members" not in downgraded_tables
     assert "case_events" not in downgraded_tables
     assert "case_device_assessments" not in downgraded_tables
@@ -174,6 +176,7 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert {"input_locator", "input_sha256"} <= parser_columns
     assert "evidence_verifications" in inspector.get_table_names()
     assert "custody_events" in inspector.get_table_names()
+    assert "custody_checkpoints" in inspector.get_table_names()
     assert "audit_logs" in inspector.get_table_names()
     assert {"case_id", "plan_id", "checkpoint_json", "last_event_sequence"} <= job_columns
     preview_columns = {column["name"] for column in inspector.get_columns("artifact_previews")}
@@ -182,7 +185,7 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "evidence_recovery_assessments" in inspector.get_table_names()
     report_columns = {column["name"] for column in inspector.get_columns("reports")}
     assert "redaction_profile" in report_columns
-    assert revision == "0031_recovery_assessments"
+    assert revision == "0032_custody_checkpoints"
     database.dispose()
 
 

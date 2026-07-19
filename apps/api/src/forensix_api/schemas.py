@@ -883,6 +883,22 @@ class CustodyEventResponse(BaseModel):
     created_at: datetime
 
 
+class CustodyCheckpointResponse(BaseModel):
+    id: str
+    case_id: str
+    created_by: str
+    custody_record_count: int
+    custody_head_hash: str | None
+    audit_sequence: int
+    audit_head_hash: str | None
+    filename: str
+    size_bytes: int
+    sha256: str
+    schema_version: str
+    anchor_status: Literal["not_externally_anchored"]
+    created_at: datetime
+
+
 class ReportOutputResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

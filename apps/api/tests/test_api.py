@@ -1635,6 +1635,11 @@ def test_custody_history_is_chained_amended_and_audited(tmp_path: Path) -> None:
         custody_chain = client.get(f"/api/v1/cases/{case['id']}/custody/verify")
         audit = client.get("/api/v1/audit-logs")
         audit_chain = client.get("/api/v1/audit-logs/verify")
+        checkpoint = client.post(f"/api/v1/cases/{case['id']}/custody/checkpoints", headers=headers)
+        checkpoints = client.get(f"/api/v1/cases/{case['id']}/custody/checkpoints")
+        downloaded = client.get(
+            f"/api/v1/cases/{case['id']}/custody/checkpoints/{checkpoint.json()['id']}/download"
+        )
 
     assert transfer.status_code == 201
     assert amendment.status_code == 201
@@ -1649,6 +1654,20 @@ def test_custody_history_is_chained_amended_and_audited(tmp_path: Path) -> None:
     assert audit.status_code == 200
     assert len(audit.json()) == 3
     assert audit_chain.json()["valid"] is True
+    assert checkpoint.status_code == 201
+    assert checkpoint.json()["custody_record_count"] == 3
+    assert checkpoint.json()["custody_head_hash"] == custody.json()[-1]["event_hash"]
+    assert checkpoint.json()["anchor_status"] == "not_externally_anchored"
+    assert [item["id"] for item in checkpoints.json()] == [checkpoint.json()["id"]]
+    assert downloaded.status_code == 200
+    assert downloaded.headers["x-forensix-checkpoint-sha256"] == checkpoint.json()["sha256"]
+    assert downloaded.headers["x-forensix-external-anchor"] == "not-anchored"
+    exported = downloaded.json()
+    assert exported["custody_chain"]["record_count"] == 3
+    assert exported["custody_chain"]["verified_before_export"] is True
+    assert exported["audit_checkpoint"]["verified_before_export"] is True
+    assert exported["anchor_status"] == "not_externally_anchored"
+    assert "has not been externally timestamped or signed" in exported["limitations"][0]
 
 
 def test_custody_history_exposes_no_update_or_delete_operation(tmp_path: Path) -> None:

@@ -1673,6 +1673,38 @@ class ReportOutputRecord(Base):
     )
 
 
+class CustodyCheckpointRecord(Base):
+    """Sealed export of one verified custody head and global audit checkpoint."""
+
+    __tablename__ = "custody_checkpoints"
+    __table_args__ = (
+        CheckConstraint("custody_record_count >= 0", name="ck_custody_checkpoints_count"),
+        CheckConstraint("audit_sequence >= 0", name="ck_custody_checkpoints_audit_sequence"),
+        CheckConstraint("size_bytes >= 1", name="ck_custody_checkpoints_size"),
+        UniqueConstraint("storage_key", name="uq_custody_checkpoints_storage_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    custody_record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    custody_head_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    audit_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    audit_head_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class CustodyEventRecord(Base):
     """Append-only, per-case hash-chained custody history."""
 

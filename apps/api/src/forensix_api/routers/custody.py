@@ -4,6 +4,7 @@ import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import FileResponse
 
 from forensix_api.dependencies import (
     get_authenticated_session,
@@ -13,12 +14,14 @@ from forensix_api.dependencies import (
 from forensix_api.schemas import (
     AuditLogResponse,
     ChainVerificationResponse,
+    CustodyCheckpointResponse,
     CustodyEventCreateRequest,
     CustodyEventResponse,
 )
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.custody import AuditService, CustodyService
-from forensix_server.db import AuditLogRecord, Database
+from forensix_server.custody_exports import CustodyCheckpointService
+from forensix_server.db import AuditLogRecord, CustodyCheckpointRecord, Database
 
 router = APIRouter(tags=["custody", "audit"])
 
@@ -82,6 +85,61 @@ def verify_custody(
         )
 
 
+@router.get(
+    "/api/v1/cases/{case_id}/custody/checkpoints",
+    response_model=list[CustodyCheckpointResponse],
+)
+def list_custody_checkpoints(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[CustodyCheckpointResponse]:
+    return [
+        _checkpoint_response(item)
+        for item in CustodyCheckpointService().list(database, authenticated.principal, case_id)
+    ]
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/custody/checkpoints",
+    response_model=CustodyCheckpointResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_custody_checkpoint(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> CustodyCheckpointResponse:
+    return _checkpoint_response(
+        CustodyCheckpointService().create(database, authenticated.principal, case_id)
+    )
+
+
+@router.get("/api/v1/cases/{case_id}/custody/checkpoints/{checkpoint_id}/download")
+def download_custody_checkpoint(
+    case_id: str,
+    checkpoint_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> FileResponse:
+    content = CustodyCheckpointService().content(
+        database, authenticated.principal, case_id, checkpoint_id
+    )
+    return FileResponse(
+        content.path,
+        media_type="application/json",
+        filename=content.record.filename,
+        headers={
+            "Cache-Control": "no-store, private",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "X-Content-Type-Options": "nosniff",
+            "X-ForensiX-Checkpoint-SHA256": content.record.sha256,
+            "X-ForensiX-External-Anchor": "not-anchored",
+        },
+    )
+
+
 @router.get("/api/v1/audit-logs", response_model=list[AuditLogResponse])
 def list_audit_logs(
     authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
@@ -121,5 +179,23 @@ def _audit_response(record: AuditLogRecord) -> AuditLogResponse:
         detail=json.loads(record.detail_json),
         previous_hash=record.previous_hash,
         entry_hash=record.entry_hash,
+        created_at=record.created_at,
+    )
+
+
+def _checkpoint_response(record: CustodyCheckpointRecord) -> CustodyCheckpointResponse:
+    return CustodyCheckpointResponse(
+        id=record.id,
+        case_id=record.case_id,
+        created_by=record.created_by,
+        custody_record_count=record.custody_record_count,
+        custody_head_hash=record.custody_head_hash,
+        audit_sequence=record.audit_sequence,
+        audit_head_hash=record.audit_head_hash,
+        filename=record.filename,
+        size_bytes=record.size_bytes,
+        sha256=record.sha256,
+        schema_version=record.schema_version,
+        anchor_status="not_externally_anchored",
         created_at=record.created_at,
     )
