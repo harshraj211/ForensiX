@@ -91,6 +91,16 @@ pnpm dev
 
 Open `http://127.0.0.1:5173/devices`.
 
+On Windows, after installing dependencies, the launcher can start both services in real-device
+mode, validate the configured ADB executable, and open the device-readiness screen:
+
+```powershell
+.\scripts\start-forensix.ps1 -AdbPath "C:\platform-tools\adb.exe"
+```
+
+Use `-NoBrowser` for a terminal-only readiness check. Existing listeners on the configured API or
+web ports are reused instead of starting duplicate services.
+
 Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, `storage_blocked`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
 
 ## Validation commands
