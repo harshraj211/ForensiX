@@ -1,5 +1,6 @@
 import asyncio
 import io
+import sqlite3
 from pathlib import Path
 from typing import NoReturn
 
@@ -153,6 +154,9 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
         "evidence_sources",
         "evidence_source_chunks",
         "evidence_source_verifications",
+        "evidence_source_inspections",
+        "evidence_parser_runs",
+        "evidence_source_artifacts",
         "evidence_working_copies",
         "jobs",
         "job_events",
@@ -221,6 +225,72 @@ def test_evidence_twin_import_verify_and_working_copy_api(tmp_path: Path) -> Non
             "verified",
             "verified",
         ]
+
+
+def test_evidence_twin_native_parser_api(tmp_path: Path) -> None:
+    sqlite_path = tmp_path / "contacts2.db"
+    connection = sqlite3.connect(sqlite_path)
+    connection.executescript(
+        """
+        CREATE TABLE mimetypes (_id INTEGER PRIMARY KEY, mimetype TEXT);
+        CREATE TABLE raw_contacts (_id INTEGER PRIMARY KEY, deleted INTEGER);
+        CREATE TABLE data (
+            _id INTEGER PRIMARY KEY, raw_contact_id INTEGER, mimetype_id INTEGER,
+            data1 TEXT, data2 TEXT, data3 TEXT
+        );
+        INSERT INTO mimetypes VALUES (1, 'vnd.android.cursor.item/name');
+        INSERT INTO raw_contacts VALUES (10, 0);
+        INSERT INTO data VALUES (1, 10, 1, 'API Contact', NULL, NULL);
+        """
+    )
+    connection.commit()
+    connection.close()
+    app = create_app(_settings(tmp_path / "runtime"), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Parser API case"}
+        ).json()
+        imported = client.post(
+            f"/api/v1/cases/{case['id']}/evidence-sources/import",
+            headers=headers,
+            files={
+                "source": ("contacts2.db", sqlite_path.read_bytes(), "application/octet-stream")
+            },
+        ).json()
+        copied = client.post(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{imported['id']}/working-copies",
+            headers=headers,
+        ).json()
+        base = (
+            f"/api/v1/cases/{case['id']}/evidence-sources/{imported['id']}"
+            f"/working-copies/{copied['id']}"
+        )
+
+        inspection = client.post(f"{base}/inspection", headers=headers)
+        verification = client.post(f"{base}/verify", headers=headers)
+        parsed = client.post(
+            f"{base}/native-parsers",
+            headers=headers,
+            json={"parser_ids": ["android.contacts_provider"]},
+        )
+        runs = client.get(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{imported['id']}/parser-runs"
+        )
+        artifacts = client.get(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{imported['id']}/artifacts"
+        )
+
+        assert inspection.status_code == 201
+        assert inspection.json()["detected_type"] == "sqlite"
+        assert verification.status_code == 200
+        assert verification.json()["status"] == "verified"
+        assert parsed.status_code == 200
+        assert parsed.json()[0]["parser_id"] == "android.contacts_provider"
+        assert parsed.json()[0]["artifact_count"] == 1
+        assert len(runs.json()) == 1
+        assert artifacts.json()[0]["title"] == "API Contact"
+        assert artifacts.json()[0]["provenance"]["source_sha256"] == imported["sha256"]
 
 
 def test_preliminary_report_generation_and_verified_downloads(tmp_path: Path) -> None:

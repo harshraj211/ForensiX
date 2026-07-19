@@ -7,13 +7,28 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
 from forensix_api.dependencies import get_authenticated_session, get_database, require_csrf_session
 from forensix_api.schemas import (
+    EvidenceInspectionResponse,
+    EvidenceParserRunRequest,
+    EvidenceParserRunResponse,
+    EvidenceSourceArtifactResponse,
     EvidenceSourceResponse,
     EvidenceSourceVerificationResponse,
     EvidenceWorkingCopyResponse,
 )
 from forensix_server.auth import AuthenticatedSession
-from forensix_server.db import Database, EvidenceSourceRecord
-from forensix_server.evidence_twin import EvidenceTwinService
+from forensix_server.db import (
+    Database,
+    EvidenceSourceArtifactRecord,
+    EvidenceSourceInspectionRecord,
+    EvidenceSourceRecord,
+)
+from forensix_server.evidence_twin import (
+    EvidenceExaminationService,
+    EvidenceInspectionService,
+    EvidenceTwinService,
+    inspection_signature,
+    inspection_warnings,
+)
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/evidence-sources", tags=["evidence-sources"])
 
@@ -132,6 +147,114 @@ def list_evidence_working_copies(
     ]
 
 
+@router.post(
+    "/{source_id}/working-copies/{working_copy_id}/verify",
+    response_model=EvidenceSourceVerificationResponse,
+)
+def verify_evidence_working_copy(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> EvidenceSourceVerificationResponse:
+    return EvidenceSourceVerificationResponse.model_validate(
+        EvidenceTwinService().verify_working_copy(
+            database, authenticated.principal, case_id, source_id, working_copy_id
+        )
+    )
+
+
+@router.post(
+    "/{source_id}/working-copies/{working_copy_id}/inspection",
+    response_model=EvidenceInspectionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def inspect_evidence_working_copy(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> EvidenceInspectionResponse:
+    return _inspection_response(
+        EvidenceInspectionService().inspect_working_copy(
+            database, authenticated.principal, case_id, source_id, working_copy_id
+        )
+    )
+
+
+@router.get(
+    "/{source_id}/working-copies/{working_copy_id}/inspection",
+    response_model=EvidenceInspectionResponse,
+)
+def get_evidence_working_copy_inspection(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> EvidenceInspectionResponse:
+    return _inspection_response(
+        EvidenceInspectionService().get_for_working_copy(
+            database, authenticated.principal, case_id, source_id, working_copy_id
+        )
+    )
+
+
+@router.post(
+    "/{source_id}/working-copies/{working_copy_id}/native-parsers",
+    response_model=list[EvidenceParserRunResponse],
+)
+def run_native_evidence_parsers(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    request: EvidenceParserRunRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[EvidenceParserRunResponse]:
+    results = EvidenceExaminationService().run_native_parsers(
+        database,
+        authenticated.principal,
+        case_id,
+        source_id,
+        working_copy_id,
+        parser_ids=tuple(request.parser_ids) if request.parser_ids is not None else None,
+    )
+    return [EvidenceParserRunResponse.model_validate(item.run) for item in results]
+
+
+@router.get("/{source_id}/parser-runs", response_model=list[EvidenceParserRunResponse])
+def list_evidence_parser_runs(
+    case_id: str,
+    source_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[EvidenceParserRunResponse]:
+    return [
+        EvidenceParserRunResponse.model_validate(item)
+        for item in EvidenceExaminationService().list_runs(
+            database, authenticated.principal, case_id, source_id
+        )
+    ]
+
+
+@router.get("/{source_id}/artifacts", response_model=list[EvidenceSourceArtifactResponse])
+def list_evidence_source_artifacts(
+    case_id: str,
+    source_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[EvidenceSourceArtifactResponse]:
+    return [
+        _artifact_response(item)
+        for item in EvidenceExaminationService().list_artifacts(
+            database, authenticated.principal, case_id, source_id
+        )
+    ]
+
+
 def _source_response(record: EvidenceSourceRecord) -> EvidenceSourceResponse:
     limitations = json.loads(record.limitations_json)
     return EvidenceSourceResponse(
@@ -158,5 +281,47 @@ def _source_response(record: EvidenceSourceRecord) -> EvidenceSourceResponse:
         error_code=record.error_code,
         error_message=record.error_message,
         sealed_at=record.sealed_at,
+        created_at=record.created_at,
+    )
+
+
+def _inspection_response(record: EvidenceSourceInspectionRecord) -> EvidenceInspectionResponse:
+    return EvidenceInspectionResponse(
+        id=record.id,
+        evidence_source_id=record.evidence_source_id,
+        working_copy_id=record.working_copy_id,
+        case_id=record.case_id,
+        inspected_by=record.inspected_by,
+        detected_type=record.detected_type,  # type: ignore[arg-type]
+        confidence=record.confidence,  # type: ignore[arg-type]
+        encryption_state=record.encryption_state,  # type: ignore[arg-type]
+        signature=inspection_signature(record),
+        warnings=inspection_warnings(record),
+        detector_version=record.detector_version,
+        inspection_hash=record.inspection_hash,
+        inspected_at=record.inspected_at,
+    )
+
+
+def _artifact_response(record: EvidenceSourceArtifactRecord) -> EvidenceSourceArtifactResponse:
+    return EvidenceSourceArtifactResponse(
+        id=record.id,
+        parser_run_id=record.parser_run_id,
+        evidence_source_id=record.evidence_source_id,
+        working_copy_id=record.working_copy_id,
+        case_id=record.case_id,
+        category=record.category,  # type: ignore[arg-type]
+        subtype=record.subtype,
+        title=record.title,
+        summary=record.summary,
+        event_time=record.event_time,
+        source_locator=record.source_locator,
+        status=record.status,  # type: ignore[arg-type]
+        confidence=record.confidence,  # type: ignore[arg-type]
+        parser_id=record.parser_id,
+        parser_version=record.parser_version,
+        metadata=json.loads(record.metadata_json),
+        provenance=json.loads(record.provenance_json),
+        artifact_hash=record.artifact_hash,
         created_at=record.created_at,
     )

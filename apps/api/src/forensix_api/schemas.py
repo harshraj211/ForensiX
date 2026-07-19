@@ -511,6 +511,71 @@ class EvidenceSourceVerificationResponse(BaseModel):
     verified_at: datetime
 
 
+class EvidenceInspectionResponse(BaseModel):
+    id: str
+    evidence_source_id: str
+    working_copy_id: str
+    case_id: str
+    inspected_by: str
+    detected_type: Literal[
+        "zip", "tar", "sqlite", "android_sparse", "ext4", "f2fs", "opaque", "unknown"
+    ]
+    confidence: Literal["high", "medium", "low"]
+    encryption_state: Literal["not_detected", "suspected", "unknown"]
+    signature: dict[str, Any]
+    warnings: list[str]
+    detector_version: str
+    inspection_hash: str
+    inspected_at: datetime
+
+
+class EvidenceParserRunRequest(BaseModel):
+    parser_ids: list[str] | None = Field(default=None, max_length=20)
+
+
+class EvidenceParserRunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    evidence_source_id: str
+    working_copy_id: str
+    inspection_id: str
+    case_id: str
+    executed_by: str
+    parser_id: str
+    parser_version: str
+    status: Literal["completed", "failed"]
+    artifact_count: int
+    source_sha256: str
+    run_hash: str
+    error_code: str | None
+    error_message: str | None
+    started_at: datetime
+    completed_at: datetime
+
+
+class EvidenceSourceArtifactResponse(BaseModel):
+    id: str
+    parser_run_id: str
+    evidence_source_id: str
+    working_copy_id: str
+    case_id: str
+    category: Literal["contact", "communication", "application", "location", "system", "file"]
+    subtype: str
+    title: str
+    summary: str
+    event_time: datetime | None
+    source_locator: str
+    status: Literal["active", "deleted", "recovered", "partial", "corrupted", "unverified"]
+    confidence: Literal["high", "medium", "low"]
+    parser_id: str
+    parser_version: str
+    metadata: dict[str, Any]
+    provenance: dict[str, Any]
+    artifact_hash: str
+    created_at: datetime
+
+
 class JobEventResponse(BaseModel):
     id: str
     job_id: str
