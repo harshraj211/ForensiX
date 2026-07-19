@@ -82,9 +82,7 @@ async def test_mock_rooted_bundle_rejects_ordinary_device(tmp_path: Path) -> Non
 @pytest.mark.asyncio
 async def test_mock_physical_block_requires_root_and_exact_size(tmp_path: Path) -> None:
     rooted = MockAdbClient(MockAdbScenario.ROOTED)
-    probe = await rooted.probe_physical_block(
-        "FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME
-    )
+    probe = await rooted.probe_physical_block("FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME)
     destination = tmp_path / "userdata.dd"
 
     capture = await rooted.capture_physical_block(

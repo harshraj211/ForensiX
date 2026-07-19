@@ -189,7 +189,7 @@ class MockAdbClient:
         if self.scenario is not MockAdbScenario.ROOTED:
             raise AdbCommandError(1, "Root UID is unavailable in this mock scenario.")
         AdbCommandPolicy.capture_rooted_bundle(serial, profile)
-        await asyncio.to_thread(_write_rooted_fixture_bundle, destination)
+        await asyncio.to_thread(_write_rooted_fixture_bundle, destination, profile)
         size_bytes = await asyncio.to_thread(lambda: destination.stat().st_size)
         return RootedBundleResult(profile=profile.value, size_bytes=size_bytes)
 
@@ -250,15 +250,28 @@ class MockAdbClient:
         )
 
 
-def _write_rooted_fixture_bundle(destination: Path) -> None:
-    fixtures = {
-        "data/user_de/0/com.android.providers.contacts/databases/contacts2.db": (
-            b"SQLite format 3\x00ForensiX synthetic contacts provider fixture"
-        ),
-        "data/user_de/0/com.android.providers.telephony/databases/mmssms.db": (
-            b"SQLite format 3\x00ForensiX synthetic telephony provider fixture"
-        ),
-    }
+def _write_rooted_fixture_bundle(destination: Path, profile: RootedCollectionProfile) -> None:
+    if profile is RootedCollectionProfile.ANDROID_PROVIDERS:
+        fixtures = {
+            "data/user_de/0/com.android.providers.contacts/databases/contacts2.db": (
+                b"SQLite format 3\x00ForensiX synthetic contacts provider fixture"
+            ),
+            "data/user_de/0/com.android.providers.telephony/databases/mmssms.db": (
+                b"SQLite format 3\x00ForensiX synthetic telephony provider fixture"
+            ),
+        }
+    else:
+        fixtures = {
+            "data/user_de/0/com.android.providers.downloads/databases/downloads.db": (
+                b"SQLite format 3\x00ForensiX synthetic downloads provider fixture"
+            ),
+            "data/system/users/0/settings_secure.xml": (
+                b"<?xml version='1.0'?><settings version='1'/>"
+            ),
+            "data/misc/apexdata/com.android.wifi/WifiConfigStore.xml": (
+                b"<?xml version='1.0'?><WifiConfigStoreData/>"
+            ),
+        }
     with destination.open("xb") as output, tarfile.open(fileobj=output, mode="w|") as archive:
         for member_name, payload in fixtures.items():
             metadata = tarfile.TarInfo(member_name)

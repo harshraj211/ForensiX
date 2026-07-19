@@ -47,16 +47,19 @@ class WhatsAppMessageParser:
         selected = [
             '"_id"',
             '"timestamp"',
-            *(optional_column(columns, name) for name in (
-                "text_data",
-                "from_me",
-                "message_type",
-                "chat_row_id",
-                "sender_jid_row_id",
-                "status",
-                "starred",
-                "remote_resource",
-            )),
+            *(
+                optional_column(columns, name)
+                for name in (
+                    "text_data",
+                    "from_me",
+                    "message_type",
+                    "chat_row_id",
+                    "sender_jid_row_id",
+                    "status",
+                    "starred",
+                    "remote_resource",
+                )
+            ),
         ]
         try:
             rows = reader.execute_select(
@@ -168,9 +171,10 @@ class MetaMessageParser:
             '"_id"',
             '"timestamp_ms"',
             '"text"',
-            *(optional_column(columns, name) for name in (
-                "thread_id", "sender_id", "sender_name", "is_outgoing", "message_type"
-            )),
+            *(
+                optional_column(columns, name)
+                for name in ("thread_id", "sender_id", "sender_name", "is_outgoing", "message_type")
+            ),
         ]
         try:
             rows = reader.execute_select(

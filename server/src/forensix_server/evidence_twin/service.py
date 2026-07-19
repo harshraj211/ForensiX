@@ -105,6 +105,7 @@ class EvidenceTwinService:
         source_name: str,
         display_name: str,
         declared_size_bytes: int,
+        profile: str,
         chunk_size_bytes: int = DEFAULT_EVIDENCE_CHUNK_SIZE,
     ) -> EvidenceSourceRecord:
         """Seal a bundle produced only by the controlled rooted acquisition service."""
@@ -122,10 +123,10 @@ class EvidenceTwinService:
             device_id=device_id,
             limitations=(
                 "Rooted filesystem collection can create device logs and root-manager activity.",
-                "This bounded provider bundle is not a physical or bit-for-bit device image.",
+                "This bounded rooted bundle is not a physical or bit-for-bit device image.",
                 "Encrypted application data may remain unavailable or require separate keys.",
             ),
-            manifest_metadata=None,
+            manifest_metadata={"profile": profile},
         )
 
     def seal_physical_stream(

@@ -6,6 +6,14 @@ from .communications import AndroidCallLogParser, AndroidMmsParser, AndroidSmsPa
 from .contacts import AndroidContactsParser
 from .registry import android_parser_registry
 from .support import ApplicationArtifactSupport, application_artifact_support
+from .system import (
+    AndroidCalendarEventParser,
+    AndroidDownloadsParser,
+    AndroidLocationParser,
+    AndroidNotesParser,
+    AndroidNotificationParser,
+    ChromeHistoryParser,
+)
 
 __all__ = [
     "AndroidArtifactParserError",
@@ -18,5 +26,11 @@ __all__ = [
     "WhatsAppMessageParser",
     "ApplicationArtifactSupport",
     "application_artifact_support",
+    "AndroidCalendarEventParser",
+    "AndroidDownloadsParser",
+    "AndroidLocationParser",
+    "AndroidNotesParser",
+    "AndroidNotificationParser",
+    "ChromeHistoryParser",
     "android_parser_registry",
 ]

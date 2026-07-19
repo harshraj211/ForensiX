@@ -486,8 +486,7 @@ def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path:
         )
         listed = client.get(endpoint)
         capture_endpoint = (
-            f"/api/v1/cases/{case['id']}/devices/"
-            f"{assessment['case_device_id']}/rooted-captures"
+            f"/api/v1/cases/{case['id']}/devices/{assessment['case_device_id']}/rooted-captures"
         )
         missing_capture_ack = client.post(
             capture_endpoint,
@@ -509,6 +508,16 @@ def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path:
                 "side_effects_acknowledged": True,
             },
         )
+        system_capture = client.post(
+            capture_endpoint,
+            headers=headers,
+            json={
+                "serial": "FX-DEMO-001",
+                "root_probe_id": response.json()["id"],
+                "profile": "android_system",
+                "side_effects_acknowledged": True,
+            },
+        )
 
     assert missing_ack.status_code == 422
     assert response.status_code == 201
@@ -524,6 +533,9 @@ def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path:
     assert capture.json()["status"] == "sealed"
     assert capture.json()["device_id"] == assessment["case_device_id"]
     assert "bit-for-bit" in " ".join(capture.json()["limitations"])
+    assert system_capture.status_code == 201
+    assert system_capture.json()["source_name"] == "android_system.tar"
+    assert system_capture.json()["display_name"] == "Rooted Android system-artifact bundle"
 
 
 def test_experimental_physical_capture_requires_configuration_and_all_risk_acknowledgements(

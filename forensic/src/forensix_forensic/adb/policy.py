@@ -27,6 +27,7 @@ class SharedStorageRoot(StrEnum):
 
 class RootedCollectionProfile(StrEnum):
     ANDROID_PROVIDERS = "android_providers"
+    ANDROID_SYSTEM = "android_system"
 
 
 class PhysicalBlockProfile(StrEnum):
@@ -52,7 +53,18 @@ _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
         "/data/user/0/com.android.providers.telephony/databases",
         "/data/user_de/0/com.android.providers.calendar/databases",
         "/data/user/0/com.android.providers.calendar/databases",
-    )
+    ),
+    RootedCollectionProfile.ANDROID_SYSTEM: (
+        "/data/user_de/0/com.android.providers.downloads/databases",
+        "/data/user/0/com.android.providers.downloads/databases",
+        "/data/user/0/com.android.chrome/app_chrome/Default/History",
+        "/data/system/notification_policy.xml",
+        "/data/system/users/0/settings_secure.xml",
+        "/data/misc/apexdata/com.android.wifi",
+        "/data/misc/wifi",
+        "/data/misc/bluedroid",
+        "/data/misc/location",
+    ),
 }
 
 _PHYSICAL_BLOCK_PATHS: dict[PhysicalBlockProfile, str] = {
@@ -107,9 +119,7 @@ class AdbCommandPolicy:
         )
 
     @staticmethod
-    def capture_rooted_bundle(
-        serial: str, profile: RootedCollectionProfile
-    ) -> ApprovedAdbCommand:
+    def capture_rooted_bundle(serial: str, profile: RootedCollectionProfile) -> ApprovedAdbCommand:
         """Build one literal provider-bundle command from a closed profile enum."""
         _validate_serial(serial)
         quoted_paths = " ".join(f"'{path}'" for path in _ROOTED_PROFILE_PATHS[profile])
@@ -129,9 +139,7 @@ class AdbCommandPolicy:
         return _ROOTED_PROFILE_PATHS[profile]
 
     @staticmethod
-    def probe_physical_block(
-        serial: str, profile: PhysicalBlockProfile
-    ) -> ApprovedAdbCommand:
+    def probe_physical_block(serial: str, profile: PhysicalBlockProfile) -> ApprovedAdbCommand:
         _validate_serial(serial)
         path = _PHYSICAL_BLOCK_PATHS[profile]
         command = f"blockdev --getsize64 '{path}'"
@@ -142,9 +150,7 @@ class AdbCommandPolicy:
         )
 
     @staticmethod
-    def capture_physical_block(
-        serial: str, profile: PhysicalBlockProfile
-    ) -> ApprovedAdbCommand:
+    def capture_physical_block(serial: str, profile: PhysicalBlockProfile) -> ApprovedAdbCommand:
         _validate_serial(serial)
         path = _PHYSICAL_BLOCK_PATHS[profile]
         command = f"exec dd if='{path}' bs=1048576"

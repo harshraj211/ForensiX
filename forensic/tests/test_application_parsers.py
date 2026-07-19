@@ -50,9 +50,7 @@ def test_whatsapp_plaintext_schema_is_path_gated_and_normalized(tmp_path: Path) 
             reader, _context("data/data/com.whatsapp/databases/msgstore.db")
         )
 
-    assert "android.whatsapp.message" not in {
-        parser.metadata.parser_id for parser in without_hint
-    }
+    assert "android.whatsapp.message" not in {parser.metadata.parser_id for parser in without_hint}
     assert "android.whatsapp.message" in {parser.metadata.parser_id for parser in with_hint}
     assert artifacts[0].summary == "Known WhatsApp message"
     assert artifacts[0].metadata["direction"] == "outgoing"
@@ -85,8 +83,9 @@ def test_telegram_plaintext_schema_and_binary_only_rejection(tmp_path: Path) -> 
     connection.execute("CREATE TABLE messages (_id INTEGER PRIMARY KEY, date INTEGER, data BLOB)")
     connection.commit()
     connection.close()
-    with SafeSQLiteReader(binary) as reader, pytest.raises(
-        AndroidArtifactParserError, match="binary blobs"
+    with (
+        SafeSQLiteReader(binary) as reader,
+        pytest.raises(AndroidArtifactParserError, match="binary blobs"),
     ):
         TelegramMessageParser().parse(
             reader, _context("data/data/org.telegram.messenger/files/cache4.db")
@@ -112,9 +111,7 @@ def test_meta_parsers_require_application_path_hint(tmp_path: Path) -> None:
             )
         }
         parser = registry.get("android.instagram.messages")
-        artifacts = parser.parse(
-            reader, _context("data/data/com.instagram.android/messages.db")
-        )
+        artifacts = parser.parse(reader, _context("data/data/com.instagram.android/messages.db"))
     assert "android.instagram.messages" in ids
     assert "android.facebook.messages" not in ids
     assert artifacts[0].summary == "Known Meta message"

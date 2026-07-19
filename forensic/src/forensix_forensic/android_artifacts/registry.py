@@ -5,6 +5,14 @@ from forensix_forensic.evidence_io import ParserRegistry
 from .applications import TelegramMessageParser, WhatsAppMessageParser, meta_message_parsers
 from .communications import AndroidCallLogParser, AndroidMmsParser, AndroidSmsParser
 from .contacts import AndroidContactsParser
+from .system import (
+    AndroidCalendarEventParser,
+    AndroidDownloadsParser,
+    AndroidLocationParser,
+    AndroidNotesParser,
+    AndroidNotificationParser,
+    ChromeHistoryParser,
+)
 
 
 def android_parser_registry() -> ParserRegistry:
@@ -17,4 +25,10 @@ def android_parser_registry() -> ParserRegistry:
     registry.register(TelegramMessageParser())
     for parser in meta_message_parsers():
         registry.register(parser)
+    registry.register(AndroidCalendarEventParser())
+    registry.register(AndroidDownloadsParser())
+    registry.register(ChromeHistoryParser())
+    registry.register(AndroidNotificationParser())
+    registry.register(AndroidNotesParser())
+    registry.register(AndroidLocationParser())
     return registry

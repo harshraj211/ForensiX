@@ -847,11 +847,12 @@ export function probeRootAccess(
   );
 }
 
-export function captureRootedProviderBundle(
+export function captureRootedBundle(
   caseId: string,
   deviceId: string,
   serial: string,
   rootProbeId: string,
+  profile: "android_providers" | "android_system",
 ): Promise<EvidenceSource> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/rooted-captures`,
@@ -860,7 +861,7 @@ export function captureRootedProviderBundle(
       body: JSON.stringify({
         serial,
         root_probe_id: rootProbeId,
-        profile: "android_providers",
+        profile,
         side_effects_acknowledged: true,
       }),
     },

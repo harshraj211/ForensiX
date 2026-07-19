@@ -82,7 +82,8 @@ class ParserRegistry:
         return tuple(
             parser
             for parser in self._parsers.values()
-            if parser.metadata.required_tables.issubset(tables) and parser.can_parse(tables)
+            if parser.metadata.required_tables.issubset(tables)
+            and parser.can_parse(tables)
             and (
                 not parser.metadata.source_path_hints
                 or any(hint.casefold() in locator for hint in parser.metadata.source_path_hints)

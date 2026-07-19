@@ -302,9 +302,7 @@ async def test_system_physical_block_probe_and_exact_capture(tmp_path: Path) -> 
     client = SystemAdbClient(cast(SubprocessAdbRunner, runner))
     destination = tmp_path / "userdata.dd.partial"
 
-    probe = await client.probe_physical_block(
-        "FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME
-    )
+    probe = await client.probe_physical_block("FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME)
     capture = await client.capture_physical_block(
         "FX-DEMO-001",
         PhysicalBlockProfile.USERDATA_BY_NAME,

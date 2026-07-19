@@ -489,8 +489,13 @@ def _seal_rooted_path(
             device_id,
             stream,
             source_name=f"{profile.value}.tar",
-            display_name="Rooted Android provider bundle",
+            display_name=(
+                "Rooted Android provider bundle"
+                if profile is RootedCollectionProfile.ANDROID_PROVIDERS
+                else "Rooted Android system-artifact bundle"
+            ),
             declared_size_bytes=size_bytes,
+            profile=profile.value,
         )
 
 
