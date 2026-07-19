@@ -1,6 +1,7 @@
 """Typed, policy-bounded Android Debug Bridge access."""
 
 from .client import AdbClient, SystemAdbClient
+from .diagnostics import AdbDiagnostic, diagnose_adb
 from .discovery import AdbBinaryResolver
 from .errors import (
     AdbBinaryNotFoundError,
@@ -46,6 +47,7 @@ from .runner import AdbCommandResult, SubprocessAdbRunner
 __all__ = [
     "AdbBinaryNotFoundError",
     "AdbBinaryResolver",
+    "AdbDiagnostic",
     "AdbClient",
     "AdbCommandError",
     "AdbCommandResult",
@@ -83,4 +85,5 @@ __all__ = [
     "StorageProbeStatus",
     "SubprocessAdbRunner",
     "SystemAdbClient",
+    "diagnose_adb",
 ]

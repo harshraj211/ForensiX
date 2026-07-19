@@ -27,6 +27,7 @@ import {
   captureRootedBundle,
   detectDevices,
   getCase,
+  getAdbDiagnostic,
   getPhysicalAcquisitionDiagnostic,
   listCaseDevices,
   probePhysicalBlock,
@@ -94,6 +95,11 @@ export function DeviceDetectionPage() {
     enabled: Boolean(caseId),
   });
   const detection = useMutation({ mutationFn: () => detectDevices(caseId) });
+  const adbDiagnostic = useQuery({
+    queryKey: ["integrations", "adb"],
+    queryFn: getAdbDiagnostic,
+    enabled: false,
+  });
   const assessment = useMutation({
     mutationFn: (serial: string) => assessDevice(serial, caseId),
     onSuccess: () => {
@@ -172,6 +178,22 @@ export function DeviceDetectionPage() {
           )}
         </section>
         <aside className="space-y-4">
+          <div className="rounded-xl border border-white/8 bg-white/[0.025] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-slate-200">ADB workstation check</h2>
+              {adbDiagnostic.data && <span className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase ${adbDiagnostic.data.status === "healthy" ? "border-emerald-300/20 text-emerald-200" : "border-amber-300/20 text-amber-200"}`}>{adbDiagnostic.data.status.replaceAll("_", " ")}</span>}
+            </div>
+            {!adbDiagnostic.data && !adbDiagnostic.isPending && <button type="button" onClick={() => { void adbDiagnostic.refetch(); }} className="mt-3 min-h-9 rounded border border-cyan-300/15 px-3 text-xs text-cyan-100">Run workstation check</button>}
+            {adbDiagnostic.isPending && <p role="status" className="mt-3 text-xs text-slate-500">Checking the local ADB runtime...</p>}
+            {adbDiagnostic.data && (
+              <div className="mt-3 text-xs leading-5 text-slate-500">
+                <p>Mode: <span className="text-slate-300">{adbDiagnostic.data.mode}</span>{adbDiagnostic.data.version ? ` / ${adbDiagnostic.data.version}` : ""}</p>
+                {adbDiagnostic.data.executable_path && <p className="mt-1 break-all font-mono text-[9px] text-slate-600">{adbDiagnostic.data.executable_path}</p>}
+                <ul className="mt-3 list-disc space-y-1 pl-4">{adbDiagnostic.data.guidance.map((item) => <li key={item}>{item}</li>)}</ul>
+              </div>
+            )}
+            {adbDiagnostic.isError && <p className="mt-3 text-xs text-rose-200">ADB diagnostics could not be loaded.</p>}
+          </div>
           <div className="rounded-xl border border-amber-300/16 bg-amber-300/5 p-5">
             <div className="flex gap-3">
               <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0 text-amber-300" size={18} />

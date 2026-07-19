@@ -101,6 +101,11 @@ mode, validate the configured ADB executable, and open the device-readiness scre
 Use `-NoBrowser` for a terminal-only readiness check. Existing listeners on the configured API or
 web ports are reused instead of starting duplicate services.
 
+Run `.\scripts\Test-ForensiX.ps1 -AdbPath "C:\path\to\adb.exe"` for a non-acquisition
+workstation check. Linux/macOS users can start with `FORENSIX_ADB_PATH=/path/to/adb
+./scripts/start-forensix.sh`. See [workstation setup](docs/WORKSTATION_SETUP.md) for driver, udev,
+Gatekeeper, status, and log guidance.
+
 Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, `storage_blocked`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
 
 ## Validation commands

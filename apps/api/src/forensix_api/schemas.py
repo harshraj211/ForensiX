@@ -34,6 +34,27 @@ class AdbInfoResponse(BaseModel):
     executable_path: str
 
 
+class AdbDiagnosticResponse(BaseModel):
+    mode: Literal["mock", "system"]
+    status: Literal[
+        "mock",
+        "healthy",
+        "missing",
+        "execution_failed",
+        "no_transports",
+        "authorization_required",
+        "offline",
+        "unsupported_transport",
+    ]
+    available: bool
+    platform: str
+    executable_path: str | None
+    version: str | None
+    transport_counts: dict[str, int]
+    checked_locations: list[str]
+    guidance: list[str]
+
+
 class DeviceTransportResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

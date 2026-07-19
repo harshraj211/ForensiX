@@ -24,4 +24,24 @@ class AdbBinaryResolver:
         discovered = shutil.which(executable)
         if discovered:
             return Path(discovered).resolve()
+        for candidate in self.sdk_candidates():
+            if candidate.is_file():
+                return candidate.resolve()
         raise AdbBinaryNotFoundError()
+
+    @staticmethod
+    def sdk_candidates() -> tuple[Path, ...]:
+        home = Path.home()
+        if os.name == "nt":
+            local_app_data = Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local"))
+            return (local_app_data / "Android" / "Sdk" / "platform-tools" / "adb.exe",)
+        if sys_platform() == "darwin":
+            return (home / "Library" / "Android" / "sdk" / "platform-tools" / "adb",)
+        return (home / "Android" / "Sdk" / "platform-tools" / "adb",)
+
+
+def sys_platform() -> str:
+    """Small seam for deterministic discovery tests."""
+    import sys
+
+    return sys.platform

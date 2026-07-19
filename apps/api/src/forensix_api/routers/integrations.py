@@ -6,16 +6,29 @@ from fastapi import APIRouter, Depends
 
 from forensix_api.dependencies import get_authenticated_session, get_settings
 from forensix_api.schemas import (
+    AdbDiagnosticResponse,
     AleappDiagnosticResponse,
     ApplicationArtifactSupportResponse,
     PhysicalAcquisitionDiagnosticResponse,
 )
+from forensix_forensic.adb import diagnose_adb
 from forensix_forensic.android_artifacts import application_artifact_support
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.config import Settings
 from forensix_server.evidence_twin import AleappEvidenceService
 
 router = APIRouter(prefix="/api/v1/integrations", tags=["integrations"])
+
+
+@router.get("/adb", response_model=AdbDiagnosticResponse)
+async def adb_diagnostic(
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> AdbDiagnosticResponse:
+    del authenticated
+    return AdbDiagnosticResponse.model_validate(
+        await diagnose_adb(settings.adb_mode, settings.adb_path), from_attributes=True
+    )
 
 
 @router.get("/aleapp", response_model=AleappDiagnosticResponse)
@@ -29,9 +42,7 @@ def aleapp_diagnostic(
     )
 
 
-@router.get(
-    "/physical-acquisition", response_model=PhysicalAcquisitionDiagnosticResponse
-)
+@router.get("/physical-acquisition", response_model=PhysicalAcquisitionDiagnosticResponse)
 def physical_acquisition_diagnostic(
     authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
     settings: Annotated[Settings, Depends(get_settings)],
@@ -47,9 +58,7 @@ def physical_acquisition_diagnostic(
     )
 
 
-@router.get(
-    "/application-artifacts", response_model=list[ApplicationArtifactSupportResponse]
-)
+@router.get("/application-artifacts", response_model=list[ApplicationArtifactSupportResponse])
 def application_artifact_support_matrix(
     authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
 ) -> list[ApplicationArtifactSupportResponse]:

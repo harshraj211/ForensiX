@@ -142,6 +142,32 @@ def test_optional_aleapp_diagnostic_is_authenticated_and_disabled_by_default(
     assert diagnostic.json()["release_label"] == "not_configured"
 
 
+def test_adb_diagnostic_distinguishes_mock_and_missing_system_binary(tmp_path: Path) -> None:
+    mock_app = create_app(_settings(tmp_path / "mock"), adb_client=MockAdbClient())
+    with TestClient(mock_app) as client:
+        _authorize(client)
+        mock = client.get("/api/v1/integrations/adb")
+
+    missing_settings = Settings(
+        environment="test",
+        data_dir=tmp_path / "system",
+        adb_mode="system",
+        adb_path=tmp_path / "missing-adb.exe",
+    )
+    system_app = create_app(missing_settings)
+    with TestClient(system_app) as client:
+        _authorize(client)
+        missing = client.get("/api/v1/integrations/adb")
+
+    assert mock.status_code == 200
+    assert mock.json()["status"] == "mock"
+    assert mock.json()["available"] is True
+    assert missing.status_code == 200
+    assert missing.json()["status"] == "missing"
+    assert missing.json()["available"] is False
+    assert "FORENSIX_ADB_PATH" in " ".join(missing.json()["guidance"])
+
+
 def test_application_artifact_support_matrix_is_authenticated_and_truthful(
     tmp_path: Path,
 ) -> None:

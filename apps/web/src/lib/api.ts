@@ -87,6 +87,18 @@ export interface PhysicalAcquisitionDiagnostic {
   warning: string;
 }
 
+export interface AdbDiagnostic {
+  mode: "mock" | "system";
+  status: "mock" | "healthy" | "missing" | "execution_failed" | "no_transports" | "authorization_required" | "offline" | "unsupported_transport";
+  available: boolean;
+  platform: string;
+  executable_path: string | null;
+  version: string | null;
+  transport_counts: Record<string, number>;
+  checked_locations: string[];
+  guidance: string[];
+}
+
 export interface PhysicalBlockProbe {
   id: string;
   case_id: string;
@@ -886,6 +898,10 @@ export function captureRootedBundle(
 
 export function getPhysicalAcquisitionDiagnostic(): Promise<PhysicalAcquisitionDiagnostic> {
   return apiRequest("/api/v1/integrations/physical-acquisition");
+}
+
+export function getAdbDiagnostic(): Promise<AdbDiagnostic> {
+  return apiRequest("/api/v1/integrations/adb");
 }
 
 export function probePhysicalBlock(
