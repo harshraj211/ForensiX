@@ -214,6 +214,63 @@ export interface EvidenceSourceVerification {
   verified_at: string;
 }
 
+export interface EvidenceInspection {
+  id: string;
+  evidence_source_id: string;
+  working_copy_id: string;
+  case_id: string;
+  inspected_by: string;
+  detected_type: "zip" | "tar" | "sqlite" | "android_sparse" | "ext4" | "f2fs" | "opaque" | "unknown";
+  confidence: "high" | "medium" | "low";
+  encryption_state: "not_detected" | "suspected" | "unknown";
+  signature: Record<string, unknown>;
+  warnings: string[];
+  detector_version: string;
+  inspection_hash: string;
+  inspected_at: string;
+}
+
+export interface EvidenceParserRun {
+  id: string;
+  evidence_source_id: string;
+  working_copy_id: string;
+  inspection_id: string;
+  case_id: string;
+  executed_by: string;
+  parser_id: string;
+  parser_version: string;
+  status: "completed" | "failed";
+  artifact_count: number;
+  source_sha256: string;
+  run_hash: string;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string;
+}
+
+export interface EvidenceSourceArtifact {
+  id: string;
+  parser_run_id: string;
+  evidence_source_id: string;
+  working_copy_id: string;
+  case_id: string;
+  category: "contact" | "communication" | "application" | "location" | "system" | "file";
+  subtype: string;
+  title: string;
+  summary: string;
+  event_time: string | null;
+  source_locator: string;
+  status: "active" | "deleted" | "recovered" | "partial" | "corrupted" | "unverified";
+  confidence: "high" | "medium" | "low";
+  parser_id: string;
+  parser_version: string;
+  metadata: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+  artifact_hash: string;
+  created_at: string;
+}
+
 export interface CaseDevice {
   id: string;
   case_id: string;
@@ -1008,6 +1065,68 @@ export function listEvidenceWorkingCopies(
 ): Promise<EvidenceWorkingCopy[]> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies`,
+  );
+}
+
+export function verifyEvidenceWorkingCopy(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+): Promise<EvidenceSourceVerification> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/verify`,
+    { method: "POST" },
+  );
+}
+
+export function inspectEvidenceWorkingCopy(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+): Promise<EvidenceInspection> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/inspection`,
+    { method: "POST" },
+  );
+}
+
+export function getEvidenceWorkingCopyInspection(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+): Promise<EvidenceInspection> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/inspection`,
+  );
+}
+
+export function runNativeEvidenceParsers(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+  parserIds?: string[],
+): Promise<EvidenceParserRun[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/native-parsers`,
+    { method: "POST", body: JSON.stringify({ parser_ids: parserIds ?? null }) },
+  );
+}
+
+export function listEvidenceParserRuns(
+  caseId: string,
+  sourceId: string,
+): Promise<EvidenceParserRun[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/parser-runs`,
+  );
+}
+
+export function listEvidenceSourceArtifacts(
+  caseId: string,
+  sourceId: string,
+): Promise<EvidenceSourceArtifact[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/artifacts`,
   );
 }
 

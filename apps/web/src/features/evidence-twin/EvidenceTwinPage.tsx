@@ -17,12 +17,20 @@ import { caseKeys } from "../cases/caseKeys";
 import {
   createEvidenceWorkingCopy,
   getCase,
+  getEvidenceWorkingCopyInspection,
   importEvidenceSource,
+  inspectEvidenceWorkingCopy,
+  listEvidenceParserRuns,
   listEvidenceSources,
+  listEvidenceSourceArtifacts,
   listEvidenceSourceVerifications,
   listEvidenceWorkingCopies,
+  runNativeEvidenceParsers,
+  verifyEvidenceWorkingCopy,
   verifyEvidenceSource,
   type EvidenceSource,
+  type EvidenceSourceArtifact,
+  type EvidenceWorkingCopy,
 } from "../../lib/api";
 
 const twinKeys = {
@@ -31,6 +39,12 @@ const twinKeys = {
     ["evidence-twin", caseId, sourceId, "copies"] as const,
   verifications: (caseId: string, sourceId: string) =>
     ["evidence-twin", caseId, sourceId, "verifications"] as const,
+  inspection: (caseId: string, sourceId: string, copyId: string) =>
+    ["evidence-twin", caseId, sourceId, copyId, "inspection"] as const,
+  parserRuns: (caseId: string, sourceId: string) =>
+    ["evidence-twin", caseId, sourceId, "parser-runs"] as const,
+  artifacts: (caseId: string, sourceId: string) =>
+    ["evidence-twin", caseId, sourceId, "artifacts"] as const,
 };
 
 export function EvidenceTwinPage() {
@@ -105,7 +119,7 @@ export function EvidenceTwinPage() {
           <input
             id="twin-source"
             type="file"
-            accept=".raw,.img,.dd,.tar,.zip,application/octet-stream,application/zip"
+            accept=".raw,.img,.dd,.tar,.zip,.db,.sqlite,application/octet-stream,application/zip"
             disabled={!caseWritable || importSource.isPending}
             onChange={(event) => {
               setSelectedFile(event.target.files?.[0] ?? null);
@@ -210,6 +224,16 @@ function EvidenceSourceCard({ caseId, source }: { caseId: string; source: Eviden
     queryFn: () => listEvidenceSourceVerifications(caseId, source.id),
     enabled: source.status === "sealed",
   });
+  const parserRunsQuery = useQuery({
+    queryKey: twinKeys.parserRuns(caseId, source.id),
+    queryFn: () => listEvidenceParserRuns(caseId, source.id),
+    enabled: source.status === "sealed",
+  });
+  const artifactsQuery = useQuery({
+    queryKey: twinKeys.artifacts(caseId, source.id),
+    queryFn: () => listEvidenceSourceArtifacts(caseId, source.id),
+    enabled: source.status === "sealed",
+  });
   const verify = useMutation({
     mutationFn: () => verifyEvidenceSource(caseId, source.id),
     onSuccess: () => {
@@ -283,6 +307,181 @@ function EvidenceSourceCard({ caseId, source }: { caseId: string; source: Eviden
       ))}
       {verify.isError && <div className="mt-4"><CaseError error={verify.error} /></div>}
       {createCopy.isError && <div className="mt-4"><CaseError error={createCopy.error} /></div>}
+      {copiesQuery.data?.map((workingCopy) => (
+        <WorkingCopyPanel
+          key={workingCopy.id}
+          caseId={caseId}
+          sourceId={source.id}
+          workingCopy={workingCopy}
+          artifacts={
+            artifactsQuery.data?.filter(
+              (artifact) => artifact.working_copy_id === workingCopy.id,
+            ) ?? []
+          }
+          parserRunCount={
+            parserRunsQuery.data?.filter((run) => run.working_copy_id === workingCopy.id)
+              .length ?? 0
+          }
+        />
+      ))}
+      {parserRunsQuery.isError && <div className="mt-4"><CaseError error={parserRunsQuery.error} /></div>}
+      {artifactsQuery.isError && <div className="mt-4"><CaseError error={artifactsQuery.error} /></div>}
+    </article>
+  );
+}
+
+function WorkingCopyPanel({
+  caseId,
+  sourceId,
+  workingCopy,
+  artifacts,
+  parserRunCount,
+}: {
+  caseId: string;
+  sourceId: string;
+  workingCopy: EvidenceWorkingCopy;
+  artifacts: EvidenceSourceArtifact[];
+  parserRunCount: number;
+}) {
+  const queryClient = useQueryClient();
+  const inspectionQuery = useQuery({
+    queryKey: twinKeys.inspection(caseId, sourceId, workingCopy.id),
+    queryFn: () => getEvidenceWorkingCopyInspection(caseId, sourceId, workingCopy.id),
+    enabled: workingCopy.status === "ready",
+    retry: false,
+  });
+  const inspectCopy = useMutation({
+    mutationFn: () => inspectEvidenceWorkingCopy(caseId, sourceId, workingCopy.id),
+    onSuccess: (inspection) => {
+      queryClient.setQueryData(
+        twinKeys.inspection(caseId, sourceId, workingCopy.id),
+        inspection,
+      );
+    },
+  });
+  const verifyCopy = useMutation({
+    mutationFn: () => verifyEvidenceWorkingCopy(caseId, sourceId, workingCopy.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: twinKeys.verifications(caseId, sourceId) });
+    },
+  });
+  const runParsers = useMutation({
+    mutationFn: () => runNativeEvidenceParsers(caseId, sourceId, workingCopy.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: twinKeys.parserRuns(caseId, sourceId) });
+      void queryClient.invalidateQueries({ queryKey: twinKeys.artifacts(caseId, sourceId) });
+      void queryClient.invalidateQueries({ queryKey: twinKeys.verifications(caseId, sourceId) });
+    },
+  });
+  const inspection = inspectionQuery.data;
+
+  return (
+    <section className="mt-5 rounded-xl border border-cyan-200/10 bg-cyan-200/[0.025] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-200">
+            Verified examination copy
+          </p>
+          <p className="mt-1 font-mono text-[10px] text-slate-500">{workingCopy.id}</p>
+        </div>
+        <span className="rounded-full border border-emerald-200/15 px-2 py-1 text-[10px] uppercase text-emerald-200">
+          {workingCopy.status}
+        </span>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={verifyCopy.isPending || workingCopy.status !== "ready"}
+          onClick={() => {
+            verifyCopy.mutate();
+          }}
+          className="min-h-9 rounded-lg border border-white/10 px-3 text-xs font-semibold text-slate-300 disabled:opacity-40"
+        >
+          {verifyCopy.isPending ? "Verifying…" : "Verify copy"}
+        </button>
+        <button
+          type="button"
+          disabled={inspectCopy.isPending || workingCopy.status !== "ready"}
+          onClick={() => {
+            inspectCopy.mutate();
+          }}
+          className="min-h-9 rounded-lg border border-cyan-200/20 px-3 text-xs font-semibold text-cyan-100 disabled:opacity-40"
+        >
+          {inspectCopy.isPending
+            ? "Inspecting…"
+            : inspection
+              ? "Reopen inspection"
+              : "Inspect signatures"}
+        </button>
+        <button
+          type="button"
+          disabled={runParsers.isPending || inspection?.detected_type !== "sqlite"}
+          onClick={() => {
+            runParsers.mutate();
+          }}
+          className="min-h-9 rounded-lg bg-cyan-300 px-3 text-xs font-semibold text-slate-950 disabled:opacity-40"
+        >
+          {runParsers.isPending ? "Parsing…" : "Run compatible Android parsers"}
+        </button>
+      </div>
+      {inspection && (
+        <div className="mt-4 rounded-lg border border-white/8 bg-black/10 p-3 text-xs text-slate-400">
+          <p>
+            Detected <strong className="text-white">{inspection.detected_type}</strong> with{" "}
+            {inspection.confidence} confidence · encryption{" "}
+            {inspection.encryption_state.replace("_", " ")}
+          </p>
+          <p className="mt-2 font-mono text-[10px] text-slate-600">
+            Inspection SHA-256 {inspection.inspection_hash}
+          </p>
+          {inspection.warnings.map((warning) => (
+            <p key={warning} className="mt-2 text-amber-100/70">
+              • {warning}
+            </p>
+          ))}
+        </div>
+      )}
+      <p className="mt-4 text-xs text-slate-500">
+        {parserRunCount} parser run(s) · {artifacts.length} normalized artifact(s)
+      </p>
+      {artifacts.length > 0 && (
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          {artifacts.map((artifact) => (
+            <ParsedArtifactCard key={artifact.id} artifact={artifact} />
+          ))}
+        </div>
+      )}
+      {inspectCopy.isError && <div className="mt-4"><CaseError error={inspectCopy.error} /></div>}
+      {verifyCopy.isError && <div className="mt-4"><CaseError error={verifyCopy.error} /></div>}
+      {runParsers.isError && <div className="mt-4"><CaseError error={runParsers.error} /></div>}
+    </section>
+  );
+}
+
+function ParsedArtifactCard({ artifact }: { artifact: EvidenceSourceArtifact }) {
+  return (
+    <article className="rounded-lg border border-white/8 bg-black/10 p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-white">{artifact.title}</p>
+          <p className="mt-1 text-[10px] uppercase tracking-wide text-cyan-200">
+            {artifact.subtype.replace("_", " ")} · {artifact.status}
+          </p>
+        </div>
+        <span className="text-[10px] text-slate-600">{artifact.confidence}</span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-slate-400">{artifact.summary}</p>
+      {artifact.event_time && (
+        <p className="mt-2 text-[10px] text-slate-500">
+          {new Date(artifact.event_time).toLocaleString()}
+        </p>
+      )}
+      <p
+        className="mt-2 truncate font-mono text-[10px] text-slate-600"
+        title={artifact.artifact_hash}
+      >
+        {artifact.source_locator} · {artifact.artifact_hash}
+      </p>
     </article>
   );
 }

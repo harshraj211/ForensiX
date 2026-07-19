@@ -1008,6 +1008,34 @@ describe("Evidence Twin workspace", () => {
       sealed_at: now,
       created_at: now,
     };
+    const workingCopy = {
+      id: "copy-1",
+      evidence_source_id: source.id,
+      case_id: source.case_id,
+      created_by: "user-1",
+      status: "ready",
+      size_bytes: source.size_bytes,
+      expected_source_sha256: source.sha256,
+      observed_sha256: source.sha256,
+      copy_method: "stream_copy",
+      verified_at: now,
+      created_at: now,
+    };
+    const inspection = {
+      id: "inspection-1",
+      evidence_source_id: source.id,
+      working_copy_id: workingCopy.id,
+      case_id: source.case_id,
+      inspected_by: "user-1",
+      detected_type: "sqlite",
+      confidence: "high",
+      encryption_state: "not_detected",
+      signature: { magic: "SQLite format 3" },
+      warnings: ["SQLite examination uses read-only immutable connections."],
+      detector_version: "1.0.0",
+      inspection_hash: "d".repeat(64),
+      inspected_at: now,
+    };
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url =
         typeof input === "string"
@@ -1033,8 +1061,11 @@ describe("Evidence Twin workspace", () => {
       if (url === "/api/v1/cases/case-1/evidence-sources") {
         return Promise.resolve(jsonResponse([source]));
       }
-      if (url.endsWith("/working-copies")) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith("/working-copies")) return Promise.resolve(jsonResponse([workingCopy]));
+      if (url.endsWith("/inspection")) return Promise.resolve(jsonResponse(inspection));
       if (url.endsWith("/verifications")) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith("/parser-runs")) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith("/artifacts")) return Promise.resolve(jsonResponse([]));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -1050,6 +1081,8 @@ describe("Evidence Twin workspace", () => {
     expect(screen.getByText(`Master SHA-256`)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Verify sealed master" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Create verified working copy" })).toBeEnabled();
+    expect(await screen.findByText(/Detected/)).toHaveTextContent("sqlite");
+    expect(screen.getByRole("button", { name: "Run compatible Android parsers" })).toBeEnabled();
     expect(screen.getByText(/not claimed to have been acquired by ForensiX/i)).toBeInTheDocument();
   });
 });
