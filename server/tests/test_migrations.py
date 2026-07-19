@@ -57,6 +57,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "evidence_source_chunks",
         "evidence_source_verifications",
         "evidence_source_inspections",
+        "evidence_recovery_assessments",
         "evidence_parser_runs",
         "evidence_source_artifacts",
         "evidence_tool_outputs",
@@ -104,6 +105,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     assert "evidence_source_chunks" not in downgraded_tables
     assert "evidence_source_verifications" not in downgraded_tables
     assert "evidence_source_inspections" not in downgraded_tables
+    assert "evidence_recovery_assessments" not in downgraded_tables
     assert "evidence_parser_runs" not in downgraded_tables
     assert "evidence_source_artifacts" not in downgraded_tables
     assert "evidence_tool_outputs" not in downgraded_tables
@@ -177,9 +179,10 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     preview_columns = {column["name"] for column in inspector.get_columns("artifact_previews")}
     assert {"source_width", "source_height", "media_metadata_json"} <= preview_columns
     assert "report_review_events" in inspector.get_table_names()
+    assert "evidence_recovery_assessments" in inspector.get_table_names()
     report_columns = {column["name"] for column in inspector.get_columns("reports")}
     assert "redaction_profile" in report_columns
-    assert revision == "0030_report_review_redaction"
+    assert revision == "0031_recovery_assessments"
     database.dispose()
 
 

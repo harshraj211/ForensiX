@@ -16,6 +16,11 @@ from .parser import (
     ParserRegistry,
     ParserRegistryError,
 )
+from .recovery import (
+    RECOVERY_PROBE_VERSION,
+    RecoveryCandidate,
+    assess_sqlite_recovery_file,
+)
 from .sqlite import SafeSQLiteError, SafeSQLiteReader
 
 __all__ = [
@@ -33,4 +38,7 @@ __all__ = [
     "SafeArchiveExtractor",
     "SafeSQLiteError",
     "SafeSQLiteReader",
+    "RECOVERY_PROBE_VERSION",
+    "RecoveryCandidate",
+    "assess_sqlite_recovery_file",
 ]

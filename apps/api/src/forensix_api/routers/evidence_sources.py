@@ -20,11 +20,13 @@ from forensix_api.schemas import (
     EvidenceSourceVerificationResponse,
     EvidenceToolOutputResponse,
     EvidenceWorkingCopyResponse,
+    RecoveryAssessmentResponse,
 )
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.config import Settings
 from forensix_server.db import (
     Database,
+    EvidenceRecoveryAssessmentRecord,
     EvidenceSourceArtifactRecord,
     EvidenceSourceInspectionRecord,
     EvidenceSourceRecord,
@@ -33,10 +35,12 @@ from forensix_server.evidence_twin import (
     AleappEvidenceService,
     EvidenceExaminationService,
     EvidenceInspectionService,
+    EvidenceRecoveryAssessmentService,
     EvidenceTwinError,
     EvidenceTwinService,
     inspection_signature,
     inspection_warnings,
+    recovery_assessment_result,
 )
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/evidence-sources", tags=["evidence-sources"])
@@ -212,6 +216,43 @@ def get_evidence_working_copy_inspection(
 
 
 @router.post(
+    "/{source_id}/working-copies/{working_copy_id}/recovery-assessment",
+    response_model=RecoveryAssessmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def assess_evidence_recovery_candidates(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> RecoveryAssessmentResponse:
+    return _recovery_response(
+        EvidenceRecoveryAssessmentService().assess(
+            database, authenticated.principal, case_id, source_id, working_copy_id
+        )
+    )
+
+
+@router.get(
+    "/{source_id}/working-copies/{working_copy_id}/recovery-assessment",
+    response_model=RecoveryAssessmentResponse,
+)
+def get_evidence_recovery_assessment(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> RecoveryAssessmentResponse:
+    return _recovery_response(
+        EvidenceRecoveryAssessmentService().get(
+            database, authenticated.principal, case_id, source_id, working_copy_id
+        )
+    )
+
+
+@router.post(
     "/{source_id}/working-copies/{working_copy_id}/native-parsers",
     response_model=list[EvidenceParserRunResponse],
 )
@@ -350,6 +391,28 @@ def _inspection_response(record: EvidenceSourceInspectionRecord) -> EvidenceInsp
         detector_version=record.detector_version,
         inspection_hash=record.inspection_hash,
         inspected_at=record.inspected_at,
+    )
+
+
+def _recovery_response(
+    record: EvidenceRecoveryAssessmentRecord,
+) -> RecoveryAssessmentResponse:
+    result = recovery_assessment_result(record)
+    return RecoveryAssessmentResponse(
+        id=record.id,
+        evidence_source_id=record.evidence_source_id,
+        working_copy_id=record.working_copy_id,
+        inspection_id=record.inspection_id,
+        case_id=record.case_id,
+        assessed_by=record.assessed_by,
+        maturity="experimental",
+        status=record.status,  # type: ignore[arg-type]
+        candidate_region_count=record.candidate_region_count,
+        candidates=result.get("candidates", []),
+        limitations=result.get("limitations", []),
+        assessment_hash=record.assessment_hash,
+        tool_version=record.tool_version,
+        assessed_at=record.assessed_at,
     )
 
 

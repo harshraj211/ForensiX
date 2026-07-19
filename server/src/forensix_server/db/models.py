@@ -1352,6 +1352,60 @@ class EvidenceSourceInspectionRecord(Base):
     )
 
 
+class EvidenceRecoveryAssessmentRecord(Base):
+    """Immutable experimental metadata assessment; never a recovered-artifact claim."""
+
+    __tablename__ = "evidence_recovery_assessments"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('candidate_regions_observed', 'no_candidate_regions', 'unsupported')",
+            name="ck_evidence_recovery_assessments_status",
+        ),
+        CheckConstraint(
+            "candidate_region_count >= 0",
+            name="ck_evidence_recovery_assessments_count",
+        ),
+        CheckConstraint("maturity = 'experimental'", name="ck_evidence_recovery_maturity"),
+        UniqueConstraint("working_copy_id", name="uq_evidence_recovery_working_copy"),
+        UniqueConstraint("assessment_hash", name="uq_evidence_recovery_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    working_copy_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_working_copies.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    inspection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_source_inspections.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    assessed_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    maturity: Mapped[str] = mapped_column(String(16), nullable=False, default="experimental")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    candidate_region_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    assessment_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    tool_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    assessed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class EvidenceParserRunRecord(Base):
     """Immutable outcome of one versioned parser against one verified working copy."""
 

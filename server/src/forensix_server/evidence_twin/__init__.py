@@ -16,6 +16,7 @@ from .inspection import (
     inspection_signature,
     inspection_warnings,
 )
+from .recovery import EvidenceRecoveryAssessmentService, recovery_assessment_result
 from .service import (
     EvidenceTwinError,
     EvidenceTwinIntegrityError,
@@ -39,9 +40,11 @@ __all__ = [
     "DETECTOR_VERSION",
     "EvidenceInspectionService",
     "EvidenceExaminationService",
+    "EvidenceRecoveryAssessmentService",
     "InspectionDecision",
     "ParserExecutionResult",
     "detect_evidence_container",
     "inspection_signature",
     "inspection_warnings",
+    "recovery_assessment_result",
 ]

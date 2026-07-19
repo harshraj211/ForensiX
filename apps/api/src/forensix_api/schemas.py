@@ -616,6 +616,38 @@ class EvidenceInspectionResponse(BaseModel):
     inspected_at: datetime
 
 
+class RecoveryCandidateResponse(BaseModel):
+    source_locator: str
+    source_kind: Literal["sqlite_database", "sqlite_wal", "sqlite_rollback_journal", "unknown"]
+    status: Literal[
+        "candidate_regions_observed", "no_candidate_regions", "malformed", "unsupported"
+    ]
+    confidence: Literal["medium", "low"]
+    page_size_bytes: int | None
+    candidate_region_count: int
+    source_size_bytes: int
+    metadata: dict[str, Any]
+    limitations: list[str]
+    candidate_hash: str
+
+
+class RecoveryAssessmentResponse(BaseModel):
+    id: str
+    evidence_source_id: str
+    working_copy_id: str
+    inspection_id: str
+    case_id: str
+    assessed_by: str
+    maturity: Literal["experimental"]
+    status: Literal["candidate_regions_observed", "no_candidate_regions", "unsupported"]
+    candidate_region_count: int
+    candidates: list[RecoveryCandidateResponse]
+    limitations: list[str]
+    assessment_hash: str
+    tool_version: str
+    assessed_at: datetime
+
+
 class EvidenceParserRunRequest(BaseModel):
     parser_ids: list[str] | None = Field(default=None, max_length=20)
 

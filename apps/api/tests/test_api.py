@@ -365,6 +365,49 @@ def test_evidence_twin_native_parser_api(tmp_path: Path) -> None:
         assert artifacts.json()[0]["provenance"]["source_sha256"] == imported["sha256"]
 
 
+def test_experimental_recovery_assessment_api_is_idempotent(tmp_path: Path) -> None:
+    header = bytearray(100)
+    header[:16] = b"SQLite format 3\x00"
+    header[16:18] = (4096).to_bytes(2, "big")
+    header[28:32] = (20).to_bytes(4, "big")
+    header[32:36] = (7).to_bytes(4, "big")
+    header[36:40] = (3).to_bytes(4, "big")
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Recovery API case"}
+        ).json()
+        imported = client.post(
+            f"/api/v1/cases/{case['id']}/evidence-sources/import",
+            headers=headers,
+            files={"source": ("messages.db", bytes(header), "application/octet-stream")},
+        ).json()
+        copied = client.post(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{imported['id']}/working-copies",
+            headers=headers,
+        ).json()
+        endpoint = (
+            f"/api/v1/cases/{case['id']}/evidence-sources/{imported['id']}"
+            f"/working-copies/{copied['id']}/recovery-assessment"
+        )
+
+        assessed = client.post(endpoint, headers=headers)
+        repeated = client.post(endpoint, headers=headers)
+        fetched = client.get(endpoint)
+
+        assert assessed.status_code == 201
+        result = assessed.json()
+        assert repeated.json()["id"] == result["id"]
+        assert fetched.json()["id"] == result["id"]
+        assert result["maturity"] == "experimental"
+        assert result["status"] == "candidate_regions_observed"
+        assert result["candidate_region_count"] == 3
+        assert result["candidates"][0]["source_kind"] == "sqlite_database"
+        assert "not recovered records" in result["limitations"][0]
+        assert len(result["assessment_hash"]) == 64
+
+
 def test_preliminary_report_generation_and_verified_downloads(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
     with TestClient(app) as client:
