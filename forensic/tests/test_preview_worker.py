@@ -39,6 +39,28 @@ def test_generate_reencodes_supported_image_and_strips_metadata(tmp_path: Path) 
         assert "ForensiX-Test" not in derivative.info
 
 
+def test_generate_extracts_only_bounded_allowlisted_exif(tmp_path: Path) -> None:
+    source = tmp_path / "source.jpg"
+    output = tmp_path / "preview.png"
+    exif = Image.Exif()
+    exif[271] = "ForensiX Camera"
+    exif[272] = "Controlled Device"
+    exif[36867] = "2026:07:19 18:30:00"
+    exif[37500] = b"private-maker-note-must-not-be-exposed"
+    Image.new("RGB", (64, 32), color=(18, 72, 110)).save(source, format="JPEG", exif=exif)
+
+    result = preview_worker.generate(source, output)
+
+    assert result["source_width"] == 64
+    assert result["source_height"] == 32
+    assert result["media_metadata"]["exif"] == {
+        "DateTimeOriginal": "2026:07:19 18:30:00",
+        "Make": "ForensiX Camera",
+        "Model": "Controlled Device",
+    }
+    assert "MakerNote" not in result["media_metadata"]["exif"]
+
+
 def test_generate_rejects_truncated_image(tmp_path: Path) -> None:
     source = tmp_path / "truncated.png"
     source.write_bytes(b"\x89PNG\r\n\x1a\nnot-an-image")

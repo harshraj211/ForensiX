@@ -383,6 +383,7 @@ class ArtifactResponse(BaseModel):
     metadata: dict[str, Any]
     schema_version: str
     created_at: datetime
+    duplicate_count: int = 1
 
 
 class ArtifactSearchResponse(BaseModel):
@@ -404,6 +405,9 @@ class ArtifactPreviewResponse(BaseModel):
     output_sha256: str | None
     width: int | None
     height: int | None
+    source_width: int | None
+    source_height: int | None
+    media_metadata: dict[str, Any]
     worker_version: str | None
     limits: dict[str, Any]
     error_code: str | None

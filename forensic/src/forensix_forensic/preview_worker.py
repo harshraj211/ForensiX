@@ -14,15 +14,33 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, UnidentifiedImageError
+from PIL import ExifTags, Image, UnidentifiedImageError
 
-WORKER_VERSION = "1.0.0"
+WORKER_VERSION = "1.1.0"
 MAX_SOURCE_BYTES = 25 * 1024 * 1024
 MAX_IMAGE_PIXELS = 40_000_000
 MAX_OUTPUT_BYTES = 5 * 1024 * 1024
 MAX_THUMBNAIL_EDGE = 1024
 HEADER_BYTES = 64
 SUPPORTED_RASTER_MIMES = frozenset({"image/gif", "image/jpeg", "image/png", "image/webp"})
+MAX_EXIF_TAGS = 64
+MAX_EXIF_VALUE_CHARS = 256
+SAFE_EXIF_TAGS = frozenset(
+    {
+        "DateTime",
+        "DateTimeDigitized",
+        "DateTimeOriginal",
+        "ExposureTime",
+        "FNumber",
+        "FocalLength",
+        "ISOSpeedRatings",
+        "LensModel",
+        "Make",
+        "Model",
+        "Orientation",
+        "Software",
+    }
+)
 
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 warnings.simplefilter("error", Image.DecompressionBombWarning)
@@ -64,6 +82,58 @@ def detect_mime(header: bytes) -> str:
     return "application/octet-stream"
 
 
+def _bounded_scalar(value: Any) -> str | int | float | bool | None:
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    rendered = str(value)
+    return rendered[:MAX_EXIF_VALUE_CHARS]
+
+
+def _gps_coordinate(values: Any, reference: Any) -> float | None:
+    try:
+        degrees, minutes, seconds = (float(item) for item in values[:3])
+        coordinate = degrees + minutes / 60 + seconds / 3600
+        if str(reference).upper() in {"S", "W"}:
+            coordinate = -coordinate
+        return round(coordinate, 5)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+
+
+def extract_media_metadata(image: Image.Image) -> dict[str, Any]:
+    """Return a small JSON-safe EXIF allowlist; never return embedded blobs or thumbnails."""
+    result: dict[str, Any] = {
+        "animated": bool(getattr(image, "is_animated", False)),
+        "frame_count": min(int(getattr(image, "n_frames", 1)), 100_000),
+        "format": image.format,
+        "mode": image.mode[:32],
+    }
+    try:
+        exif = image.getexif()
+    except (AttributeError, OSError, ValueError):
+        return result
+    safe_exif: dict[str, Any] = {}
+    for tag_id, value in list(exif.items())[:MAX_EXIF_TAGS]:
+        tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
+        if tag_name in SAFE_EXIF_TAGS:
+            safe_exif[tag_name] = _bounded_scalar(value)
+    if safe_exif:
+        result["exif"] = safe_exif
+    try:
+        gps = exif.get_ifd(ExifTags.IFD.GPSInfo)
+    except (AttributeError, KeyError, OSError, TypeError, ValueError):
+        gps = {}
+    if gps:
+        latitude = _gps_coordinate(gps.get(2), gps.get(1))
+        longitude = _gps_coordinate(gps.get(4), gps.get(3))
+        result["gps_present"] = True
+        if latitude is not None and longitude is not None:
+            result["gps"] = {"latitude": latitude, "longitude": longitude}
+    else:
+        result["gps_present"] = False
+    return result
+
+
 def generate(source: Path, output: Path) -> dict[str, Any]:
     source_stat = source.stat()
     if not source.is_file():
@@ -98,6 +168,7 @@ def generate(source: Path, output: Path) -> dict[str, Any]:
                     "The source image exceeds the pixel safety limit.",
                     detected_mime=detected_mime,
                 )
+            media_metadata = extract_media_metadata(image)
             image.load()
             image.thumbnail((MAX_THUMBNAIL_EDGE, MAX_THUMBNAIL_EDGE), Image.Resampling.LANCZOS)
             rendered = image.convert("RGBA" if "A" in image.getbands() else "RGB")
@@ -135,6 +206,7 @@ def generate(source: Path, output: Path) -> dict[str, Any]:
         "source_height": height,
         "source_width": width,
         "width": output_width,
+        "media_metadata": media_metadata,
         "worker_version": WORKER_VERSION,
     }
 

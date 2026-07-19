@@ -583,6 +583,7 @@ export interface Artifact {
   metadata: Record<string, unknown>;
   schema_version: string;
   created_at: string;
+  duplicate_count: number;
 }
 
 export interface ArtifactSearchResult {
@@ -604,6 +605,9 @@ export interface ArtifactPreview {
   output_sha256: string | null;
   width: number | null;
   height: number | null;
+  source_width: number | null;
+  source_height: number | null;
+  media_metadata: Record<string, unknown>;
   worker_version: string | null;
   limits: Record<string, unknown>;
   error_code: string | null;
@@ -1077,6 +1081,9 @@ export function searchArtifacts(
     category?: ArtifactCategory;
     status?: ArtifactStatus;
     extension?: string;
+    duplicateOnly?: boolean;
+    minSize?: number;
+    maxSize?: number;
   },
 ): Promise<ArtifactSearchResult> {
   const parameters = new URLSearchParams({ offset: "0", limit: "100" });
@@ -1084,6 +1091,9 @@ export function searchArtifacts(
   if (filters.category) parameters.set("category", filters.category);
   if (filters.status) parameters.set("status", filters.status);
   if (filters.extension) parameters.set("extension", filters.extension);
+  if (filters.duplicateOnly) parameters.set("duplicate_only", "true");
+  if (filters.minSize !== undefined) parameters.set("min_size", String(filters.minSize));
+  if (filters.maxSize !== undefined) parameters.set("max_size", String(filters.maxSize));
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts?${parameters.toString()}`,
   );

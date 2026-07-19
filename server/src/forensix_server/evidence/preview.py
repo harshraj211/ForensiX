@@ -26,7 +26,7 @@ from forensix_server.db import (
 
 from .service import ArtifactService
 
-PREVIEW_WORKER_VERSION = "1.0.0"
+PREVIEW_WORKER_VERSION = "1.1.0"
 PREVIEW_TIMEOUT_SECONDS = 8
 MAX_SOURCE_BYTES = 25 * 1024 * 1024
 MAX_OUTPUT_BYTES = 5 * 1024 * 1024
@@ -184,6 +184,11 @@ class ArtifactPreviewService:
                     output_sha256=stored.sha256,
                     width=int(worker_result["width"]),
                     height=int(worker_result["height"]),
+                    source_width=int(worker_result["source_width"]),
+                    source_height=int(worker_result["source_height"]),
+                    media_metadata_json=json.dumps(
+                        worker_result["media_metadata"], separators=(",", ":"), sort_keys=True
+                    ),
                     worker_version=cast(str, worker_result["worker_version"]),
                     limits_json=_limits_json(),
                 )
@@ -273,6 +278,9 @@ class ArtifactPreviewService:
                 output_sha256=None,
                 width=None,
                 height=None,
+                source_width=None,
+                source_height=None,
+                media_metadata_json="{}",
                 worker_version=PREVIEW_WORKER_VERSION,
                 limits_json=_limits_json(),
                 error_code=error_code,
@@ -370,6 +378,8 @@ def _limits_json() -> str:
             "max_output_bytes": MAX_OUTPUT_BYTES,
             "max_source_bytes": MAX_SOURCE_BYTES,
             "max_thumbnail_edge": MAX_THUMBNAIL_EDGE,
+            "max_exif_tags": 64,
+            "max_exif_value_chars": 256,
             "timeout_seconds": PREVIEW_TIMEOUT_SECONDS,
         },
         separators=(",", ":"),
@@ -381,16 +391,28 @@ def _validate_available_derivative(result: dict[str, Any], path: Path) -> str | 
     detected_mime = result.get("detected_mime")
     width = result.get("width")
     height = result.get("height")
+    source_width = result.get("source_width")
+    source_height = result.get("source_height")
+    media_metadata = result.get("media_metadata")
     if (
         detected_mime not in SUPPORTED_SOURCE_MIMES
         or result.get("output_mime") != SAFE_OUTPUT_MIME
         or result.get("worker_version") != PREVIEW_WORKER_VERSION
         or type(width) is not int
         or type(height) is not int
+        or type(source_width) is not int
+        or type(source_height) is not int
+        or not isinstance(media_metadata, dict)
         or not 1 <= width <= MAX_THUMBNAIL_EDGE
         or not 1 <= height <= MAX_THUMBNAIL_EDGE
+        or source_width < 1
+        or source_height < 1
+        or source_width * source_height > MAX_IMAGE_PIXELS
     ):
         return "The isolated preview worker returned invalid derivative metadata."
+    serialized_metadata = json.dumps(media_metadata, separators=(",", ":"), sort_keys=True)
+    if len(serialized_metadata.encode("utf-8")) > 16 * 1024:
+        return "The isolated preview worker returned excessive media metadata."
     if path.is_symlink() or not path.is_file():
         return "The isolated preview worker did not create a regular derivative file."
     size_bytes = path.stat().st_size

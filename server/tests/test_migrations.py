@@ -166,15 +166,15 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "evidence_source_timeline_events" in inspector.get_table_names()
     assert "root_access_probes" in inspector.get_table_names()
     assert "physical_block_probes" in inspector.get_table_names()
-    parser_columns = {
-        column["name"] for column in inspector.get_columns("evidence_parser_runs")
-    }
+    parser_columns = {column["name"] for column in inspector.get_columns("evidence_parser_runs")}
     assert {"input_locator", "input_sha256"} <= parser_columns
     assert "evidence_verifications" in inspector.get_table_names()
     assert "custody_events" in inspector.get_table_names()
     assert "audit_logs" in inspector.get_table_names()
     assert {"case_id", "plan_id", "checkpoint_json", "last_event_sequence"} <= job_columns
-    assert revision == "0028_physical_block_probes"
+    preview_columns = {column["name"] for column in inspector.get_columns("artifact_previews")}
+    assert {"source_width", "source_height", "media_metadata_json"} <= preview_columns
+    assert revision == "0029_media_metadata"
     database.dispose()
 
 

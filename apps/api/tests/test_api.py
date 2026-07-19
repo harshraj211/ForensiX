@@ -1331,6 +1331,10 @@ def test_preview_api_serves_only_verified_png_derivative_with_security_headers(
     assert generated.json()["status"] == "available"
     assert generated.json()["detected_mime"] == "image/png"
     assert generated.json()["extension_mismatch"] is True
+    assert generated.json()["source_width"] == 32
+    assert generated.json()["source_height"] == 24
+    assert generated.json()["media_metadata"]["format"] == "PNG"
+    assert generated.json()["media_metadata"]["gps_present"] is False
     assert repeated.json()["id"] == generated.json()["id"]
     assert source_after_preview.startswith(b"\x89PNG\r\n\x1a\n")
     assert content.status_code == 200

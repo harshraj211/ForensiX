@@ -579,6 +579,24 @@ async def test_completed_file_is_normalized_and_searchable_without_content_parsi
     assert by_title.total == 1
     assert by_title.items[0].id == artifact.id
     assert by_title.category_facets == {"document": 1}
+    assert by_title.duplicate_counts == {artifact.primary_sha256: 1}
+    with database.session() as search_session:
+        assert (
+            ArtifactService().search(search_session, principal, case_id, duplicate_only=True).total
+            == 0
+        )
+        assert (
+            ArtifactService()
+            .search(search_session, principal, case_id, min_size=artifact.size_bytes)
+            .total
+            == 1
+        )
+        assert (
+            ArtifactService()
+            .search(search_session, principal, case_id, max_size=artifact.size_bytes - 1)
+            .total
+            == 0
+        )
     assert content_not_indexed.total == 0
     assert backfilled == 0
 

@@ -80,6 +80,7 @@ class ArtifactSearchResult:
     items: list[ArtifactRecord]
     total: int
     category_facets: dict[str, int]
+    duplicate_counts: dict[str, int]
 
 
 class ArtifactService:
@@ -240,6 +241,9 @@ class ArtifactService:
         category: str | None = None,
         status: str | None = None,
         extension: str | None = None,
+        duplicate_only: bool = False,
+        min_size: int | None = None,
+        max_size: int | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> ArtifactSearchResult:
@@ -260,6 +264,20 @@ class ArtifactService:
             conditions.append(ArtifactRecord.status == status)
         if normalized_extension:
             conditions.append(ArtifactRecord.extension == normalized_extension)
+        if min_size is not None:
+            conditions.append(ArtifactRecord.size_bytes >= min_size)
+        if max_size is not None:
+            conditions.append(ArtifactRecord.size_bytes <= max_size)
+        if min_size is not None and max_size is not None and min_size > max_size:
+            raise ArtifactQueryError("The minimum size cannot exceed the maximum size.")
+        if duplicate_only:
+            duplicate_hashes = (
+                select(ArtifactRecord.primary_sha256)
+                .where(ArtifactRecord.case_id == case_id)
+                .group_by(ArtifactRecord.primary_sha256)
+                .having(func.count(ArtifactRecord.id) > 1)
+            )
+            conditions.append(ArtifactRecord.primary_sha256.in_(duplicate_hashes))
 
         statement = select(ArtifactRecord).where(*conditions)
         count_statement = select(func.count(ArtifactRecord.id)).where(*conditions)
@@ -287,7 +305,35 @@ class ArtifactService:
                 .group_by(ArtifactRecord.category)
             ).all()
         }
-        return ArtifactSearchResult(items=items, total=total, category_facets=facets)
+        hashes = {item.primary_sha256 for item in items}
+        duplicate_counts = {
+            sha256: count
+            for sha256, count in session.execute(
+                select(ArtifactRecord.primary_sha256, func.count(ArtifactRecord.id))
+                .where(
+                    ArtifactRecord.case_id == case_id,
+                    ArtifactRecord.primary_sha256.in_(hashes),
+                )
+                .group_by(ArtifactRecord.primary_sha256)
+            ).all()
+        }
+        return ArtifactSearchResult(
+            items=items,
+            total=total,
+            category_facets=facets,
+            duplicate_counts=duplicate_counts,
+        )
+
+    def duplicate_count(self, session: Session, case_id: str, sha256: str) -> int:
+        return int(
+            session.scalar(
+                select(func.count(ArtifactRecord.id)).where(
+                    ArtifactRecord.case_id == case_id,
+                    ArtifactRecord.primary_sha256 == sha256,
+                )
+            )
+            or 0
+        )
 
     def get(
         self,

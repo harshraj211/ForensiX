@@ -49,6 +49,9 @@ def search_artifacts(
         Query(alias="status"),
     ] = None,
     extension: Annotated[str | None, Query(max_length=17)] = None,
+    duplicate_only: bool = False,
+    min_size: Annotated[int | None, Query(ge=0)] = None,
+    max_size: Annotated[int | None, Query(ge=0)] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> ArtifactSearchResponse:
@@ -61,10 +64,16 @@ def search_artifacts(
             category=category,
             status=artifact_status,
             extension=extension,
+            duplicate_only=duplicate_only,
+            min_size=min_size,
+            max_size=max_size,
             offset=offset,
             limit=limit,
         )
-        items = [_artifact_response(item) for item in result.items]
+        items = [
+            _artifact_response(item, result.duplicate_counts.get(item.primary_sha256, 1))
+            for item in result.items
+        ]
     return ArtifactSearchResponse(
         items=items,
         total=result.total,
@@ -83,7 +92,10 @@ def get_artifact(
 ) -> ArtifactResponse:
     with database.session() as session:
         record = ArtifactService().get(session, authenticated.principal, case_id, artifact_id)
-        return _artifact_response(record)
+        return _artifact_response(
+            record,
+            ArtifactService().duplicate_count(session, case_id, record.primary_sha256),
+        )
 
 
 @router.get("/{artifact_id}/preview", response_model=ArtifactPreviewResponse)
@@ -226,7 +238,7 @@ def add_artifact_note(
         return _note_response(record)
 
 
-def _artifact_response(record: ArtifactRecord) -> ArtifactResponse:
+def _artifact_response(record: ArtifactRecord, duplicate_count: int = 1) -> ArtifactResponse:
     category = cast(
         Literal["image", "video", "audio", "document", "archive", "other"],
         record.category,
@@ -260,6 +272,7 @@ def _artifact_response(record: ArtifactRecord) -> ArtifactResponse:
         metadata=_json_object(record.metadata_json),
         schema_version=record.schema_version,
         created_at=record.created_at,
+        duplicate_count=duplicate_count,
     )
 
 
@@ -285,6 +298,9 @@ def _preview_response(
             output_sha256=None,
             width=None,
             height=None,
+            source_width=None,
+            source_height=None,
+            media_metadata={},
             worker_version=None,
             limits={},
             error_code=None,
@@ -303,6 +319,9 @@ def _preview_response(
         output_sha256=record.output_sha256,
         width=record.width,
         height=record.height,
+        source_width=record.source_width,
+        source_height=record.source_height,
+        media_metadata=_json_object(record.media_metadata_json),
         worker_version=record.worker_version,
         limits=_json_object(record.limits_json),
         error_code=record.error_code,

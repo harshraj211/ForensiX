@@ -445,9 +445,7 @@ class PhysicalBlockProbeRecord(Base):
 
     __tablename__ = "physical_block_probes"
     __table_args__ = (
-        CheckConstraint(
-            "profile IN ('userdata_by_name')", name="ck_physical_block_probes_profile"
-        ),
+        CheckConstraint("profile IN ('userdata_by_name')", name="ck_physical_block_probes_profile"),
         CheckConstraint("size_bytes > 0", name="ck_physical_block_probes_size"),
         CheckConstraint(
             "encryption_state IN ('unknown', 'suspected', 'not_detected')",
@@ -464,7 +462,9 @@ class PhysicalBlockProbeRecord(Base):
         String(36), ForeignKey("case_devices.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     root_probe_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("root_access_probes.id", ondelete="RESTRICT"), nullable=False,
+        String(36),
+        ForeignKey("root_access_probes.id", ondelete="RESTRICT"),
+        nullable=False,
         index=True,
     )
     probed_by: Mapped[str] = mapped_column(
@@ -853,6 +853,9 @@ class ArtifactPreviewRecord(Base):
     output_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    media_metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     worker_version: Mapped[str] = mapped_column(String(32), nullable=False)
     limits_json: Mapped[str] = mapped_column(Text, nullable=False)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)

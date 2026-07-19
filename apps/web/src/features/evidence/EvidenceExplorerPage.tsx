@@ -70,6 +70,7 @@ export function EvidenceExplorerPage() {
       category: (parameters.get("category") ?? "") as ArtifactCategory | "",
       status: (parameters.get("status") ?? "active") as ArtifactStatus,
       extension: parameters.get("extension") ?? "",
+      duplicateOnly: parameters.get("duplicates") === "true" ? "true" : "",
     }),
     [parameters],
   );
@@ -86,6 +87,7 @@ export function EvidenceExplorerPage() {
         ...(filters.category ? { category: filters.category } : {}),
         status: filters.status,
         ...(filters.extension ? { extension: filters.extension } : {}),
+        ...(filters.duplicateOnly ? { duplicateOnly: true } : {}),
       }),
     enabled: Boolean(caseId),
   });
@@ -120,7 +122,7 @@ export function EvidenceExplorerPage() {
         <ShieldAlert size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
         Original evidence is never rendered. Preview requests run in an isolated, resource-bounded worker and the browser receives only a verified PNG derivative.
       </div>
-      <div className="mt-6 grid gap-3 md:grid-cols-[1fr_180px_140px]">
+      <div className="mt-6 grid gap-3 md:grid-cols-[1fr_180px_140px_150px]">
         <label className="text-xs text-slate-400">
           Search title or source path
           <input
@@ -156,6 +158,14 @@ export function EvidenceExplorerPage() {
             placeholder="pdf"
           />
         </label>
+        <label className="flex min-h-11 items-center gap-2 self-end rounded-lg border border-white/10 bg-black/20 px-3 text-xs text-slate-300">
+          <input
+            type="checkbox"
+            checked={filters.duplicateOnly === "true"}
+            onChange={(event) => { updateFilter("duplicates", event.target.checked ? "true" : ""); }}
+          />
+          Duplicates only
+        </label>
       </div>
       {artifactsQuery.isPending && <p role="status" className="mt-8 flex items-center gap-2 text-sm text-slate-500"><LoaderCircle size={16} className="animate-spin" /> Searching evidence...</p>}
       {artifactsQuery.isError && <div className="mt-6"><CaseError error={artifactsQuery.error} /></div>}
@@ -184,6 +194,7 @@ export function EvidenceExplorerPage() {
                     </div>
                     <p className="mt-2 truncate font-mono text-[10px] text-slate-500">{artifact.source_relative_path}</p>
                     <p className="mt-2 text-[10px] text-slate-600">{formatBytes(artifact.size_bytes)} · {artifact.detected_mime}</p>
+                    {artifact.duplicate_count > 1 && <p className="mt-2 text-[10px] font-semibold text-amber-200">{artifact.duplicate_count} files share this SHA-256</p>}
                   </button>
                 </li>
               ))}
@@ -255,6 +266,7 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
       <dl className="mt-5 space-y-4 text-xs">
         <Detail label="Source path" value={artifact.source_relative_path} mono />
         <Detail label="SHA-256" value={artifact.primary_sha256} mono />
+        <Detail label="Exact duplicates" value={artifact.duplicate_count > 1 ? `${artifact.duplicate_count} artifacts share this hash` : "No exact duplicate in this case"} />
         <Detail label="Size" value={`${formatBytes(artifact.size_bytes)} (${String(artifact.size_bytes)} bytes)`} />
         <Detail label="Extension-derived MIME" value={artifact.detected_mime} />
         <Detail label="Collected" value={new Date(artifact.collected_at).toLocaleString()} />
@@ -289,6 +301,20 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
               className="max-h-80 w-full rounded-lg border border-white/8 bg-black/30 object-contain"
             />
             <p className="mt-2 break-all font-mono text-[9px] text-slate-600">Derivative SHA-256: {preview.data.output_sha256}</p>
+            <div className="mt-3 grid grid-cols-2 gap-2 rounded border border-white/7 bg-black/15 p-3 text-[10px] text-slate-400">
+              <Detail label="Source dimensions" value={`${String(preview.data.source_width)} x ${String(preview.data.source_height)}`} />
+              <Detail label="Format" value={String(preview.data.media_metadata.format ?? preview.data.detected_mime)} />
+              {typeof preview.data.media_metadata.frame_count === "number" && <Detail label="Frames" value={String(preview.data.media_metadata.frame_count)} />}
+              {typeof preview.data.media_metadata.gps_present === "boolean" && <Detail label="GPS metadata" value={preview.data.media_metadata.gps_present ? "Present" : "Not present"} />}
+            </div>
+            {isRecord(preview.data.media_metadata.exif) && (
+              <details className="mt-3 rounded border border-white/7 p-3 text-[10px] text-slate-400">
+                <summary className="cursor-pointer text-slate-300">Bounded EXIF metadata</summary>
+                <dl className="mt-3 grid grid-cols-2 gap-2">
+                  {Object.entries(preview.data.media_metadata.exif).map(([key, value]) => <Detail key={key} label={key} value={String(value)} />)}
+                </dl>
+              </details>
+            )}
             {preview.data.extension_mismatch && <p className="mt-2 text-[11px] text-amber-200">The file signature does not match its extension-derived MIME label.</p>}
           </div>
         )}
@@ -367,4 +393,8 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${String(bytes)} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
