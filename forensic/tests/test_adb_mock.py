@@ -17,6 +17,7 @@ from forensix_forensic.adb.policy import SharedStorageRoot
         (MockAdbScenario.UNAUTHORIZED, [DeviceState.UNAUTHORIZED]),
         (MockAdbScenario.OFFLINE, [DeviceState.OFFLINE]),
         (MockAdbScenario.STORAGE_BLOCKED, [DeviceState.AUTHORIZED]),
+        (MockAdbScenario.ROOTED, [DeviceState.AUTHORIZED]),
         (
             MockAdbScenario.MULTIPLE,
             [DeviceState.AUTHORIZED, DeviceState.UNAUTHORIZED],
@@ -35,6 +36,16 @@ async def test_mock_scenarios(
 async def test_mock_timeout() -> None:
     with pytest.raises(AdbTimeoutError):
         await MockAdbClient(MockAdbScenario.TIMEOUT).list_transports()
+
+
+@pytest.mark.asyncio
+async def test_rooted_mock_requires_explicit_rooted_scenario() -> None:
+    ordinary = await MockAdbClient().probe_root_access("FX-DEMO-001")
+    rooted = await MockAdbClient(MockAdbScenario.ROOTED).probe_root_access("FX-DEMO-001")
+
+    assert ordinary.status.value == "unavailable"
+    assert rooted.status.value == "available"
+    assert rooted.uid == 0
 
 
 @pytest.mark.asyncio

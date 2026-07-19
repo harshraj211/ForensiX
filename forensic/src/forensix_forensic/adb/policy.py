@@ -14,6 +14,7 @@ class AdbOperation(StrEnum):
     STORAGE_ROOT_READABLE = "storage_root_readable"
     INVENTORY_STORAGE_PATHS = "inventory_storage_paths"
     PULL_INVENTORY_FILE = "pull_inventory_file"
+    PROBE_ROOT_ACCESS = "probe_root_access"
 
 
 class SharedStorageRoot(StrEnum):
@@ -65,6 +66,16 @@ class AdbCommandPolicy:
             AdbOperation.LIST_PACKAGES,
             ("-s", serial, "shell", "cmd", "package", "list", "packages"),
             12.0,
+        )
+
+    @staticmethod
+    def probe_root_access(serial: str) -> ApprovedAdbCommand:
+        """Return the one fixed elevated identity probe; no caller supplies shell text."""
+        _validate_serial(serial)
+        return ApprovedAdbCommand(
+            AdbOperation.PROBE_ROOT_ACCESS,
+            ("-s", serial, "shell", "su", "-c", "id"),
+            8.0,
         )
 
     @staticmethod

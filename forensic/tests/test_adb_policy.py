@@ -9,6 +9,7 @@ from forensix_forensic.adb import (
     AdbCommandError,
     AdbCommandPolicy,
     AdbCommandResult,
+    RootAccessStatus,
     SharedStorageRoot,
     StorageProbeStatus,
     SubprocessAdbRunner,
@@ -74,6 +75,20 @@ def test_storage_policy_builds_only_fixed_content_free_commands() -> None:
         "/storage/emulated/0",
     )
     assert all(token not in exists.arguments for token in {"ls", "find", "pull", "sh", "-c"})
+
+
+def test_root_probe_policy_is_fixed_and_serial_scoped() -> None:
+    command = AdbCommandPolicy.probe_root_access("FX-DEMO-001")
+
+    assert command.arguments == (
+        "-s",
+        "FX-DEMO-001",
+        "shell",
+        "su",
+        "-c",
+        "id",
+    )
+    assert command.timeout_seconds == 8.0
 
 
 def test_inventory_policy_is_fixed_bounded_and_uses_no_caller_controlled_shell_text() -> None:
@@ -159,6 +174,24 @@ async def test_system_probe_does_not_treat_command_failure_as_missing_storage() 
 
     with pytest.raises(AdbCommandError):
         await client.probe_shared_storage("FX-DEMO-001")
+
+
+@pytest.mark.asyncio
+async def test_system_root_probe_requires_confirmed_uid_zero() -> None:
+    rooted_runner = RecordingRunner([_result(0, stdout="uid=0(root) gid=0(root)")])
+    ordinary_runner = RecordingRunner([_result(0, stdout="uid=2000(shell) gid=2000(shell)")])
+
+    rooted = await SystemAdbClient(cast(SubprocessAdbRunner, rooted_runner)).probe_root_access(
+        "FX-DEMO-001"
+    )
+    ordinary = await SystemAdbClient(cast(SubprocessAdbRunner, ordinary_runner)).probe_root_access(
+        "FX-DEMO-001"
+    )
+
+    assert rooted.status is RootAccessStatus.AVAILABLE
+    assert rooted.uid == 0
+    assert ordinary.status is RootAccessStatus.UNAVAILABLE
+    assert ordinary.uid == 2000
 
 
 @pytest.mark.asyncio

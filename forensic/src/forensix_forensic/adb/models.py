@@ -43,6 +43,24 @@ class StorageProbeStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class RootAccessStatus(StrEnum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    INDETERMINATE = "indeterminate"
+
+
+class RootAccessProbe(BaseModel):
+    """Bounded result of the explicitly authorized fixed `su -c id` operation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: RootAccessStatus
+    uid: int | None = Field(default=None, ge=0)
+    identity: str | None = Field(default=None, max_length=240)
+    reason_code: str = Field(min_length=1, max_length=64)
+    potential_side_effect: str = Field(min_length=1, max_length=500)
+
+
 class SharedStorageRootProbe(BaseModel):
     model_config = ConfigDict(frozen=True)
 

@@ -11,6 +11,8 @@ from .models import (
     DeviceState,
     DeviceTransport,
     PulledFileResult,
+    RootAccessProbe,
+    RootAccessStatus,
     SharedStorageRootProbe,
     StorageInventoryEntry,
     StorageInventoryResult,
@@ -27,6 +29,7 @@ class MockAdbScenario(StrEnum):
     MULTIPLE = "multiple"
     TIMEOUT = "timeout"
     STORAGE_BLOCKED = "storage_blocked"
+    ROOTED = "rooted"
 
 
 class MockAdbClient:
@@ -57,6 +60,7 @@ class MockAdbClient:
             MockAdbScenario.UNAUTHORIZED: DeviceState.UNAUTHORIZED,
             MockAdbScenario.OFFLINE: DeviceState.OFFLINE,
             MockAdbScenario.STORAGE_BLOCKED: DeviceState.AUTHORIZED,
+            MockAdbScenario.ROOTED: DeviceState.AUTHORIZED,
         }[self.scenario]
         return (self._transport("FX-DEMO-001", state),)
 
@@ -77,6 +81,17 @@ class MockAdbClient:
             "android",
             "com.android.settings",
             "org.forensix.synthetic.fixture",
+        )
+
+    async def probe_root_access(self, serial: str) -> RootAccessProbe:
+        await self._require_authorized(serial)
+        available = self.scenario is MockAdbScenario.ROOTED
+        return RootAccessProbe(
+            status=(RootAccessStatus.AVAILABLE if available else RootAccessStatus.UNAVAILABLE),
+            uid=0 if available else None,
+            identity="uid=0(root) gid=0(root)" if available else None,
+            reason_code="ROOT_UID_CONFIRMED" if available else "ROOT_UID_NOT_AVAILABLE",
+            potential_side_effect="Synthetic mock root probe; no device operation occurred.",
         )
 
     async def probe_shared_storage(self, serial: str) -> tuple[SharedStorageRootProbe, ...]:

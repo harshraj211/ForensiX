@@ -1,6 +1,7 @@
 """High-level ADB client limited to registered forensic operations."""
 
 import asyncio
+import re
 from pathlib import Path
 from typing import Protocol
 
@@ -9,6 +10,8 @@ from .models import (
     AdbServerInfo,
     DeviceTransport,
     PulledFileResult,
+    RootAccessProbe,
+    RootAccessStatus,
     SharedStorageRootProbe,
     StorageInventoryResult,
     StorageProbeStatus,
@@ -39,6 +42,8 @@ class AdbClient(Protocol):
     async def get_properties(self, serial: str) -> dict[str, str]: ...
 
     async def list_packages(self, serial: str) -> tuple[str, ...]: ...
+
+    async def probe_root_access(self, serial: str) -> RootAccessProbe: ...
 
     async def probe_shared_storage(self, serial: str) -> tuple[SharedStorageRootProbe, ...]: ...
 
@@ -86,6 +91,31 @@ class SystemAdbClient:
         if result.exit_code != 0:
             raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
         return parse_package_list(result.stdout)
+
+    async def probe_root_access(self, serial: str) -> RootAccessProbe:
+        result = await self._run(AdbCommandPolicy.probe_root_access(serial))
+        identity = " ".join(result.stdout.split())[:240] or None
+        uid_match = re.search(r"(?:^|\s)uid=(\d+)(?:\(|\s|$)", identity or "")
+        uid = int(uid_match.group(1)) if uid_match else None
+        if result.exit_code == 0 and uid == 0:
+            status = RootAccessStatus.AVAILABLE
+            reason_code = "ROOT_UID_CONFIRMED"
+        elif result.exit_code in {0, 1, 126, 127, 255}:
+            status = RootAccessStatus.UNAVAILABLE
+            reason_code = "ROOT_UID_NOT_AVAILABLE"
+        else:
+            status = RootAccessStatus.INDETERMINATE
+            reason_code = "ROOT_PROBE_INDETERMINATE"
+        return RootAccessProbe(
+            status=status,
+            uid=uid,
+            identity=identity,
+            reason_code=reason_code,
+            potential_side_effect=(
+                "Invoking su can create device logs or an on-device root-manager authorization "
+                "prompt; the operation must be explicitly acknowledged."
+            ),
+        )
 
     async def probe_shared_storage(self, serial: str) -> tuple[SharedStorageRootProbe, ...]:
         probes: list[SharedStorageRootProbe] = []
