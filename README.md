@@ -106,6 +106,11 @@ workstation check. Linux/macOS users can start with `FORENSIX_ADB_PATH=/path/to/
 ./scripts/start-forensix.sh`. See [workstation setup](docs/WORKSTATION_SETUP.md) for driver, udev,
 Gatekeeper, status, and log guidance.
 
+Encrypted workstation backups can be created, independently verified, and safely restored with
+`scripts/forensix-backup.py`; see [backup and recovery](docs/BACKUP_RECOVERY.md). Live evidence
+storage still relies on BitLocker, FileVault, or LUKS until an OS-keychain and agency-escrow design
+is formally validated.
+
 Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, `storage_blocked`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
 
 ## Validation commands
