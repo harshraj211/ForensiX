@@ -1341,6 +1341,49 @@ class EvidenceSourceArtifactRecord(Base):
     )
 
 
+class EvidenceToolOutputRecord(Base):
+    """Sealed output file produced by one pinned external forensic tool run."""
+
+    __tablename__ = "evidence_tool_outputs"
+    __table_args__ = (
+        CheckConstraint("size_bytes >= 0", name="ck_evidence_tool_outputs_size"),
+        UniqueConstraint(
+            "parser_run_id", "relative_path", name="uq_evidence_tool_outputs_run_path"
+        ),
+        UniqueConstraint("storage_key", name="uq_evidence_tool_outputs_storage_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    parser_run_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_parser_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    working_copy_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_working_copies.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    relative_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
 class ReportRecord(Base):
     """Immutable report snapshot and generation result."""
 

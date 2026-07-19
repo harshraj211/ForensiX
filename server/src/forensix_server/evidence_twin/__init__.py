@@ -1,5 +1,6 @@
 """Evidence Twin import and integrity services."""
 
+from .aleapp import AleappEvidenceService, AleappExecutionRecord
 from .domain import (
     DEFAULT_EVIDENCE_CHUNK_SIZE,
     AcquisitionLevel,
@@ -26,6 +27,8 @@ from .service import (
 __all__ = [
     "DEFAULT_EVIDENCE_CHUNK_SIZE",
     "AcquisitionLevel",
+    "AleappEvidenceService",
+    "AleappExecutionRecord",
     "EvidenceContainerFormat",
     "EvidenceSourceType",
     "EvidenceTwinError",
