@@ -440,6 +440,46 @@ class RootAccessProbeRecord(Base):
     )
 
 
+class PhysicalBlockProbeRecord(Base):
+    """Append-only size observation for one fixed experimental block profile."""
+
+    __tablename__ = "physical_block_probes"
+    __table_args__ = (
+        CheckConstraint(
+            "profile IN ('userdata_by_name')", name="ck_physical_block_probes_profile"
+        ),
+        CheckConstraint("size_bytes > 0", name="ck_physical_block_probes_size"),
+        CheckConstraint(
+            "encryption_state IN ('unknown', 'suspected', 'not_detected')",
+            name="ck_physical_block_probes_encryption",
+        ),
+        UniqueConstraint("probe_hash", name="uq_physical_block_probes_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("case_devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    root_probe_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("root_access_probes.id", ondelete="RESTRICT"), nullable=False,
+        index=True,
+    )
+    probed_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    profile: Mapped[str] = mapped_column(String(32), nullable=False)
+    device_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    encryption_state: Mapped[str] = mapped_column(String(16), nullable=False)
+    probe_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    probed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
 class AcquisitionPlanRecord(Base):
     """Immutable, reviewable authorization boundary for a future acquisition."""
 

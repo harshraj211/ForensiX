@@ -521,6 +521,69 @@ describe("device readiness", () => {
           ),
         );
       }
+      if (url === "/api/v1/integrations/physical-acquisition") {
+        return Promise.resolve(
+          jsonResponse({
+            enabled: true,
+            max_size_bytes: 1048576,
+            maturity: "experimental",
+            warning: "Experimental raw userdata acquisition does not bypass encryption.",
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/devices/device-1/physical-block-probes") {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              id: "physical-probe-0000-0000-0000000001",
+              case_id: "case-1",
+              device_id: "device-1",
+              root_probe_id: "probe-0000-0000-0000-000000000001",
+              probed_by: "user-1",
+              profile: "userdata_by_name",
+              device_path: "/dev/block/by-name/userdata",
+              size_bytes: 8192,
+              encryption_state: "unknown",
+              probe_hash: "e".repeat(64),
+              probed_at: new Date().toISOString(),
+            },
+            201,
+          ),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/devices/device-1/physical-captures") {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              id: "physical-source-1",
+              case_id: "case-1",
+              device_id: "device-1",
+              created_by: "user-1",
+              source_type: "physical_block",
+              acquisition_level: "physical",
+              status: "sealed",
+              display_name: "Experimental userdata block image",
+              source_name: "userdata.dd",
+              container_format: "dd",
+              size_bytes: 8192,
+              sha256: "f".repeat(64),
+              chunks_sha256: "1".repeat(64),
+              manifest_sha256: "2".repeat(64),
+              chunk_size_bytes: 4194304,
+              chunk_count: 1,
+              read_only_applied: true,
+              validation_state: "experimental_unvalidated",
+              limitations: ["The image may remain encrypted and is not resumable."],
+              tool_version: "0.1.0",
+              error_code: null,
+              error_message: null,
+              sealed_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            },
+            201,
+          ),
+        );
+      }
       if (url === "/api/v1/cases/case-1/devices/device-1/rooted-captures") {
         return Promise.resolve(
           jsonResponse(
@@ -579,6 +642,18 @@ describe("device readiness", () => {
     await user.click(screen.getByRole("button", { name: "Capture provider bundle" }));
     expect(await screen.findByText("Evidence Twin source sealed")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Evidence Twin workspace" })).toHaveAttribute(
+      "href",
+      "/cases/case-1/evidence-twin",
+    );
+    await user.click(screen.getByLabelText(/authorize a metadata-only probe/i));
+    await user.click(screen.getByRole("button", { name: "Probe userdata block" }));
+    expect(await screen.findByText("Fixed block located")).toBeInTheDocument();
+    await user.click(screen.getByLabelText(/authorize the full raw stream/i));
+    await user.click(screen.getByLabelText(/resulting image may remain encrypted/i));
+    await user.click(screen.getByLabelText(/cannot currently resume/i));
+    await user.click(screen.getByRole("button", { name: "Acquire experimental raw image" }));
+    expect(await screen.findByText("Physical Evidence Twin source sealed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open physical source in Evidence Twin" })).toHaveAttribute(
       "href",
       "/cases/case-1/evidence-twin",
     );

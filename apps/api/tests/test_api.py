@@ -499,6 +499,91 @@ def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path:
     assert "bit-for-bit" in " ".join(capture.json()["limitations"])
 
 
+def test_experimental_physical_capture_requires_configuration_and_all_risk_acknowledgements(
+    tmp_path: Path,
+) -> None:
+    disabled_app = create_app(
+        _settings(tmp_path / "disabled"),
+        adb_client=MockAdbClient(MockAdbScenario.ROOTED),
+    )
+    with TestClient(disabled_app) as client:
+        headers = _authorize(client)
+        diagnostic = client.get("/api/v1/integrations/physical-acquisition")
+        assert diagnostic.status_code == 200
+        assert diagnostic.json()["enabled"] is False
+
+    settings = Settings(
+        environment="test",
+        data_dir=tmp_path / "enabled",
+        adb_mode="mock",
+        enable_experimental_physical_acquisition=True,
+        max_physical_acquisition_bytes=1024 * 1024,
+    )
+    app = create_app(settings, adb_client=MockAdbClient(MockAdbScenario.ROOTED))
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Physical API case"}
+        ).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+        base = f"/api/v1/cases/{case['id']}/devices/{assessment['case_device_id']}"
+        root_probe = client.post(
+            f"{base}/root-probes",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "side_effects_acknowledged": True},
+        ).json()
+        block_probe = client.post(
+            f"{base}/physical-block-probes",
+            headers=headers,
+            json={
+                "serial": "FX-DEMO-001",
+                "root_probe_id": root_probe["id"],
+                "profile": "userdata_by_name",
+                "risk_acknowledged": True,
+            },
+        )
+        missing_acknowledgement = client.post(
+            f"{base}/physical-captures",
+            headers=headers,
+            json={
+                "serial": "FX-DEMO-001",
+                "physical_probe_id": block_probe.json()["id"],
+                "acquisition_acknowledged": True,
+                "encryption_acknowledged": False,
+                "non_resumable_acknowledged": True,
+            },
+        )
+        capture = client.post(
+            f"{base}/physical-captures",
+            headers=headers,
+            json={
+                "serial": "FX-DEMO-001",
+                "physical_probe_id": block_probe.json()["id"],
+                "acquisition_acknowledged": True,
+                "encryption_acknowledged": True,
+                "non_resumable_acknowledged": True,
+            },
+        )
+
+    assert block_probe.status_code == 201
+    assert block_probe.json()["device_path"] == "/dev/block/by-name/userdata"
+    assert block_probe.json()["size_bytes"] == 8192
+    assert missing_acknowledgement.status_code == 422
+    assert capture.status_code == 201
+    assert capture.json()["source_type"] == "physical_block"
+    assert capture.json()["acquisition_level"] == "physical"
+    assert capture.json()["container_format"] == "dd"
+    assert capture.json()["status"] == "sealed"
+    assert capture.json()["size_bytes"] == 8192
+    limitations = " ".join(capture.json()["limitations"])
+    assert "encrypted" in limitations
+    assert "not resumable" in limitations
+
+
 def test_assessment_revalidates_transport_state(tmp_path: Path) -> None:
     app = create_app(
         _settings(tmp_path),

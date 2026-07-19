@@ -91,6 +91,7 @@ class EvidenceTwinService:
                 "Imported evidence is not claimed to have been acquired by ForensiX.",
                 "Source acquisition method and device-side effects require examiner review.",
             ),
+            manifest_metadata=None,
         )
 
     def seal_rooted_stream(
@@ -124,6 +125,53 @@ class EvidenceTwinService:
                 "This bounded provider bundle is not a physical or bit-for-bit device image.",
                 "Encrypted application data may remain unavailable or require separate keys.",
             ),
+            manifest_metadata=None,
+        )
+
+    def seal_physical_stream(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        device_id: str,
+        stream: BinaryIO,
+        *,
+        source_name: str,
+        display_name: str,
+        declared_size_bytes: int,
+        root_probe_id: str,
+        physical_probe_id: str,
+        profile: str,
+        device_path: str,
+        encryption_state: str,
+        chunk_size_bytes: int = DEFAULT_EVIDENCE_CHUNK_SIZE,
+    ) -> EvidenceSourceRecord:
+        """Seal one explicitly enabled experimental block stream without interpreting it."""
+        return self._seal_stream(
+            database,
+            principal,
+            case_id,
+            stream,
+            source_name=source_name,
+            display_name=display_name,
+            declared_size_bytes=declared_size_bytes,
+            chunk_size_bytes=chunk_size_bytes,
+            source_type=EvidenceSourceType.PHYSICAL_BLOCK,
+            acquisition_level=AcquisitionLevel.PHYSICAL,
+            device_id=device_id,
+            limitations=(
+                "Experimental raw block acquisition is not production validated.",
+                "A userdata block image is commonly encrypted and does not bypass Android locks.",
+                "This transport is not hardware write blocking and may create device logs.",
+                "The current experimental transfer is not resumable after interruption.",
+            ),
+            manifest_metadata={
+                "device_path": device_path,
+                "encryption_state": encryption_state,
+                "physical_probe_id": physical_probe_id,
+                "profile": profile,
+                "root_probe_id": root_probe_id,
+            },
         )
 
     def _seal_stream(
@@ -141,6 +189,7 @@ class EvidenceTwinService:
         acquisition_level: AcquisitionLevel,
         device_id: str | None,
         limitations: tuple[str, ...],
+        manifest_metadata: dict[str, Any] | None,
     ) -> EvidenceSourceRecord:
         self._validate_chunk_size(chunk_size_bytes)
         safe_source_name = _safe_source_name(source_name)
@@ -211,6 +260,7 @@ class EvidenceTwinService:
             chunks = chunks_writer.seal()
             manifest_payload = {
                 "acquisition_level": acquisition_level.value,
+                "acquisition_metadata": manifest_metadata or {},
                 "case_id": case_id,
                 "chunk_count": chunk_count,
                 "chunk_size_bytes": chunk_size_bytes,
@@ -591,8 +641,13 @@ class EvidenceTwinService:
                     "Imported source sealed with chunk, master, and manifest SHA-256; "
                     "origin remains examiner-declared."
                     if source.source_type == EvidenceSourceType.IMPORTED_FILE.value
-                    else "Controlled rooted provider bundle sealed with chunk, master, and "
-                    "manifest SHA-256; this is not a physical device image."
+                    else (
+                        "Experimental raw block stream sealed with chunk, master, and manifest "
+                        "SHA-256; encryption state remains examiner-verifiable."
+                        if source.source_type == EvidenceSourceType.PHYSICAL_BLOCK.value
+                        else "Controlled rooted provider bundle sealed with chunk, master, and "
+                        "manifest SHA-256; this is not a physical device image."
+                    )
                 ),
             )
             session.flush()

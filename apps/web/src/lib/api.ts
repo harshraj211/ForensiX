@@ -80,6 +80,27 @@ export interface RootAccessProbe {
   probed_at: string;
 }
 
+export interface PhysicalAcquisitionDiagnostic {
+  enabled: boolean;
+  max_size_bytes: number;
+  maturity: "experimental";
+  warning: string;
+}
+
+export interface PhysicalBlockProbe {
+  id: string;
+  case_id: string;
+  device_id: string;
+  root_probe_id: string;
+  probed_by: string;
+  profile: "userdata_by_name";
+  device_path: string;
+  size_bytes: number;
+  encryption_state: "unknown" | "suspected" | "not_detected";
+  probe_hash: string;
+  probed_at: string;
+}
+
 export interface AuthUser {
   user_id: string;
   username: string;
@@ -831,6 +852,51 @@ export function captureRootedProviderBundle(
         root_probe_id: rootProbeId,
         profile: "android_providers",
         side_effects_acknowledged: true,
+      }),
+    },
+  );
+}
+
+export function getPhysicalAcquisitionDiagnostic(): Promise<PhysicalAcquisitionDiagnostic> {
+  return apiRequest("/api/v1/integrations/physical-acquisition");
+}
+
+export function probePhysicalBlock(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+  rootProbeId: string,
+): Promise<PhysicalBlockProbe> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/physical-block-probes`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        root_probe_id: rootProbeId,
+        profile: "userdata_by_name",
+        risk_acknowledged: true,
+      }),
+    },
+  );
+}
+
+export function capturePhysicalBlock(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+  physicalProbeId: string,
+): Promise<EvidenceSource> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/physical-captures`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        physical_probe_id: physicalProbeId,
+        acquisition_acknowledged: true,
+        encryption_acknowledged: true,
+        non_resumable_acknowledged: true,
       }),
     },
   );

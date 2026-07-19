@@ -8,6 +8,7 @@ from sqlalchemy import select
 from forensix_forensic.adb import (
     MockAdbClient,
     MockAdbScenario,
+    PhysicalBlockProfile,
     RootedCollectionProfile,
 )
 from forensix_forensic.capabilities import DeviceCapabilityAssessor
@@ -16,10 +17,12 @@ from forensix_server.auth import Principal, RoleName
 from forensix_server.auth.domain import ROLE_PERMISSIONS
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseService
+from forensix_server.config import Settings
 from forensix_server.db import (
     AuditLogRecord,
     CustodyEventRecord,
     Database,
+    PhysicalBlockProbeRecord,
     RootAccessProbeRecord,
     UserRecord,
 )
@@ -174,4 +177,85 @@ async def test_rooted_capture_requires_acknowledgement(database: Database) -> No
             probe_id="00000000-0000-0000-0000-000000000000",
             profile=RootedCollectionProfile.ANDROID_PROVIDERS,
             side_effects_acknowledged=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_experimental_physical_capture_is_probed_gated_and_sealed(
+    database: Database,
+) -> None:
+    principal, case_id, device_id = await _case_device(database)
+    adb_client = MockAdbClient(MockAdbScenario.ROOTED)
+    service = RootedDeviceService()
+    settings = Settings(
+        environment="test",
+        data_dir=database.data_dir,
+        enable_experimental_physical_acquisition=True,
+        max_physical_acquisition_bytes=1024 * 1024,
+    )
+    root_probe = await service.probe_access(
+        database,
+        adb_client,
+        principal,
+        case_id,
+        device_id,
+        serial="FX-DEMO-001",
+    )
+    block_probe = await service.probe_physical_block(
+        database,
+        adb_client,
+        settings,
+        principal,
+        case_id,
+        device_id,
+        serial="FX-DEMO-001",
+        root_probe_id=root_probe.id,
+        profile=PhysicalBlockProfile.USERDATA_BY_NAME,
+        risk_acknowledged=True,
+    )
+
+    source = await service.capture_physical_block(
+        database,
+        adb_client,
+        settings,
+        principal,
+        case_id,
+        device_id,
+        serial="FX-DEMO-001",
+        physical_probe_id=block_probe.id,
+        acquisition_acknowledged=True,
+        encryption_acknowledged=True,
+        non_resumable_acknowledged=True,
+    )
+
+    assert block_probe.size_bytes == 8192
+    assert block_probe.device_path == "/dev/block/by-name/userdata"
+    assert source.source_type == "physical_block"
+    assert source.acquisition_level == "physical"
+    assert source.container_format == "dd"
+    assert source.size_bytes == 8192
+    assert source.device_id == device_id
+    with database.session() as session:
+        assert session.scalar(select(PhysicalBlockProbeRecord.id)) == block_probe.id
+        audit_types = set(session.scalars(select(AuditLogRecord.event_type)))
+    assert "experimental_physical_block_probed" in audit_types
+    assert "experimental_physical_block_captured" in audit_types
+
+
+@pytest.mark.asyncio
+async def test_physical_probe_is_disabled_by_default(database: Database) -> None:
+    principal, case_id, device_id = await _case_device(database)
+
+    with pytest.raises(RootedDeviceError, match="disabled"):
+        await RootedDeviceService().probe_physical_block(
+            database,
+            MockAdbClient(MockAdbScenario.ROOTED),
+            Settings(environment="test", data_dir=database.data_dir),
+            principal,
+            case_id,
+            device_id,
+            serial="FX-DEMO-001",
+            root_probe_id="00000000-0000-0000-0000-000000000000",
+            profile=PhysicalBlockProfile.USERDATA_BY_NAME,
+            risk_acknowledged=True,
         )

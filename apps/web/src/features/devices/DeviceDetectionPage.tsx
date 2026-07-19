@@ -23,10 +23,13 @@ import { caseKeys } from "../cases/caseKeys";
 import {
   ApiError,
   assessDevice,
+  capturePhysicalBlock,
   captureRootedProviderBundle,
   detectDevices,
   getCase,
+  getPhysicalAcquisitionDiagnostic,
   listCaseDevices,
+  probePhysicalBlock,
   probeRootAccess,
   type CaseDevice,
   type CapabilityDecision,
@@ -450,6 +453,10 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
   const entries = Object.entries(assessment.capabilities);
   const [rootAcknowledged, setRootAcknowledged] = useState(false);
   const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
+  const [physicalProbeAcknowledged, setPhysicalProbeAcknowledged] = useState(false);
+  const [physicalAcquisitionAcknowledged, setPhysicalAcquisitionAcknowledged] = useState(false);
+  const [encryptionAcknowledged, setEncryptionAcknowledged] = useState(false);
+  const [nonResumableAcknowledged, setNonResumableAcknowledged] = useState(false);
   const rootProbe = useMutation({
     mutationFn: () => {
       if (!assessment.case_id || !assessment.case_device_id) {
@@ -475,6 +482,42 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
         assessment.case_device_id,
         assessment.serial,
         rootProbe.data.id,
+      );
+    },
+  });
+  const physicalDiagnostic = useQuery({
+    queryKey: ["integrations", "physical-acquisition"],
+    queryFn: getPhysicalAcquisitionDiagnostic,
+    enabled: rootProbe.data?.status === "available",
+  });
+  const physicalProbe = useMutation({
+    mutationFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+        throw new Error("A current rooted-access proof is required for this probe.");
+      }
+      return probePhysicalBlock(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+        rootProbe.data.id,
+      );
+    },
+    onSuccess: () => {
+      setPhysicalAcquisitionAcknowledged(false);
+      setEncryptionAcknowledged(false);
+      setNonResumableAcknowledged(false);
+    },
+  });
+  const physicalCapture = useMutation({
+    mutationFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id || !physicalProbe.data) {
+        throw new Error("A current physical-block probe is required for this acquisition.");
+      }
+      return capturePhysicalBlock(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+        physicalProbe.data.id,
       );
     },
   });
@@ -655,6 +698,118 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
                   </Link>
                 </div>
               )}
+              <div className="mt-5 border-t border-rose-200/10 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-200">
+                  Experimental raw userdata image
+                </p>
+                {physicalDiagnostic.isPending && (
+                  <p role="status" className="mt-2 text-xs text-slate-500">
+                    Checking workstation policy…
+                  </p>
+                )}
+                {physicalDiagnostic.isError && (
+                  <div className="mt-3"><ErrorState error={physicalDiagnostic.error} /></div>
+                )}
+                {physicalDiagnostic.data && !physicalDiagnostic.data.enabled && (
+                  <p className="mt-2 text-xs leading-5 text-slate-400">
+                    Disabled by default. An administrator must explicitly set
+                    <code className="mx-1 text-rose-200">FORENSIX_ENABLE_EXPERIMENTAL_PHYSICAL_ACQUISITION=true</code>
+                    after validating the test device and storage capacity.
+                  </p>
+                )}
+                {physicalDiagnostic.data?.enabled && (
+                  <>
+                    <p className="mt-2 text-xs leading-5 text-rose-100/75">
+                      {physicalDiagnostic.data.warning} The fixed target is
+                      <code className="mx-1">/dev/block/by-name/userdata</code>; no arbitrary block
+                      path can be supplied.
+                    </p>
+                    <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-rose-100/75">
+                      <input
+                        type="checkbox"
+                        checked={physicalProbeAcknowledged}
+                        onChange={(event) => {
+                          setPhysicalProbeAcknowledged(event.target.checked);
+                        }}
+                        className="mt-1 accent-rose-300"
+                      />
+                      I authorize a metadata-only probe of the fixed userdata block and understand
+                      that root-manager and device logs may change.
+                    </label>
+                    <button
+                      type="button"
+                      disabled={!physicalProbeAcknowledged || physicalProbe.isPending}
+                      onClick={() => {
+                        physicalProbe.mutate();
+                      }}
+                      className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-lg border border-rose-300/25 bg-rose-300/8 px-4 text-xs font-semibold text-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {physicalProbe.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <HardDrive size={14} />}
+                      Probe userdata block
+                    </button>
+                    {physicalProbe.isError && <div className="mt-3"><ErrorState error={physicalProbe.error} /></div>}
+                    {physicalProbe.data && (
+                      <div className="mt-3 rounded-md border border-rose-300/15 bg-black/10 p-3 text-xs text-slate-300">
+                        <p className="font-semibold text-rose-100">Fixed block located</p>
+                        <p className="mt-1 font-mono">{physicalProbe.data.device_path}</p>
+                        <p className="mt-1">
+                          {formatBytes(physicalProbe.data.size_bytes)} · encryption {physicalProbe.data.encryption_state}
+                        </p>
+                      </div>
+                    )}
+                    {physicalProbe.data && (
+                      <div className="mt-4 space-y-2 border-t border-rose-200/10 pt-4">
+                        {[
+                          [physicalAcquisitionAcknowledged, setPhysicalAcquisitionAcknowledged, "I authorize the full raw stream and acknowledge that ADB is not a hardware write blocker."],
+                          [encryptionAcknowledged, setEncryptionAcknowledged, "I understand the resulting image may remain encrypted and ForensiX does not bypass the lock screen."],
+                          [nonResumableAcknowledged, setNonResumableAcknowledged, "I understand this experimental stream can take hours and cannot currently resume after interruption."],
+                        ].map(([checked, setter, label]) => (
+                          <label key={String(label)} className="flex items-start gap-3 text-xs leading-5 text-rose-100/75">
+                            <input
+                              type="checkbox"
+                              checked={checked as boolean}
+                              onChange={(event) => {
+                                (setter as (value: boolean) => void)(event.target.checked);
+                              }}
+                              className="mt-1 accent-rose-300"
+                            />
+                            {label as string}
+                          </label>
+                        ))}
+                        <button
+                          type="button"
+                          disabled={
+                            !physicalAcquisitionAcknowledged ||
+                            !encryptionAcknowledged ||
+                            !nonResumableAcknowledged ||
+                            physicalCapture.isPending
+                          }
+                          onClick={() => {
+                            physicalCapture.mutate();
+                          }}
+                          className="mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg bg-rose-200 px-4 text-xs font-semibold text-[#19080b] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {physicalCapture.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <HardDrive size={14} />}
+                          {physicalCapture.isPending ? "Streaming and sealing…" : "Acquire experimental raw image"}
+                        </button>
+                        {physicalCapture.isError && <ErrorState error={physicalCapture.error} />}
+                        {physicalCapture.data && (
+                          <div className="rounded-md border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-100">
+                            <p className="font-semibold">Physical Evidence Twin source sealed</p>
+                            <p className="mt-1 font-mono text-[10px] opacity-65">SHA-256 {physicalCapture.data.sha256}</p>
+                            <Link
+                              to={`/cases/${assessment.case_id}/evidence-twin`}
+                              className="mt-3 inline-flex font-semibold text-cyan-200 underline decoration-cyan-300/30 underline-offset-4"
+                            >
+                              Open physical source in Evidence Twin
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -708,6 +863,13 @@ function Meta({ icon: Icon, label, value }: { icon: typeof Info; label: string; 
 
 function maskSerial(serial: string): string {
   return serial.length <= 5 ? serial : serial.slice(-5);
+}
+
+function formatBytes(sizeBytes: number): string {
+  if (sizeBytes < 1024) return `${String(sizeBytes)} B`;
+  if (sizeBytes < 1024 ** 2) return `${(sizeBytes / 1024).toFixed(1)} KiB`;
+  if (sizeBytes < 1024 ** 3) return `${(sizeBytes / 1024 ** 2).toFixed(1)} MiB`;
+  return `${(sizeBytes / 1024 ** 3).toFixed(1)} GiB`;
 }
 
 function humanize(value: string): string {

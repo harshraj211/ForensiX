@@ -100,6 +100,8 @@ def create_app(
     app.include_router(reports.router)
     app.include_router(rooted.router)
     app.include_router(rooted.capture_router)
+    app.include_router(rooted.physical_probe_router)
+    app.include_router(rooted.physical_capture_router)
     app.include_router(evidence_sources.router)
     app.include_router(devices.router)
     return app

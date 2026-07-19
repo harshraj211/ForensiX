@@ -121,6 +121,8 @@ def _legacy_revision(
 ) -> str:
     """Identify the newest schema marker created before migration tracking was enabled."""
     if "evidence_sources" in tables:
+        if "physical_block_probes" in tables:
+            return "0028_physical_block_probes"
         if "input_locator" in parser_run_columns:
             return "0027_parser_input_provenance"
         if "root_access_probes" in tables:

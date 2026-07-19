@@ -90,6 +90,37 @@ class RootedCaptureRequest(BaseModel):
     side_effects_acknowledged: Literal[True]
 
 
+class PhysicalBlockProbeRequest(BaseModel):
+    serial: str = Field(min_length=1, max_length=255)
+    root_probe_id: str = Field(min_length=36, max_length=36)
+    profile: Literal["userdata_by_name"]
+    risk_acknowledged: Literal[True]
+
+
+class PhysicalBlockProbeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    case_id: str
+    device_id: str
+    root_probe_id: str
+    probed_by: str
+    profile: Literal["userdata_by_name"]
+    device_path: str
+    size_bytes: int
+    encryption_state: Literal["unknown", "suspected", "not_detected"]
+    probe_hash: str
+    probed_at: datetime
+
+
+class PhysicalBlockCaptureRequest(BaseModel):
+    serial: str = Field(min_length=1, max_length=255)
+    physical_probe_id: str = Field(min_length=36, max_length=36)
+    acquisition_acknowledged: Literal[True]
+    encryption_acknowledged: Literal[True]
+    non_resumable_acknowledged: Literal[True]
+
+
 class DeviceCapabilityAssessmentResponse(BaseModel):
     assessment_id: str
     case_id: str | None = None
@@ -616,6 +647,13 @@ class AleappDiagnosticResponse(BaseModel):
     program_path: str
     observed_sha256: str | None
     message: str
+
+
+class PhysicalAcquisitionDiagnosticResponse(BaseModel):
+    enabled: bool
+    max_size_bytes: int
+    maturity: Literal["experimental"] = "experimental"
+    warning: str
 
 
 class EvidenceToolOutputResponse(BaseModel):

@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from forensix_forensic.adb import MAX_PHYSICAL_BLOCK_BYTES
 from forensix_forensic.integrations import AleappConfiguration, AleappRunner
 
 
@@ -34,6 +35,12 @@ class Settings(BaseSettings):
     aleapp_release_label: str = Field(default="v2026.1.0", min_length=1, max_length=64)
     aleapp_python_executable: Path | None = None
     aleapp_timeout_seconds: int = Field(default=1800, ge=30, le=7200)
+    enable_experimental_physical_acquisition: bool = False
+    max_physical_acquisition_bytes: int = Field(
+        default=128 * 1024 * 1024 * 1024,
+        ge=1024 * 1024,
+        le=MAX_PHYSICAL_BLOCK_BYTES,
+    )
 
     @field_validator("allowed_origins")
     @classmethod
