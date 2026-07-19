@@ -25,12 +25,21 @@ from forensix_server.db import (
     AnalystNoteRecord,
     ArtifactRecord,
     ArtifactTagRecord,
+    AuditLogRecord,
     BookmarkRecord,
     CaseDeviceAssessmentRecord,
     CaseDeviceRecord,
     CustodyEventRecord,
     Database,
+    EvidenceParserRunRecord,
+    EvidenceSourceArtifactRecord,
+    EvidenceSourceInspectionRecord,
+    EvidenceSourceRecord,
+    EvidenceSourceTimelineEventRecord,
+    EvidenceSourceVerificationRecord,
+    EvidenceToolOutputRecord,
     EvidenceVerificationRecord,
+    EvidenceWorkingCopyRecord,
     ReportOutputRecord,
     ReportRecord,
     TagRecord,
@@ -44,7 +53,14 @@ from .snapshot import (
     CaseSnapshot,
     CustodySnapshot,
     DeviceSnapshot,
+    EvidenceInspectionSnapshot,
+    EvidenceParserRunSnapshot,
+    EvidenceSourceSnapshot,
+    EvidenceSourceVerificationSnapshot,
+    EvidenceToolOutputSnapshot,
+    EvidenceWorkingCopySnapshot,
     HashManifestItem,
+    ImportedArtifactSnapshot,
     ReportIdentity,
     ReportSnapshot,
     TimelineSnapshot,
@@ -306,6 +322,105 @@ class ReportService:
                 .order_by(CustodyEventRecord.sequence)
             )
         )
+        evidence_sources = list(
+            session.scalars(
+                select(EvidenceSourceRecord)
+                .where(EvidenceSourceRecord.case_id == case_id)
+                .order_by(EvidenceSourceRecord.created_at, EvidenceSourceRecord.id)
+            )
+        )
+        working_copies = list(
+            session.scalars(
+                select(EvidenceWorkingCopyRecord).where(
+                    EvidenceWorkingCopyRecord.case_id == case_id
+                )
+            )
+        )
+        source_verifications = list(
+            session.scalars(
+                select(EvidenceSourceVerificationRecord).where(
+                    EvidenceSourceVerificationRecord.case_id == case_id
+                )
+            )
+        )
+        source_inspections = list(
+            session.scalars(
+                select(EvidenceSourceInspectionRecord).where(
+                    EvidenceSourceInspectionRecord.case_id == case_id
+                )
+            )
+        )
+        parser_runs = list(
+            session.scalars(
+                select(EvidenceParserRunRecord).where(EvidenceParserRunRecord.case_id == case_id)
+            )
+        )
+        tool_outputs = list(
+            session.scalars(
+                select(EvidenceToolOutputRecord).where(EvidenceToolOutputRecord.case_id == case_id)
+            )
+        )
+        parser_audits = list(
+            session.scalars(
+                select(AuditLogRecord).where(
+                    AuditLogRecord.case_id == case_id,
+                    AuditLogRecord.object_type == "evidence_parser_run",
+                )
+            )
+        )
+        imported_artifacts = list(
+            session.scalars(
+                select(EvidenceSourceArtifactRecord)
+                .where(EvidenceSourceArtifactRecord.case_id == case_id)
+                .order_by(
+                    EvidenceSourceArtifactRecord.event_time,
+                    EvidenceSourceArtifactRecord.created_at,
+                    EvidenceSourceArtifactRecord.id,
+                )
+                .limit(1000)
+            )
+        )
+        source_timeline = list(
+            session.scalars(
+                select(EvidenceSourceTimelineEventRecord)
+                .where(EvidenceSourceTimelineEventRecord.case_id == case_id)
+                .order_by(
+                    EvidenceSourceTimelineEventRecord.event_time,
+                    EvidenceSourceTimelineEventRecord.id,
+                )
+                .limit(500)
+            )
+        )
+        timeline_snapshots = [
+            TimelineSnapshot(
+                artifact_id=item.artifact_id,
+                source_artifact_id=None,
+                parser_run_id=None,
+                category=item.category,
+                timestamp_type=item.timestamp_type,
+                event_time=item.event_time,
+                timezone_basis=item.timezone_basis,
+                confidence=item.confidence,
+                summary=item.summary,
+                event_hash=item.event_hash,
+            )
+            for item in timeline
+        ] + [
+            TimelineSnapshot(
+                artifact_id=None,
+                source_artifact_id=item.source_artifact_id,
+                parser_run_id=item.parser_run_id,
+                category=item.category,
+                timestamp_type=item.timestamp_type,
+                event_time=item.event_time,
+                timezone_basis=item.timezone_basis,
+                confidence=item.confidence,
+                summary=item.summary,
+                event_hash=item.event_hash,
+            )
+            for item in source_timeline
+        ]
+        timeline_snapshots.sort(key=lambda item: (item.event_time, item.event_hash))
         return ReportSnapshot(
             report=ReportIdentity(
                 report_id=report_id,
@@ -344,6 +459,38 @@ class ReportService:
             acquisitions=[
                 _acquisition_snapshot(item, inventory_by_plan.get(item.id)) for item in plans
             ],
+            evidence_sources=[
+                _evidence_source_snapshot(
+                    item,
+                    working_copies=working_copies,
+                    verifications=source_verifications,
+                    inspections=source_inspections,
+                    parser_runs=parser_runs,
+                    tool_outputs=tool_outputs,
+                    parser_audits=parser_audits,
+                )
+                for item in evidence_sources
+            ],
+            imported_artifacts=[
+                ImportedArtifactSnapshot(
+                    id=item.id,
+                    evidence_source_id=item.evidence_source_id,
+                    parser_run_id=item.parser_run_id,
+                    category=item.category,
+                    subtype=item.subtype,
+                    title=item.title,
+                    summary=item.summary,
+                    event_time=item.event_time,
+                    source_locator=item.source_locator,
+                    status=item.status,
+                    confidence=item.confidence,
+                    parser_id=item.parser_id,
+                    parser_version=item.parser_version,
+                    artifact_hash=item.artifact_hash,
+                )
+                for item in imported_artifacts
+            ],
+            imported_evidence_summary=dict(Counter(item.category for item in imported_artifacts)),
             evidence_summary=dict(Counter(item.category for item in artifacts)),
             selected_artifacts=[
                 ArtifactSnapshot(
@@ -363,19 +510,7 @@ class ReportService:
                 )
                 for item in selected
             ],
-            timeline=[
-                TimelineSnapshot(
-                    artifact_id=item.artifact_id,
-                    category=item.category,
-                    timestamp_type=item.timestamp_type,
-                    event_time=item.event_time,
-                    timezone_basis=item.timezone_basis,
-                    confidence=item.confidence,
-                    summary=item.summary,
-                    event_hash=item.event_hash,
-                )
-                for item in timeline
-            ],
+            timeline=timeline_snapshots[:500],
             hash_manifest=[
                 HashManifestItem(
                     evidence_file_id=item.id,
@@ -387,13 +522,20 @@ class ReportService:
                 )
                 for item in evidence
             ],
-            integrity_summary=dict(Counter(item.status for item in verification)),
+            integrity_summary=dict(
+                Counter(
+                    [item.status for item in verification]
+                    + [item.status for item in source_verifications]
+                )
+            ),
             custody=[
                 CustodySnapshot(
                     sequence=item.sequence,
                     event_type=item.event_type,
                     actor_id=item.actor_id,
                     evidence_file_id=item.evidence_file_id,
+                    evidence_source_id=item.evidence_source_id,
+                    parser_run_id=item.parser_run_id,
                     report_id=item.report_id,
                     purpose=item.purpose,
                     event_hash=item.event_hash,
@@ -405,6 +547,16 @@ class ReportService:
                 f"Evidence {item.id}: {item.error_code or item.status}"
                 for item in evidence
                 if item.status not in {"completed"}
+            ]
+            + [
+                f"Evidence source {item.id}: {item.error_code or item.status}"
+                for item in evidence_sources
+                if item.status == "failed"
+            ]
+            + [
+                f"Parser {item.parser_id} ({item.id}): {item.error_code or item.status}"
+                for item in parser_runs
+                if item.status == "failed"
             ],
             limitations=[
                 "ADB is not a hardware write blocker and may cause device-side effects.",
@@ -412,12 +564,20 @@ class ReportService:
                 "Private application data is unavailable unless separately and lawfully obtained.",
                 "Device-side timestamps are not claimed when the source did not expose them.",
                 "A local hash chain is tamper-evident, not tamper-proof.",
+                "Imported-source sealing proves subsequent byte identity, not how the source "
+                "was originally acquired.",
+                "Third-party parser output is derived evidence and requires examiner validation "
+                "against the sealed source and pinned parser version.",
             ],
             methodology=[
                 "Case-authorized, capability-gated collection through predefined ADB operations.",
                 "Files were sealed into contained local storage and hashed with SHA-256.",
                 "Artifacts were normalized by versioned parsers; source evidence was not modified.",
                 "Only active investigator bookmarks are included in the selected-artifact export.",
+                "Imported masters were chunk-hashed, sealed, and examined through "
+                "SHA-256-verified working copies.",
+                "Imported Android artifacts retain parser version, source locator, run hash, "
+                "and confidence provenance.",
             ],
             tool_version=__version__,
         )
@@ -438,6 +598,139 @@ def _acquisition_snapshot(
         inventory_started_at=inventory.started_at if inventory else None,
         inventory_completed_at=inventory.completed_at if inventory else None,
     )
+
+
+def _evidence_source_snapshot(
+    source: EvidenceSourceRecord,
+    *,
+    working_copies: list[EvidenceWorkingCopyRecord],
+    verifications: list[EvidenceSourceVerificationRecord],
+    inspections: list[EvidenceSourceInspectionRecord],
+    parser_runs: list[EvidenceParserRunRecord],
+    tool_outputs: list[EvidenceToolOutputRecord],
+    parser_audits: list[AuditLogRecord],
+) -> EvidenceSourceSnapshot:
+    return EvidenceSourceSnapshot(
+        id=source.id,
+        display_name=source.display_name,
+        source_name=source.source_name,
+        source_type=source.source_type,
+        acquisition_level=source.acquisition_level,
+        status=source.status,
+        container_format=source.container_format,
+        size_bytes=source.size_bytes,
+        sha256=source.sha256,
+        chunks_sha256=source.chunks_sha256,
+        manifest_sha256=source.manifest_sha256,
+        chunk_size_bytes=source.chunk_size_bytes,
+        chunk_count=source.chunk_count,
+        read_only_applied=source.read_only_applied,
+        validation_state=source.validation_state,
+        limitations=_json_string_list(source.limitations_json),
+        tool_version=source.tool_version,
+        sealed_at=source.sealed_at,
+        created_at=source.created_at,
+        working_copies=[
+            EvidenceWorkingCopySnapshot(
+                id=item.id,
+                status=item.status,
+                size_bytes=item.size_bytes,
+                expected_source_sha256=item.expected_source_sha256,
+                observed_sha256=item.observed_sha256,
+                copy_method=item.copy_method,
+                verified_at=item.verified_at,
+                created_at=item.created_at,
+            )
+            for item in working_copies
+            if item.evidence_source_id == source.id
+        ],
+        verifications=[
+            EvidenceSourceVerificationSnapshot(
+                id=item.id,
+                target_type=item.target_type,
+                working_copy_id=item.working_copy_id,
+                status=item.status,
+                expected_sha256=item.expected_sha256,
+                observed_sha256=item.observed_sha256,
+                size_bytes=item.size_bytes,
+                verification_hash=item.verification_hash,
+                tool_version=item.tool_version,
+                verified_at=item.verified_at,
+            )
+            for item in verifications
+            if item.evidence_source_id == source.id
+        ],
+        inspections=[
+            EvidenceInspectionSnapshot(
+                id=item.id,
+                working_copy_id=item.working_copy_id,
+                detected_type=item.detected_type,
+                confidence=item.confidence,
+                encryption_state=item.encryption_state,
+                signature=_json_object(item.signature_json),
+                warnings=_json_string_list(item.warnings_json),
+                detector_version=item.detector_version,
+                inspection_hash=item.inspection_hash,
+                inspected_at=item.inspected_at,
+            )
+            for item in inspections
+            if item.evidence_source_id == source.id
+        ],
+        parser_runs=[
+            EvidenceParserRunSnapshot(
+                id=item.id,
+                working_copy_id=item.working_copy_id,
+                parser_id=item.parser_id,
+                parser_version=item.parser_version,
+                status=item.status,
+                artifact_count=item.artifact_count,
+                source_sha256=item.source_sha256,
+                run_hash=item.run_hash,
+                error_code=item.error_code,
+                execution_detail=_parser_execution_detail(parser_audits, item.id),
+                completed_at=item.completed_at,
+            )
+            for item in parser_runs
+            if item.evidence_source_id == source.id
+        ],
+        tool_outputs=[
+            EvidenceToolOutputSnapshot(
+                id=item.id,
+                parser_run_id=item.parser_run_id,
+                relative_path=item.relative_path,
+                size_bytes=item.size_bytes,
+                sha256=item.sha256,
+                created_at=item.created_at,
+            )
+            for item in tool_outputs
+            if item.evidence_source_id == source.id
+        ],
+    )
+
+
+def _json_string_list(value: str) -> list[str]:
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return ["Stored metadata could not be decoded."]
+    if not isinstance(parsed, list):
+        return ["Stored metadata was not a list."]
+    return [str(item) for item in parsed]
+
+
+def _json_object(value: str) -> dict[str, object]:
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return {"decode_error": True}
+    return parsed if isinstance(parsed, dict) else {"invalid_shape": True}
+
+
+def _parser_execution_detail(audits: list[AuditLogRecord], parser_run_id: str) -> dict[str, object]:
+    matching = [item for item in audits if item.object_id == parser_run_id]
+    if not matching:
+        return {}
+    return _json_object(matching[-1].detail_json)
 
 
 def _canonical_bytes(snapshot: ReportSnapshot) -> bytes:

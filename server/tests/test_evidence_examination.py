@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from collections.abc import Iterator
 from io import BytesIO
@@ -23,6 +24,7 @@ from forensix_server.evidence_twin import (
     EvidenceTwinError,
     EvidenceTwinService,
 )
+from forensix_server.reporting import ReportService
 
 
 @pytest.fixture
@@ -156,6 +158,19 @@ def test_sms_parser_materializes_imported_source_timeline_claim(
     assert timeline.parser_run_id == result.run.id
     assert timeline.category == "communication"
     assert timeline.timestamp_type == "parsed_artifact_event_time"
+
+    report = ReportService().generate(database, principal, case_id)
+    json_output = next(item for item in report.outputs if item.format == "json")
+    report_payload = json.loads(
+        (database.data_dir / "evidence" / json_output.storage_key).read_text(encoding="utf-8")
+    )
+    assert report_payload["evidence_sources"][0]["sha256"] == source.sha256
+    assert report_payload["evidence_sources"][0]["working_copies"][0]["status"] == "ready"
+    assert report_payload["evidence_sources"][0]["parser_runs"][0]["parser_id"] == (
+        "android.telephony.sms"
+    )
+    assert report_payload["imported_artifacts"][0]["subtype"] == "sms"
+    assert report_payload["timeline"][0]["source_artifact_id"] == result.artifacts[0].id
 
 
 def test_incompatible_parser_selection_is_rejected(database: Database, tmp_path: Path) -> None:

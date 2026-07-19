@@ -32,19 +32,24 @@ def render_csv(snapshot: ReportSnapshot) -> bytes:
     writer = csv.writer(output, lineterminator="\r\n")
     writer.writerow(
         (
+            "record_origin",
             "artifact_id",
-            "evidence_file_id",
+            "evidence_reference_id",
             "title",
             "category",
+            "subtype",
             "status",
-            "source_relative_path",
+            "source_locator",
             "detected_mime",
             "size_bytes",
             "sha256",
-            "collected_at",
+            "event_or_collected_at",
+            "parser",
+            "confidence",
             "bookmark_reason",
             "tags",
             "analyst_notes",
+            "summary",
         )
     )
     for artifact in snapshot.selected_artifacts:
@@ -52,19 +57,54 @@ def render_csv(snapshot: ReportSnapshot) -> bytes:
             tuple(
                 neutralize_csv(value)
                 for value in (
+                    "adb_acquired_file",
                     artifact.id,
                     artifact.evidence_file_id,
                     artifact.title,
                     artifact.category,
+                    "file",
                     artifact.status,
                     artifact.source_relative_path,
                     artifact.detected_mime,
                     str(artifact.size_bytes),
                     artifact.sha256,
                     artifact.collected_at.isoformat(),
+                    "forensix.file_normalizer",
+                    "high",
                     artifact.bookmark_reason or "",
                     "; ".join(artifact.tags),
                     " | ".join(artifact.analyst_notes),
+                    "",
+                )
+            )
+        )
+    for imported_artifact in snapshot.imported_artifacts:
+        writer.writerow(
+            tuple(
+                neutralize_csv(value)
+                for value in (
+                    "imported_source_parser",
+                    imported_artifact.id,
+                    imported_artifact.evidence_source_id,
+                    imported_artifact.title,
+                    imported_artifact.category,
+                    imported_artifact.subtype,
+                    imported_artifact.status,
+                    imported_artifact.source_locator,
+                    "",
+                    "",
+                    imported_artifact.artifact_hash,
+                    (
+                        imported_artifact.event_time.isoformat()
+                        if imported_artifact.event_time
+                        else ""
+                    ),
+                    f"{imported_artifact.parser_id}@{imported_artifact.parser_version}",
+                    imported_artifact.confidence,
+                    "",
+                    "",
+                    "",
+                    imported_artifact.summary,
                 )
             )
         )
@@ -181,7 +221,52 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
             )
         )
         story.append(Spacer(1, 3 * mm))
-    _section(story, "4. Evidence summary", styles)
+    _section(story, "4. Evidence Twin imported sources", styles)
+    if not snapshot.evidence_sources:
+        story.append(Paragraph("No imported evidence source is recorded.", styles["body"]))
+    for source in snapshot.evidence_sources:
+        story.append(
+            _key_value_table(
+                (
+                    ("Source", source.display_name),
+                    ("Declared origin", source.source_type),
+                    ("Acquisition classification", source.acquisition_level),
+                    ("Container / status", f"{source.container_format} / {source.status}"),
+                    ("Size", str(source.size_bytes or "Unknown")),
+                    ("Master SHA-256", source.sha256 or "Not available"),
+                    ("Chunk ledger SHA-256", source.chunks_sha256 or "Not available"),
+                    ("Manifest SHA-256", source.manifest_sha256 or "Not available"),
+                    ("Working copies", str(len(source.working_copies))),
+                    ("Verification records", str(len(source.verifications))),
+                    ("Parser runs", str(len(source.parser_runs))),
+                    ("Sealed tool outputs", str(len(source.tool_outputs))),
+                ),
+                styles,
+            )
+        )
+        for limitation in source.limitations:
+            story.append(Paragraph(f"- {escape(limitation)}", styles["small"]))
+        if source.parser_runs:
+            parser_rows = [["Parser", "Status", "Artifacts", "Run / program hash"]]
+            parser_rows.extend(
+                [
+                    f"{run.parser_id}@{run.parser_version}",
+                    run.status,
+                    str(run.artifact_count),
+                    (f"{run.run_hash} / {run.execution_detail.get('program_sha256', 'built-in')}"),
+                ]
+                for run in source.parser_runs
+            )
+            story.append(_data_table(parser_rows, (52 * mm, 22 * mm, 20 * mm, 78 * mm), styles))
+        if source.tool_outputs:
+            output_rows = [["Derived output", "Size", "SHA-256"]]
+            output_rows.extend(
+                [item.relative_path, str(item.size_bytes), item.sha256]
+                for item in source.tool_outputs[:100]
+            )
+            story.append(_data_table(output_rows, (62 * mm, 24 * mm, 86 * mm), styles))
+        story.append(Spacer(1, 3 * mm))
+    _section(story, "5. Evidence summary", styles)
     story.append(
         _key_value_table(
             tuple(
@@ -204,7 +289,22 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
         story.append(
             Paragraph("No active bookmarks were selected for this report.", styles["body"])
         )
-    _section(story, "5. Timeline summary", styles)
+    story.append(Paragraph("Imported-source parsed artifacts", styles["subheading"]))
+    if snapshot.imported_artifacts:
+        imported_rows = [["Title", "Type", "Confidence", "Parser"]]
+        imported_rows.extend(
+            [
+                item.title,
+                item.subtype,
+                item.confidence,
+                f"{item.parser_id}@{item.parser_version}",
+            ]
+            for item in snapshot.imported_artifacts[:100]
+        )
+        story.append(_data_table(imported_rows, (58 * mm, 30 * mm, 24 * mm, 60 * mm), styles))
+    else:
+        story.append(Paragraph("No imported-source artifacts are recorded.", styles["body"]))
+    _section(story, "6. Timeline summary", styles)
     if snapshot.timeline:
         rows = [["Time", "Type", "Confidence", "Summary"]]
         rows.extend(
@@ -214,7 +314,7 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
         story.append(_data_table(rows, (42 * mm, 38 * mm, 24 * mm, 68 * mm), styles))
     else:
         story.append(Paragraph("No timeline events are recorded.", styles["body"]))
-    _section(story, "6. Integrity and custody", styles)
+    _section(story, "7. Integrity and custody", styles)
     story.append(
         _key_value_table(
             tuple(
@@ -226,9 +326,9 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
         )
     )
     story.append(Paragraph(f"Custody events included: {len(snapshot.custody)}", styles["body"]))
-    _section(story, "7. Methodology", styles)
+    _section(story, "8. Methodology", styles)
     story.extend(Paragraph(f"- {escape(item)}", styles["body"]) for item in snapshot.methodology)
-    _section(story, "8. Errors and limitations", styles)
+    _section(story, "9. Errors and limitations", styles)
     if snapshot.errors:
         story.append(Paragraph("Recorded errors", styles["subheading"]))
         story.extend(Paragraph(f"- {escape(item)}", styles["error"]) for item in snapshot.errors)

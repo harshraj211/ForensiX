@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FrozenModel(BaseModel):
@@ -71,7 +71,9 @@ class ArtifactSnapshot(FrozenModel):
 
 
 class TimelineSnapshot(FrozenModel):
-    artifact_id: str
+    artifact_id: str | None
+    source_artifact_id: str | None
+    parser_run_id: str | None
     category: str
     timestamp_type: str
     event_time: datetime
@@ -95,10 +97,116 @@ class CustodySnapshot(FrozenModel):
     event_type: str
     actor_id: str
     evidence_file_id: str | None
+    evidence_source_id: str | None
+    parser_run_id: str | None
     report_id: str | None
     purpose: str | None
     event_hash: str
     created_at: datetime
+
+
+class EvidenceWorkingCopySnapshot(FrozenModel):
+    id: str
+    status: str
+    size_bytes: int | None
+    expected_source_sha256: str
+    observed_sha256: str | None
+    copy_method: str
+    verified_at: datetime | None
+    created_at: datetime
+
+
+class EvidenceSourceVerificationSnapshot(FrozenModel):
+    id: str
+    target_type: str
+    working_copy_id: str | None
+    status: str
+    expected_sha256: str
+    observed_sha256: str | None
+    size_bytes: int | None
+    verification_hash: str
+    tool_version: str
+    verified_at: datetime
+
+
+class EvidenceInspectionSnapshot(FrozenModel):
+    id: str
+    working_copy_id: str
+    detected_type: str
+    confidence: str
+    encryption_state: str
+    signature: dict[str, Any]
+    warnings: list[str]
+    detector_version: str
+    inspection_hash: str
+    inspected_at: datetime
+
+
+class EvidenceParserRunSnapshot(FrozenModel):
+    id: str
+    working_copy_id: str
+    parser_id: str
+    parser_version: str
+    status: str
+    artifact_count: int
+    source_sha256: str
+    run_hash: str
+    error_code: str | None
+    execution_detail: dict[str, Any]
+    completed_at: datetime
+
+
+class EvidenceToolOutputSnapshot(FrozenModel):
+    id: str
+    parser_run_id: str
+    relative_path: str
+    size_bytes: int
+    sha256: str
+    created_at: datetime
+
+
+class EvidenceSourceSnapshot(FrozenModel):
+    id: str
+    display_name: str
+    source_name: str
+    source_type: str
+    acquisition_level: str
+    status: str
+    container_format: str
+    size_bytes: int | None
+    sha256: str | None
+    chunks_sha256: str | None
+    manifest_sha256: str | None
+    chunk_size_bytes: int
+    chunk_count: int
+    read_only_applied: bool
+    validation_state: str
+    limitations: list[str]
+    tool_version: str
+    sealed_at: datetime | None
+    created_at: datetime
+    working_copies: list[EvidenceWorkingCopySnapshot]
+    verifications: list[EvidenceSourceVerificationSnapshot]
+    inspections: list[EvidenceInspectionSnapshot]
+    parser_runs: list[EvidenceParserRunSnapshot]
+    tool_outputs: list[EvidenceToolOutputSnapshot]
+
+
+class ImportedArtifactSnapshot(FrozenModel):
+    id: str
+    evidence_source_id: str
+    parser_run_id: str
+    category: str
+    subtype: str
+    title: str
+    summary: str
+    event_time: datetime | None
+    source_locator: str
+    status: str
+    confidence: str
+    parser_id: str
+    parser_version: str
+    artifact_hash: str
 
 
 class ReportSnapshot(FrozenModel):
@@ -110,6 +218,9 @@ class ReportSnapshot(FrozenModel):
     case: CaseSnapshot
     devices: list[DeviceSnapshot]
     acquisitions: list[AcquisitionSnapshot]
+    evidence_sources: list[EvidenceSourceSnapshot] = Field(default_factory=list)
+    imported_artifacts: list[ImportedArtifactSnapshot] = Field(default_factory=list)
+    imported_evidence_summary: dict[str, int] = Field(default_factory=dict)
     evidence_summary: dict[str, int]
     selected_artifacts: list[ArtifactSnapshot]
     timeline: list[TimelineSnapshot]

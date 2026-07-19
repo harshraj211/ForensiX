@@ -46,7 +46,7 @@ def test_report_renderers_emit_stable_outputs() -> None:
     assert first == second
     assert first.startswith(b"%PDF-")
     assert b'"schema_version":"1.0.0"' in render_json(snapshot).replace(b" ", b"")
-    assert render_csv(snapshot).startswith(b"artifact_id,evidence_file_id")
+    assert render_csv(snapshot).startswith(b"record_origin,artifact_id,evidence_reference_id")
 
 
 def test_csv_formula_prefixes_are_neutralized() -> None:
