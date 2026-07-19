@@ -1,16 +1,28 @@
+import tarfile
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from sqlalchemy import select
 
-from forensix_forensic.adb import MockAdbClient, MockAdbScenario
+from forensix_forensic.adb import (
+    MockAdbClient,
+    MockAdbScenario,
+    RootedCollectionProfile,
+)
 from forensix_forensic.capabilities import DeviceCapabilityAssessor
+from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import Principal, RoleName
 from forensix_server.auth.domain import ROLE_PERMISSIONS
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseService
-from forensix_server.db import AuditLogRecord, Database, RootAccessProbeRecord, UserRecord
+from forensix_server.db import (
+    AuditLogRecord,
+    CustodyEventRecord,
+    Database,
+    RootAccessProbeRecord,
+    UserRecord,
+)
 from forensix_server.rooted import RootedDeviceError, RootedDeviceService
 
 
@@ -86,4 +98,80 @@ async def test_root_probe_rejects_transport_not_bound_to_case_device(database: D
             case_id,
             device_id,
             serial="DIFFERENT-DEVICE",
+        )
+
+
+@pytest.mark.asyncio
+async def test_rooted_provider_capture_is_sealed_case_evidence(database: Database) -> None:
+    principal, case_id, device_id = await _case_device(database)
+    adb_client = MockAdbClient(MockAdbScenario.ROOTED)
+    service = RootedDeviceService()
+    probe = await service.probe_access(
+        database,
+        adb_client,
+        principal,
+        case_id,
+        device_id,
+        serial="FX-DEMO-001",
+    )
+
+    source = await service.capture_provider_bundle(
+        database,
+        adb_client,
+        principal,
+        case_id,
+        device_id,
+        serial="FX-DEMO-001",
+        probe_id=probe.id,
+        profile=RootedCollectionProfile.ANDROID_PROVIDERS,
+        side_effects_acknowledged=True,
+    )
+
+    assert source.source_type == "rooted_filesystem"
+    assert source.acquisition_level == "filesystem"
+    assert source.device_id == device_id
+    assert source.status == "sealed"
+    assert source.container_format == "tar"
+    assert source.sha256 is not None
+    assert source.sealed_storage_key is not None
+    master = EvidenceStore(database.data_dir / "evidence").resolve(
+        source.sealed_storage_key, require_file=True
+    )
+    with tarfile.open(master, "r:") as archive:
+        assert any(name.endswith("contacts2.db") for name in archive.getnames())
+    with database.session() as session:
+        audits = list(
+            session.scalars(
+                select(AuditLogRecord).where(
+                    AuditLogRecord.event_type == "rooted_provider_bundle_captured"
+                )
+            )
+        )
+        custody = list(
+            session.scalars(
+                select(CustodyEventRecord).where(
+                    CustodyEventRecord.evidence_source_id == source.id
+                )
+            )
+        )
+    assert len(audits) == 1
+    assert "FX-DEMO-001" not in audits[0].detail_json
+    assert custody
+
+
+@pytest.mark.asyncio
+async def test_rooted_capture_requires_acknowledgement(database: Database) -> None:
+    principal, case_id, device_id = await _case_device(database)
+
+    with pytest.raises(RootedDeviceError, match="acknowledged"):
+        await RootedDeviceService().capture_provider_bundle(
+            database,
+            MockAdbClient(MockAdbScenario.ROOTED),
+            principal,
+            case_id,
+            device_id,
+            serial="FX-DEMO-001",
+            probe_id="00000000-0000-0000-0000-000000000000",
+            profile=RootedCollectionProfile.ANDROID_PROVIDERS,
+            side_effects_acknowledged=False,
         )

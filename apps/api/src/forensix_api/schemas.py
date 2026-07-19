@@ -83,6 +83,13 @@ class RootAccessProbeResponse(BaseModel):
     probed_at: datetime
 
 
+class RootedCaptureRequest(BaseModel):
+    serial: str = Field(min_length=1, max_length=255)
+    root_probe_id: str = Field(min_length=36, max_length=36)
+    profile: Literal["android_providers"]
+    side_effects_acknowledged: Literal[True]
+
+
 class DeviceCapabilityAssessmentResponse(BaseModel):
     assessment_id: str
     case_id: str | None = None

@@ -75,6 +75,73 @@ class EvidenceTwinService:
         declared_size_bytes: int | None = None,
         chunk_size_bytes: int = DEFAULT_EVIDENCE_CHUNK_SIZE,
     ) -> EvidenceSourceRecord:
+        return self._seal_stream(
+            database,
+            principal,
+            case_id,
+            stream,
+            source_name=source_name,
+            display_name=display_name,
+            declared_size_bytes=declared_size_bytes,
+            chunk_size_bytes=chunk_size_bytes,
+            source_type=EvidenceSourceType.IMPORTED_FILE,
+            acquisition_level=AcquisitionLevel.FILESYSTEM,
+            device_id=None,
+            limitations=(
+                "Imported evidence is not claimed to have been acquired by ForensiX.",
+                "Source acquisition method and device-side effects require examiner review.",
+            ),
+        )
+
+    def seal_rooted_stream(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        device_id: str,
+        stream: BinaryIO,
+        *,
+        source_name: str,
+        display_name: str,
+        declared_size_bytes: int,
+        chunk_size_bytes: int = DEFAULT_EVIDENCE_CHUNK_SIZE,
+    ) -> EvidenceSourceRecord:
+        """Seal a bundle produced only by the controlled rooted acquisition service."""
+        return self._seal_stream(
+            database,
+            principal,
+            case_id,
+            stream,
+            source_name=source_name,
+            display_name=display_name,
+            declared_size_bytes=declared_size_bytes,
+            chunk_size_bytes=chunk_size_bytes,
+            source_type=EvidenceSourceType.ROOTED_FILESYSTEM,
+            acquisition_level=AcquisitionLevel.FILESYSTEM,
+            device_id=device_id,
+            limitations=(
+                "Rooted filesystem collection can create device logs and root-manager activity.",
+                "This bounded provider bundle is not a physical or bit-for-bit device image.",
+                "Encrypted application data may remain unavailable or require separate keys.",
+            ),
+        )
+
+    def _seal_stream(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        stream: BinaryIO,
+        *,
+        source_name: str,
+        display_name: str | None,
+        declared_size_bytes: int | None,
+        chunk_size_bytes: int,
+        source_type: EvidenceSourceType,
+        acquisition_level: AcquisitionLevel,
+        device_id: str | None,
+        limitations: tuple[str, ...],
+    ) -> EvidenceSourceRecord:
         self._validate_chunk_size(chunk_size_bytes)
         safe_source_name = _safe_source_name(source_name)
         safe_display_name = _display_name(display_name or safe_source_name)
@@ -92,6 +159,10 @@ class EvidenceTwinService:
             display_name=safe_display_name,
             container_format=container_format,
             chunk_size_bytes=chunk_size_bytes,
+            source_type=source_type,
+            acquisition_level=acquisition_level,
+            device_id=device_id,
+            limitations=limitations,
         )
         extension = _storage_extension(container_format)
         base_key = f"c/{case_id[:8]}/tw/{source.id}"
@@ -139,7 +210,7 @@ class EvidenceTwinService:
             master = master_writer.seal()
             chunks = chunks_writer.seal()
             manifest_payload = {
-                "acquisition_level": AcquisitionLevel.FILESYSTEM.value,
+                "acquisition_level": acquisition_level.value,
                 "case_id": case_id,
                 "chunk_count": chunk_count,
                 "chunk_size_bytes": chunk_size_bytes,
@@ -148,17 +219,15 @@ class EvidenceTwinService:
                 "container_format": container_format.value,
                 "created_at": source.created_at.astimezone(UTC).isoformat(),
                 "created_by": principal.user_id,
+                "device_id": device_id,
                 "evidence_source_id": source.id,
-                "limitations": [
-                    "Imported evidence is not claimed to have been acquired by ForensiX.",
-                    "Source acquisition method and device-side effects require examiner review.",
-                ],
+                "limitations": list(limitations),
                 "master_sha256": master.sha256,
                 "master_storage_key": master.storage_key,
                 "schema_version": "1.0.0",
                 "size_bytes": master.size_bytes,
                 "source_name": safe_source_name,
-                "source_type": EvidenceSourceType.IMPORTED_FILE.value,
+                "source_type": source_type.value,
                 "tool_version": __version__,
             }
             with store.open_writer(manifest_key) as manifest_writer:
@@ -370,6 +439,10 @@ class EvidenceTwinService:
         display_name: str,
         container_format: EvidenceContainerFormat,
         chunk_size_bytes: int,
+        source_type: EvidenceSourceType,
+        acquisition_level: AcquisitionLevel,
+        device_id: str | None,
+        limitations: tuple[str, ...],
     ) -> EvidenceSourceRecord:
         with database.session() as session:
             case = CaseService().get(session, principal, case_id)
@@ -382,10 +455,10 @@ class EvidenceTwinService:
             now = datetime.now(UTC)
             source = EvidenceSourceRecord(
                 case_id=case_id,
-                device_id=None,
+                device_id=device_id,
                 created_by=principal.user_id,
-                source_type=EvidenceSourceType.IMPORTED_FILE.value,
-                acquisition_level=AcquisitionLevel.FILESYSTEM.value,
+                source_type=source_type.value,
+                acquisition_level=acquisition_level.value,
                 status="pending",
                 display_name=display_name,
                 source_name=source_name,
@@ -400,14 +473,12 @@ class EvidenceTwinService:
                 chunk_size_bytes=chunk_size_bytes,
                 chunk_count=0,
                 read_only_applied=False,
-                validation_state="import_origin_unverified",
-                limitations_json=_canonical_json(
-                    [
-                        "Imported evidence is not claimed to have been acquired by ForensiX.",
-                        "Source acquisition method and device-side effects require "
-                        "examiner review.",
-                    ]
+                validation_state=(
+                    "import_origin_unverified"
+                    if source_type is EvidenceSourceType.IMPORTED_FILE
+                    else "acquisition_pending_verification"
                 ),
+                limitations_json=_canonical_json(list(limitations)),
                 tool_version=__version__,
                 error_code=None,
                 error_message=None,
@@ -420,8 +491,11 @@ class EvidenceTwinService:
                 CaseEventRecord(
                     case_id=case_id,
                     actor_id=principal.user_id,
-                    event_type="evidence_source_import_started",
-                    safe_detail=f"evidence_source_id={source.id};format={container_format.value}",
+                    event_type="evidence_source_registration_started",
+                    safe_detail=(
+                        f"evidence_source_id={source.id};format={container_format.value};"
+                        f"source_type={source_type.value}"
+                    ),
                     created_at=now,
                 )
             )
@@ -429,10 +503,15 @@ class EvidenceTwinService:
                 session,
                 case_id=case_id,
                 actor_id=principal.user_id,
-                event_type="evidence_source_import_started",
+                event_type="evidence_source_registration_started",
                 object_type="evidence_source",
                 object_id=source.id,
-                detail={"container_format": container_format.value},
+                detail={
+                    "acquisition_level": acquisition_level.value,
+                    "container_format": container_format.value,
+                    "device_id": device_id,
+                    "source_type": source_type.value,
+                },
                 created_at=now,
             )
             session.flush()
@@ -469,7 +548,11 @@ class EvidenceTwinService:
             source.manifest_sha256 = manifest_sha256
             source.chunk_count = chunk_count
             source.read_only_applied = read_only
-            source.validation_state = "sealed_unverified_import"
+            source.validation_state = (
+                "sealed_unverified_import"
+                if source.source_type == EvidenceSourceType.IMPORTED_FILE.value
+                else "sealed_unverified_acquisition"
+            )
             source.sealed_at = now
             session.add(
                 CaseEventRecord(
@@ -507,6 +590,9 @@ class EvidenceTwinService:
                 purpose=(
                     "Imported source sealed with chunk, master, and manifest SHA-256; "
                     "origin remains examiner-declared."
+                    if source.source_type == EvidenceSourceType.IMPORTED_FILE.value
+                    else "Controlled rooted provider bundle sealed with chunk, master, and "
+                    "manifest SHA-256; this is not a physical device image."
                 ),
             )
             session.flush()

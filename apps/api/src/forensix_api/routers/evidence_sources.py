@@ -49,7 +49,7 @@ def list_evidence_sources(
     database: Annotated[Database, Depends(get_database)],
 ) -> list[EvidenceSourceResponse]:
     return [
-        _source_response(item)
+        source_response(item)
         for item in EvidenceTwinService().list_sources(database, authenticated.principal, case_id)
     ]
 
@@ -78,7 +78,7 @@ def import_evidence_source(
         )
     finally:
         source.file.close()
-    return _source_response(record)
+    return source_response(record)
 
 
 @router.get("/{source_id}", response_model=EvidenceSourceResponse)
@@ -88,7 +88,7 @@ def get_evidence_source(
     authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
     database: Annotated[Database, Depends(get_database)],
 ) -> EvidenceSourceResponse:
-    return _source_response(
+    return source_response(
         EvidenceTwinService().get_source(database, authenticated.principal, case_id, source_id)
     )
 
@@ -305,7 +305,7 @@ def list_evidence_tool_outputs(
     ]
 
 
-def _source_response(record: EvidenceSourceRecord) -> EvidenceSourceResponse:
+def source_response(record: EvidenceSourceRecord) -> EvidenceSourceResponse:
     limitations = json.loads(record.limitations_json)
     return EvidenceSourceResponse(
         id=record.id,

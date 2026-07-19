@@ -814,6 +814,26 @@ export function probeRootAccess(
   );
 }
 
+export function captureRootedProviderBundle(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+  rootProbeId: string,
+): Promise<EvidenceSource> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/rooted-captures`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        root_probe_id: rootProbeId,
+        profile: "android_providers",
+        side_effects_acknowledged: true,
+      }),
+    },
+  );
+}
+
 export function listCaseDevices(caseId: string): Promise<CaseDevice[]> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/devices`);
 }

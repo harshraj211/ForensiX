@@ -458,6 +458,30 @@ def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path:
             json={"serial": "FX-DEMO-001", "side_effects_acknowledged": True},
         )
         listed = client.get(endpoint)
+        capture_endpoint = (
+            f"/api/v1/cases/{case['id']}/devices/"
+            f"{assessment['case_device_id']}/rooted-captures"
+        )
+        missing_capture_ack = client.post(
+            capture_endpoint,
+            headers=headers,
+            json={
+                "serial": "FX-DEMO-001",
+                "root_probe_id": response.json()["id"],
+                "profile": "android_providers",
+                "side_effects_acknowledged": False,
+            },
+        )
+        capture = client.post(
+            capture_endpoint,
+            headers=headers,
+            json={
+                "serial": "FX-DEMO-001",
+                "root_probe_id": response.json()["id"],
+                "profile": "android_providers",
+                "side_effects_acknowledged": True,
+            },
+        )
 
     assert missing_ack.status_code == 422
     assert response.status_code == 201
@@ -466,6 +490,13 @@ def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path:
     assert len(response.json()["probe_hash"]) == 64
     assert listed.status_code == 200
     assert listed.json()[0]["id"] == response.json()["id"]
+    assert missing_capture_ack.status_code == 422
+    assert capture.status_code == 201
+    assert capture.json()["source_type"] == "rooted_filesystem"
+    assert capture.json()["acquisition_level"] == "filesystem"
+    assert capture.json()["status"] == "sealed"
+    assert capture.json()["device_id"] == assessment["case_device_id"]
+    assert "bit-for-bit" in " ".join(capture.json()["limitations"])
 
 
 def test_assessment_revalidates_transport_state(tmp_path: Path) -> None:

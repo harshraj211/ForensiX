@@ -23,6 +23,7 @@ import { caseKeys } from "../cases/caseKeys";
 import {
   ApiError,
   assessDevice,
+  captureRootedProviderBundle,
   detectDevices,
   getCase,
   listCaseDevices,
@@ -448,6 +449,7 @@ function DeviceCard({
 function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessment }) {
   const entries = Object.entries(assessment.capabilities);
   const [rootAcknowledged, setRootAcknowledged] = useState(false);
+  const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
   const rootProbe = useMutation({
     mutationFn: () => {
       if (!assessment.case_id || !assessment.case_device_id) {
@@ -457,6 +459,22 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
         assessment.case_id,
         assessment.case_device_id,
         assessment.serial,
+      );
+    },
+    onSuccess: () => {
+      setCaptureAcknowledged(false);
+    },
+  });
+  const rootedCapture = useMutation({
+    mutationFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+        throw new Error("A current rooted-access proof is required for this collection.");
+      }
+      return captureRootedProviderBundle(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+        rootProbe.data.id,
       );
     },
   });
@@ -581,6 +599,62 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
               <p className="mt-2 font-mono text-[10px] opacity-55">
                 Proof {rootProbe.data.probe_hash} · expires {new Date(rootProbe.data.expires_at).toLocaleTimeString()}
               </p>
+            </div>
+          )}
+          {rootProbe.data?.status === "available" && (
+            <div className="mt-4 border-t border-fuchsia-200/10 pt-4">
+              <p className="text-xs font-semibold text-white">Bounded provider collection</p>
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                Streams only fixed contacts, telephony, and calendar provider database directories
+                into a TAR, then immediately seals it as Evidence Twin evidence. This is not a
+                physical or bit-for-bit device image.
+              </p>
+              <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-fuchsia-100/70">
+                <input
+                  type="checkbox"
+                  checked={captureAcknowledged}
+                  onChange={(event) => {
+                    setCaptureAcknowledged(event.target.checked);
+                  }}
+                  className="mt-1 accent-fuchsia-300"
+                />
+                I authorize this bounded rooted collection and acknowledge device logs and
+                root-manager activity may be created.
+              </label>
+              <button
+                type="button"
+                disabled={!captureAcknowledged || rootedCapture.isPending}
+                onClick={() => {
+                  rootedCapture.mutate();
+                }}
+                className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg bg-fuchsia-200 px-4 text-xs font-semibold text-[#12091a] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {rootedCapture.isPending ? (
+                  <LoaderCircle size={14} className="animate-spin" />
+                ) : (
+                  <HardDrive size={14} />
+                )}
+                {rootedCapture.isPending ? "Capturing and sealing…" : "Capture provider bundle"}
+              </button>
+              {rootedCapture.isError && (
+                <div className="mt-3">
+                  <ErrorState error={rootedCapture.error} />
+                </div>
+              )}
+              {rootedCapture.data && (
+                <div className="mt-4 rounded-md border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-100">
+                  <p className="font-semibold">Evidence Twin source sealed</p>
+                  <p className="mt-1 font-mono text-[10px] opacity-65">
+                    SHA-256 {rootedCapture.data.sha256}
+                  </p>
+                  <Link
+                    to={`/cases/${assessment.case_id}/evidence-twin`}
+                    className="mt-3 inline-flex font-semibold text-cyan-200 underline decoration-cyan-300/30 underline-offset-4"
+                  >
+                    Open Evidence Twin workspace
+                  </Link>
+                </div>
+              )}
             </div>
           )}
         </div>

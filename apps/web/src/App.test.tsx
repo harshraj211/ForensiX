@@ -500,6 +500,60 @@ describe("device readiness", () => {
           }),
         );
       }
+      if (url === "/api/v1/cases/case-1/devices/device-1/root-probes") {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              id: "probe-0000-0000-0000-000000000001",
+              case_id: "case-1",
+              device_id: "device-1",
+              probed_by: "user-1",
+              status: "available",
+              uid: 0,
+              identity: "uid=0(root) gid=0(root)",
+              reason_code: "ROOT_UID_CONFIRMED",
+              potential_side_effect: "Root manager activity may be created.",
+              probe_hash: "a".repeat(64),
+              expires_at: new Date(Date.now() + 300_000).toISOString(),
+              probed_at: new Date().toISOString(),
+            },
+            201,
+          ),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/devices/device-1/rooted-captures") {
+        return Promise.resolve(
+          jsonResponse(
+            {
+              id: "source-1",
+              case_id: "case-1",
+              device_id: "device-1",
+              created_by: "user-1",
+              source_type: "rooted_filesystem",
+              acquisition_level: "filesystem",
+              status: "sealed",
+              display_name: "Rooted Android provider bundle",
+              source_name: "android_providers.tar",
+              container_format: "tar",
+              size_bytes: 10240,
+              sha256: "b".repeat(64),
+              chunks_sha256: "c".repeat(64),
+              manifest_sha256: "d".repeat(64),
+              chunk_size_bytes: 4194304,
+              chunk_count: 1,
+              read_only_applied: true,
+              validation_state: "sealed_unverified_acquisition",
+              limitations: ["This is not a physical or bit-for-bit device image."],
+              tool_version: "0.1.0",
+              error_code: null,
+              error_message: null,
+              sealed_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            },
+            201,
+          ),
+        );
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -517,6 +571,16 @@ describe("device readiness", () => {
       expect.objectContaining({
         body: JSON.stringify({ serial: "FX-DEMO-001", case_id: "case-1" }),
       }),
+    );
+    await user.click(screen.getByLabelText(/authorize this elevated-access probe/i));
+    await user.click(screen.getByRole("button", { name: "Probe rooted access" }));
+    expect(await screen.findByText("Root access available")).toBeInTheDocument();
+    await user.click(screen.getByLabelText(/authorize this bounded rooted collection/i));
+    await user.click(screen.getByRole("button", { name: "Capture provider bundle" }));
+    expect(await screen.findByText("Evidence Twin source sealed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Evidence Twin workspace" })).toHaveAttribute(
+      "href",
+      "/cases/case-1/evidence-twin",
     );
   });
 });
