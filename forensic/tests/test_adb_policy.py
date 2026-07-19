@@ -85,18 +85,16 @@ def test_inventory_policy_is_fixed_bounded_and_uses_no_caller_controlled_shell_t
         "-s",
         "FX-DEMO-001",
         "shell",
-        "sh",
-        "-c",
         "find /storage/emulated/0 -xdev -maxdepth 6 -type f "
         "-exec stat -c '%n:%s:%Y' {} + | head -n 250",
     )
     assert command.timeout_seconds == 30.0
-    assert command.arguments[5] == (
+    assert command.arguments[3] == (
         "find /storage/emulated/0 -xdev -maxdepth 6 -type f "
         "-exec stat -c '%n:%s:%Y' {} + | head -n 250"
     )
-    assert "FX-DEMO-001" not in command.arguments[5]
-    assert "pull" not in command.arguments[5]
+    assert "FX-DEMO-001" not in command.arguments[3]
+    assert "pull" not in command.arguments[3]
 
 
 def test_pull_policy_uses_shell_free_inventory_path_and_absolute_destination(
@@ -178,8 +176,8 @@ async def test_system_inventory_parses_paths_without_running_path_derived_comman
         "Download/report.pdf",
     ]
     assert len(runner.calls) == 1
-    assert runner.calls[0][0][3:5] == ("sh", "-c")
-    assert runner.calls[0][0][5].endswith("| head -n 250")
+    assert runner.calls[0][0][3].startswith("find /sdcard ")
+    assert runner.calls[0][0][3].endswith("| head -n 250")
     assert inventory.entries[0].size_bytes == 128
     assert inventory.entries[0].modified_time_raw == "1784160000"
     assert inventory.entries[0].modified_at is not None

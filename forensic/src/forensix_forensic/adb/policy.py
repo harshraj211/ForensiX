@@ -94,8 +94,6 @@ class AdbCommandPolicy:
                 "-s",
                 serial,
                 "shell",
-                "sh",
-                "-c",
                 command,
             ),
             30.0,
