@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
 import { AcquisitionPlanningPage } from "./features/acquisitions/AcquisitionPlanningPage";
+import { AuditLogPage } from "./features/audit/AuditLogPage";
 import { AuthBoundary } from "./features/auth/AuthBoundary";
 import { CaseDetailPage } from "./features/cases/CaseDetailPage";
 import { CasesPage } from "./features/cases/CasesPage";
@@ -26,6 +27,7 @@ export function App() {
           <Route path="/cases/:caseId/timeline" element={<TimelinePage />} />
           <Route path="/evidence" element={<EvidenceCasesPage />} />
           <Route path="/reports" element={<ReportsCasesPage />} />
+          <Route path="/audit" element={<AuditLogPage />} />
           <Route path="/cases/:caseId/reports" element={<CaseReportsPage />} />
           <Route path="*" element={<Navigate to="/devices" replace />} />
         </Route>

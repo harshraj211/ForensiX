@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, BookOpenText, Boxes, LogOut, ShieldCheck } from "lucide-react";
+import { Activity, BookOpenText, Boxes, FileClock, LogOut, ShieldCheck } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { authKeys } from "../features/auth/authKeys";
@@ -10,6 +10,7 @@ const navigation = [
   { label: "Cases", to: "/cases", icon: Boxes, disabled: false },
   { label: "Evidence", to: "/evidence", icon: ShieldCheck, disabled: false },
   { label: "Reports", to: "/reports", icon: BookOpenText, disabled: false },
+  { label: "Audit log", to: "/audit", icon: FileClock, disabled: false, permission: "audit:view" },
 ];
 
 export function AppShell() {
@@ -64,7 +65,9 @@ export function AppShell() {
       <div className="mx-auto grid max-w-[1480px] grid-cols-1 lg:grid-cols-[250px_1fr]">
         <aside className="border-b border-white/8 px-4 py-4 lg:min-h-[calc(100vh-73px)] lg:border-b-0 lg:border-r lg:px-5 lg:py-7">
           <nav aria-label="Primary navigation" className="flex gap-2 overflow-x-auto lg:flex-col">
-            {navigation.map(({ label, to, icon: Icon, disabled }) =>
+            {navigation
+              .filter(({ permission }) => !permission || currentUser.data?.permissions.includes(permission))
+              .map(({ label, to, icon: Icon, disabled }) =>
               disabled ? (
                 <span
                   key={to}

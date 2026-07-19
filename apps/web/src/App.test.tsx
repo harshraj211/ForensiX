@@ -164,6 +164,57 @@ describe("case workspace", () => {
   });
 });
 
+describe("audit review", () => {
+  it("shows the verified hash chain and Evidence Twin audit detail", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/audit-logs?limit=500") {
+        return Promise.resolve(
+          jsonResponse([
+            {
+              id: "audit-1",
+              sequence: 1,
+              case_id: "case-1",
+              actor_id: "user-1",
+              event_type: "evidence_parser_completed",
+              object_type: "evidence_parser_run",
+              object_id: "run-1",
+              detail: { parser_id: "android.telephony.sms", artifact_count: 1 },
+              previous_hash: "0".repeat(64),
+              entry_hash: "a".repeat(64),
+              created_at: "2026-07-19T10:00:00Z",
+            },
+          ]),
+        );
+      }
+      if (url === "/api/v1/audit-logs/verify") {
+        return Promise.resolve(
+          jsonResponse({
+            valid: true,
+            record_count: 1,
+            broken_sequence: null,
+            head_hash: "a".repeat(64),
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/audit");
+
+    expect(await screen.findByRole("heading", { name: "Audit log" })).toBeInTheDocument();
+    expect(await screen.findByText("1 records verified")).toBeInTheDocument();
+    expect(screen.getByText("evidence parser completed")).toBeInTheDocument();
+    expect(screen.getByText(/android.telephony.sms/)).toBeInTheDocument();
+  });
+});
+
 describe("device readiness", () => {
   it("states the controlled triage limitation before detection", () => {
     renderApp();

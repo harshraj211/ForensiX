@@ -134,6 +134,20 @@ export interface ChainVerification {
   head_hash: string | null;
 }
 
+export interface AuditLogEntry {
+  id: string;
+  sequence: number;
+  case_id: string | null;
+  actor_id: string;
+  event_type: string;
+  object_type: string;
+  object_id: string;
+  detail: Record<string, unknown>;
+  previous_hash: string;
+  entry_hash: string;
+  created_at: string;
+}
+
 export interface ReportOutput {
   format: "pdf" | "json" | "csv";
   media_type: string;
@@ -718,6 +732,14 @@ export function listCustodyEvents(caseId: string): Promise<CustodyEvent[]> {
 
 export function verifyCustodyChain(caseId: string): Promise<ChainVerification> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/custody/verify`);
+}
+
+export function listAuditLogs(): Promise<AuditLogEntry[]> {
+  return apiRequest("/api/v1/audit-logs?limit=500");
+}
+
+export function verifyAuditChain(): Promise<ChainVerification> {
+  return apiRequest("/api/v1/audit-logs/verify");
 }
 
 export function createCase(input: {
