@@ -15,6 +15,8 @@ from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     AuditLogRecord,
     CustodyEventRecord,
+    EvidenceParserRunRecord,
+    EvidenceSourceRecord,
     ReportRecord,
 )
 
@@ -23,6 +25,11 @@ CustodyEventType = Literal[
     "evidence_registered",
     "integrity_verified",
     "integrity_exception",
+    "evidence_source_registered",
+    "source_integrity_verified",
+    "working_copy_verified",
+    "parser_completed",
+    "parser_failed",
     "transferred",
     "amendment",
     "report_generated",
@@ -215,6 +222,42 @@ class CustodyService:
             related_event_id=None,
         )
 
+    def append_evidence_source(
+        self,
+        session: Session,
+        *,
+        case_id: str,
+        actor_id: str,
+        event_type: Literal[
+            "evidence_source_registered",
+            "source_integrity_verified",
+            "working_copy_verified",
+            "parser_completed",
+            "parser_failed",
+            "integrity_exception",
+        ],
+        evidence_source_id: str,
+        parser_run_id: str | None = None,
+        purpose: str,
+    ) -> CustodyEventRecord:
+        """Append custody history for an imported master, its copy, or derived analysis."""
+        return self._append(
+            session,
+            case_id=case_id,
+            actor_id=actor_id,
+            event_type=event_type,
+            evidence_file_id=None,
+            report_id=None,
+            from_custodian=None,
+            to_custodian=None,
+            location=None,
+            purpose=purpose,
+            notes=None,
+            related_event_id=None,
+            evidence_source_id=evidence_source_id,
+            parser_run_id=parser_run_id,
+        )
+
     def list(
         self, session: Session, principal: Principal, case_id: str
     ) -> list[CustodyEventRecord]:
@@ -260,6 +303,8 @@ class CustodyService:
         purpose: str | None,
         notes: str | None,
         related_event_id: str | None,
+        evidence_source_id: str | None = None,
+        parser_run_id: str | None = None,
     ) -> CustodyEventRecord:
         if evidence_file_id:
             evidence = session.get(AcquiredEvidenceFileRecord, evidence_file_id)
@@ -269,6 +314,20 @@ class CustodyService:
             report = session.get(ReportRecord, report_id)
             if report is None or report.case_id != case_id:
                 raise CustodyError("The custody report does not belong to this case.")
+        if evidence_source_id:
+            source = session.get(EvidenceSourceRecord, evidence_source_id)
+            if source is None or source.case_id != case_id:
+                raise CustodyError("The custody evidence source does not belong to this case.")
+        if parser_run_id:
+            run = session.get(EvidenceParserRunRecord, parser_run_id)
+            if (
+                run is None
+                or run.case_id != case_id
+                or run.evidence_source_id != evidence_source_id
+            ):
+                raise CustodyError(
+                    "The custody parser run does not belong to this evidence source."
+                )
         previous = session.scalar(
             select(CustodyEventRecord)
             .where(CustodyEventRecord.case_id == case_id)
@@ -282,6 +341,8 @@ class CustodyService:
             id=str(uuid4()),
             case_id=case_id,
             evidence_file_id=evidence_file_id,
+            evidence_source_id=evidence_source_id,
+            parser_run_id=parser_run_id,
             report_id=report_id,
             actor_id=actor_id,
             sequence=sequence,
@@ -331,6 +392,10 @@ def _custody_hash(record: CustodyEventRecord, previous_hash: str) -> str:
     }
     if record.report_id is not None:
         payload["report_id"] = record.report_id
+    if record.evidence_source_id is not None:
+        payload["evidence_source_id"] = record.evidence_source_id
+    if record.parser_run_id is not None:
+        payload["parser_run_id"] = record.parser_run_id
     canonical = _canonical_json(payload)
     return sha256((previous_hash + canonical).encode("utf-8")).hexdigest()
 

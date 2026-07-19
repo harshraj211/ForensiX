@@ -8,7 +8,11 @@ from fastapi import APIRouter, Depends, Query
 from forensix_api.dependencies import get_authenticated_session, get_database
 from forensix_api.schemas import TimelineEventResponse, TimelineSearchResponse
 from forensix_server.auth import AuthenticatedSession
-from forensix_server.db import Database, TimelineEventRecord
+from forensix_server.db import (
+    Database,
+    EvidenceSourceTimelineEventRecord,
+    TimelineEventRecord,
+)
 from forensix_server.evidence import TimelineService
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/timeline", tags=["timeline"])
@@ -59,12 +63,26 @@ def search_timeline(
     )
 
 
-def _response(record: TimelineEventRecord) -> TimelineEventResponse:
+def _response(
+    record: TimelineEventRecord | EvidenceSourceTimelineEventRecord,
+) -> TimelineEventResponse:
+    if isinstance(record, EvidenceSourceTimelineEventRecord):
+        artifact_id = None
+        source_artifact_id = record.source_artifact_id
+        job_id = None
+        parser_run_id = record.parser_run_id
+    else:
+        artifact_id = record.artifact_id
+        source_artifact_id = None
+        job_id = record.job_id
+        parser_run_id = None
     return TimelineEventResponse(
         id=record.id,
         case_id=record.case_id,
-        artifact_id=record.artifact_id,
-        job_id=record.job_id,
+        artifact_id=artifact_id,
+        source_artifact_id=source_artifact_id,
+        job_id=job_id,
+        parser_run_id=parser_run_id,
         category=cast(
             Literal[
                 "device",

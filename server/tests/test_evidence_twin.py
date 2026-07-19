@@ -10,6 +10,7 @@ from forensix_server.auth.domain import ROLE_PERMISSIONS
 from forensix_server.cases import CaseAccessDeniedError, CaseService
 from forensix_server.db import (
     AuditLogRecord,
+    CustodyEventRecord,
     Database,
     EvidenceSourceChunkRecord,
     EvidenceSourceRecord,
@@ -106,11 +107,20 @@ def test_stream_import_seals_master_chunks_manifest_and_verified_working_copy(
         copies = list(session.scalars(select(EvidenceWorkingCopyRecord)))
         verifications = list(session.scalars(select(EvidenceSourceVerificationRecord)))
         audits = list(session.scalars(select(AuditLogRecord).order_by(AuditLogRecord.sequence)))
+        custody = list(
+            session.scalars(select(CustodyEventRecord).order_by(CustodyEventRecord.sequence))
+        )
     assert [chunk.offset_bytes for chunk in chunks] == [0, MIB, 2 * MIB]
     assert [chunk.size_bytes for chunk in chunks] == [MIB, MIB, len(b"final-chunk")]
     assert len(copies) == 1
     assert [record.status for record in verifications] == ["verified", "verified"]
     assert [record.sequence for record in audits] == list(range(1, len(audits) + 1))
+    assert [record.event_type for record in custody] == [
+        "evidence_source_registered",
+        "source_integrity_verified",
+        "working_copy_verified",
+    ]
+    assert all(record.evidence_source_id == source.id for record in custody)
 
 
 def test_master_verification_detects_post_seal_corruption(database: Database) -> None:

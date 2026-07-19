@@ -14,6 +14,8 @@ from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
     ArtifactRecord,
+    EvidenceSourceArtifactRecord,
+    EvidenceSourceTimelineEventRecord,
     TimelineEventRecord,
 )
 
@@ -22,7 +24,7 @@ TIMELINE_BUILDER_VERSION = "1.1.0"
 
 @dataclass(frozen=True, slots=True)
 class TimelineSearchResult:
-    items: list[TimelineEventRecord]
+    items: list[TimelineEventRecord | EvidenceSourceTimelineEventRecord]
     total: int
     category_facets: dict[str, int]
 
@@ -75,6 +77,54 @@ class TimelineService:
         session.add(record)
         session.flush()
         self._materialize_source_modified(session, artifact)
+        return record
+
+    def materialize_source_artifact(
+        self, session: Session, artifact: EvidenceSourceArtifactRecord
+    ) -> EvidenceSourceTimelineEventRecord | None:
+        """Materialize a parser timestamp without pretending it came from ADB acquisition."""
+        if artifact.event_time is None:
+            return None
+        existing = session.scalar(
+            select(EvidenceSourceTimelineEventRecord).where(
+                EvidenceSourceTimelineEventRecord.source_artifact_id == artifact.id,
+                EvidenceSourceTimelineEventRecord.timestamp_type == "parsed_artifact_event_time",
+            )
+        )
+        if existing is not None:
+            return existing
+        event_time = _aware_utc(artifact.event_time)
+        category = _source_category(artifact.category)
+        summary = f"{artifact.title}: {artifact.summary}"
+        payload = {
+            "builder_version": TIMELINE_BUILDER_VERSION,
+            "case_id": artifact.case_id,
+            "category": category,
+            "confidence": artifact.confidence,
+            "event_time": event_time.isoformat(),
+            "parser_run_id": artifact.parser_run_id,
+            "source_artifact_id": artifact.id,
+            "summary": summary,
+            "timestamp_type": "parsed_artifact_event_time",
+            "timezone_basis": "UTC normalized by the versioned artifact parser",
+        }
+        record = EvidenceSourceTimelineEventRecord(
+            case_id=artifact.case_id,
+            source_artifact_id=artifact.id,
+            parser_run_id=artifact.parser_run_id,
+            category=category,
+            timestamp_type="parsed_artifact_event_time",
+            event_time=event_time,
+            original_time=event_time.isoformat(),
+            timezone_basis="UTC normalized by the versioned artifact parser",
+            precision="second",
+            confidence=artifact.confidence,
+            summary=summary[:1000],
+            builder_version=TIMELINE_BUILDER_VERSION,
+            event_hash=sha256(_canonical_json(payload).encode("utf-8")).hexdigest(),
+        )
+        session.add(record)
+        session.flush()
         return record
 
     @staticmethod
@@ -156,6 +206,19 @@ class TimelineService:
             )
             self.materialize(session, artifact)
             created += exists is None
+        source_artifacts = list(session.scalars(select(EvidenceSourceArtifactRecord)))
+        for source_artifact in source_artifacts:
+            if source_artifact.event_time is None:
+                continue
+            exists = session.scalar(
+                select(EvidenceSourceTimelineEventRecord.id).where(
+                    EvidenceSourceTimelineEventRecord.source_artifact_id == source_artifact.id,
+                    EvidenceSourceTimelineEventRecord.timestamp_type
+                    == "parsed_artifact_event_time",
+                )
+            )
+            self.materialize_source_artifact(session, source_artifact)
+            created += exists is None
         return created
 
     def search(
@@ -175,33 +238,44 @@ class TimelineService:
         if not principal.can(Permission.EVIDENCE_ANALYZE):
             raise CaseAccessDeniedError("The current user cannot analyze the case timeline.")
         conditions = [TimelineEventRecord.case_id == case_id]
+        source_conditions = [EvidenceSourceTimelineEventRecord.case_id == case_id]
         if category:
             conditions.append(TimelineEventRecord.category == category)
+            source_conditions.append(EvidenceSourceTimelineEventRecord.category == category)
         if confidence:
             conditions.append(TimelineEventRecord.confidence == confidence)
+            source_conditions.append(EvidenceSourceTimelineEventRecord.confidence == confidence)
         if from_time:
             conditions.append(TimelineEventRecord.event_time >= _aware_utc(from_time))
+            source_conditions.append(
+                EvidenceSourceTimelineEventRecord.event_time >= _aware_utc(from_time)
+            )
         if to_time:
             conditions.append(TimelineEventRecord.event_time <= _aware_utc(to_time))
-        items = list(
-            session.scalars(
-                select(TimelineEventRecord)
-                .where(*conditions)
-                .order_by(TimelineEventRecord.event_time.desc(), TimelineEventRecord.id.desc())
-                .offset(offset)
-                .limit(limit)
+            source_conditions.append(
+                EvidenceSourceTimelineEventRecord.event_time <= _aware_utc(to_time)
             )
+        combined: list[TimelineEventRecord | EvidenceSourceTimelineEventRecord] = [
+            *session.scalars(select(TimelineEventRecord).where(*conditions)),
+            *session.scalars(select(EvidenceSourceTimelineEventRecord).where(*source_conditions)),
+        ]
+        combined.sort(
+            key=lambda item: (_aware_utc(item.event_time), item.id),
+            reverse=True,
         )
-        total = session.scalar(select(func.count(TimelineEventRecord.id)).where(*conditions)) or 0
-        facets = {
-            category_name: count
+        facets: dict[str, int] = {}
+        for model in (TimelineEventRecord, EvidenceSourceTimelineEventRecord):
             for category_name, count in session.execute(
-                select(TimelineEventRecord.category, func.count(TimelineEventRecord.id))
-                .where(TimelineEventRecord.case_id == case_id)
-                .group_by(TimelineEventRecord.category)
-            ).all()
-        }
-        return TimelineSearchResult(items=items, total=total, category_facets=facets)
+                select(model.category, func.count(model.id))
+                .where(model.case_id == case_id)
+                .group_by(model.category)
+            ).all():
+                facets[category_name] = facets.get(category_name, 0) + count
+        return TimelineSearchResult(
+            items=combined[offset : offset + limit],
+            total=len(combined),
+            category_facets=facets,
+        )
 
 
 def _aware_utc(value: datetime) -> datetime:
@@ -212,3 +286,14 @@ def _aware_utc(value: datetime) -> datetime:
 
 def _canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def _source_category(category: str) -> str:
+    return {
+        "contact": "communication",
+        "communication": "communication",
+        "application": "application",
+        "location": "location",
+        "system": "system",
+        "file": "file",
+    }.get(category, "system")

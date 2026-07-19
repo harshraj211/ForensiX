@@ -15,7 +15,7 @@ from forensix_forensic.integrations import AleappDiagnostic, AleappOutputFile, A
 from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import Permission, Principal
 from forensix_server.cases import CaseAccessDeniedError
-from forensix_server.custody import AuditService
+from forensix_server.custody import AuditService, CustodyService
 from forensix_server.db import (
     Database,
     EvidenceParserRunRecord,
@@ -163,6 +163,7 @@ class AleappEvidenceService:
             with database.session() as session:
                 session.add(run)
                 session.add_all(outputs)
+                session.flush()
                 AuditService().append(
                     session,
                     case_id=case_id,
@@ -177,6 +178,18 @@ class AleappEvidenceService:
                         "run_hash": run.run_hash,
                     },
                     created_at=completed_at,
+                )
+                CustodyService().append_evidence_source(
+                    session,
+                    case_id=case_id,
+                    actor_id=principal.user_id,
+                    event_type="parser_completed",
+                    evidence_source_id=source_id,
+                    parser_run_id=run.id,
+                    purpose=(
+                        f"Pinned ALEAPP {result.release_label} completed and sealed "
+                        f"{len(outputs)} derived output(s); run hash {run.run_hash}."
+                    ),
                 )
                 session.flush()
             return AleappExecutionRecord(run=run, outputs=outputs)
@@ -321,6 +334,7 @@ class AleappEvidenceService:
         )
         with database.session() as session:
             session.add(run)
+            session.flush()
             AuditService().append(
                 session,
                 case_id=case_id,
@@ -330,6 +344,18 @@ class AleappEvidenceService:
                 object_id=run.id,
                 detail={"exit_code": exit_code, "release_label": release_label},
                 created_at=completed_at,
+            )
+            CustodyService().append_evidence_source(
+                session,
+                case_id=case_id,
+                actor_id=principal.user_id,
+                event_type="parser_failed",
+                evidence_source_id=source_id,
+                parser_run_id=run.id,
+                purpose=(
+                    f"Pinned ALEAPP {release_label} failed with exit code {exit_code}; "
+                    "no derived output was accepted."
+                ),
             )
             session.flush()
         return AleappExecutionRecord(run=run, outputs=())

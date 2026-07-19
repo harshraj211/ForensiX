@@ -826,6 +826,58 @@ class TimelineEventRecord(Base):
     )
 
 
+class EvidenceSourceTimelineEventRecord(Base):
+    """Deterministic timestamp claim derived from an imported-source artifact."""
+
+    __tablename__ = "evidence_source_timeline_events"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('device', 'file', 'media', 'communication', 'application', "
+            "'location', 'system', 'acquisition', 'custody')",
+            name="ck_source_timeline_events_category",
+        ),
+        UniqueConstraint(
+            "source_artifact_id",
+            "timestamp_type",
+            name="uq_source_timeline_events_artifact_type",
+        ),
+        UniqueConstraint("event_hash", name="uq_source_timeline_events_hash"),
+        Index("ix_source_timeline_events_case_time", "case_id", "event_time", "id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    source_artifact_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_source_artifacts.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    parser_run_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_parser_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    category: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    timestamp_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    original_time: Mapped[str] = mapped_column(String(128), nullable=False)
+    timezone_basis: Mapped[str] = mapped_column(String(128), nullable=False)
+    precision: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    summary: Mapped[str] = mapped_column(String(1000), nullable=False)
+    builder_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
 class BookmarkRecord(Base):
     """User-scoped bookmark state; source artifacts remain immutable."""
 
@@ -1453,7 +1505,10 @@ class CustodyEventRecord(Base):
         CheckConstraint("sequence >= 1", name="ck_custody_events_sequence"),
         CheckConstraint(
             "event_type IN ('evidence_registered', 'integrity_verified', "
-            "'integrity_exception', 'transferred', 'amendment', 'report_generated')",
+            "'integrity_exception', 'evidence_source_registered', "
+            "'source_integrity_verified', 'working_copy_verified', "
+            "'parser_completed', 'parser_failed', "
+            "'transferred', 'amendment', 'report_generated')",
             name="ck_custody_events_type",
         ),
         UniqueConstraint("case_id", "sequence", name="uq_custody_events_case_sequence"),
@@ -1467,6 +1522,18 @@ class CustodyEventRecord(Base):
     evidence_file_id: Mapped[str | None] = mapped_column(
         String(36),
         ForeignKey("acquired_evidence_files.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    evidence_source_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    parser_run_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("evidence_parser_runs.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )

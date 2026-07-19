@@ -11,9 +11,11 @@ from forensix_server.auth.domain import ROLE_PERMISSIONS
 from forensix_server.cases import CaseService
 from forensix_server.db import (
     AuditLogRecord,
+    CustodyEventRecord,
     Database,
     EvidenceParserRunRecord,
     EvidenceSourceArtifactRecord,
+    EvidenceSourceTimelineEventRecord,
     UserRecord,
 )
 from forensix_server.evidence_twin import (
@@ -106,7 +108,54 @@ def test_native_parser_results_are_persisted_with_provenance(
         assert len(list(session.scalars(select(EvidenceParserRunRecord)))) == 1
         assert len(list(session.scalars(select(EvidenceSourceArtifactRecord)))) == 1
         audit_types = set(session.scalars(select(AuditLogRecord.event_type)))
+        custody_types = list(
+            session.scalars(
+                select(CustodyEventRecord.event_type).order_by(CustodyEventRecord.sequence)
+            )
+        )
         assert "evidence_parser_completed" in audit_types
+        assert custody_types.count("parser_completed") == 1
+        assert session.scalar(select(EvidenceSourceTimelineEventRecord.id)) is None
+
+
+def test_sms_parser_materializes_imported_source_timeline_claim(
+    database: Database, tmp_path: Path
+) -> None:
+    principal, case_id = _principal_and_case(database)
+    path = tmp_path / "mmssms.db"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE sms (_id INTEGER PRIMARY KEY, date INTEGER, type INTEGER,
+                          address TEXT, body TEXT);
+        INSERT INTO sms VALUES (7, 1700000000000, 1, '+15550001111', 'Known message');
+        """
+    )
+    connection.commit()
+    connection.close()
+    source = EvidenceTwinService().import_stream(
+        database, principal, case_id, BytesIO(path.read_bytes()), source_name="mmssms.db"
+    )
+    working_copy = EvidenceTwinService().create_working_copy(
+        database, principal, case_id, source.id
+    )
+
+    result = EvidenceExaminationService().run_native_parsers(
+        database,
+        principal,
+        case_id,
+        source.id,
+        working_copy.id,
+        parser_ids=("android.telephony.sms",),
+    )[0]
+
+    with database.session() as session:
+        timeline = session.scalar(select(EvidenceSourceTimelineEventRecord))
+    assert timeline is not None
+    assert timeline.source_artifact_id == result.artifacts[0].id
+    assert timeline.parser_run_id == result.run.id
+    assert timeline.category == "communication"
+    assert timeline.timestamp_type == "parsed_artifact_event_time"
 
 
 def test_incompatible_parser_selection_is_rejected(database: Database, tmp_path: Path) -> None:

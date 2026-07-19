@@ -354,8 +354,10 @@ class ArtifactPreviewResponse(BaseModel):
 class TimelineEventResponse(BaseModel):
     id: str
     case_id: str
-    artifact_id: str
-    job_id: str
+    artifact_id: str | None
+    source_artifact_id: str | None
+    job_id: str | None
+    parser_run_id: str | None
     category: Literal[
         "device",
         "file",
@@ -728,6 +730,8 @@ class CustodyEventResponse(BaseModel):
     id: str
     case_id: str
     evidence_file_id: str | None
+    evidence_source_id: str | None
+    parser_run_id: str | None
     report_id: str | None
     actor_id: str
     sequence: int

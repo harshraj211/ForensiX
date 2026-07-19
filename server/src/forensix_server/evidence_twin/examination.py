@@ -21,13 +21,14 @@ from forensix_forensic.evidence_io import (
 from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import Permission, Principal
 from forensix_server.cases import CaseAccessDeniedError
-from forensix_server.custody import AuditService
+from forensix_server.custody import AuditService, CustodyService
 from forensix_server.db import (
     Database,
     EvidenceParserRunRecord,
     EvidenceSourceArtifactRecord,
     EvidenceWorkingCopyRecord,
 )
+from forensix_server.evidence import TimelineService
 
 from .inspection import EvidenceInspectionService
 from .service import EvidenceTwinError, EvidenceTwinIntegrityError, EvidenceTwinService
@@ -286,6 +287,10 @@ class EvidenceExaminationService:
                 )
             ]
             session.add_all(records)
+            session.flush()
+            timeline_service = TimelineService()
+            for record in records:
+                timeline_service.materialize_source_artifact(session, record)
             AuditService().append(
                 session,
                 case_id=context.case_id,
@@ -299,6 +304,18 @@ class EvidenceExaminationService:
                     "run_hash": run.run_hash,
                 },
                 created_at=completed_at,
+            )
+            CustodyService().append_evidence_source(
+                session,
+                case_id=context.case_id,
+                actor_id=principal.user_id,
+                event_type="parser_completed",
+                evidence_source_id=context.evidence_source_id,
+                parser_run_id=run.id,
+                purpose=(
+                    f"Versioned parser {parser.metadata.parser_id} completed with "
+                    f"{len(records)} normalized artifact(s); run hash {run.run_hash}."
+                ),
             )
             session.flush()
             return ParserExecutionResult(run=run, artifacts=tuple(records))
@@ -344,6 +361,7 @@ class EvidenceExaminationService:
         )
         with database.session() as session:
             session.add(run)
+            session.flush()
             AuditService().append(
                 session,
                 case_id=context.case_id,
@@ -353,6 +371,18 @@ class EvidenceExaminationService:
                 object_id=run.id,
                 detail={"error_code": error_code, "parser_id": parser.metadata.parser_id},
                 created_at=completed_at,
+            )
+            CustodyService().append_evidence_source(
+                session,
+                case_id=context.case_id,
+                actor_id=principal.user_id,
+                event_type="parser_failed",
+                evidence_source_id=context.evidence_source_id,
+                parser_run_id=run.id,
+                purpose=(
+                    f"Versioned parser {parser.metadata.parser_id} failed with "
+                    f"error code {error_code}; no normalized artifacts were accepted."
+                ),
             )
             session.flush()
             return ParserExecutionResult(run=run, artifacts=())

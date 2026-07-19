@@ -110,6 +110,8 @@ export interface CustodyEvent {
   id: string;
   case_id: string;
   evidence_file_id: string | null;
+  evidence_source_id: string | null;
+  parser_run_id: string | null;
   report_id: string | null;
   actor_id: string;
   sequence: number;
@@ -550,8 +552,10 @@ export interface ArtifactPreview {
 export interface TimelineEvent {
   id: string;
   case_id: string;
-  artifact_id: string;
-  job_id: string;
+  artifact_id: string | null;
+  source_artifact_id: string | null;
+  job_id: string | null;
+  parser_run_id: string | null;
   category: "device" | "file" | "media" | "communication" | "application" | "location" | "system" | "acquisition" | "custody";
   timestamp_type: string;
   event_time: string;

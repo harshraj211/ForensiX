@@ -22,7 +22,7 @@ from forensix_server.cases import (
     CaseService,
     CaseStatus,
 )
-from forensix_server.custody import AuditService
+from forensix_server.custody import AuditService, CustodyService
 from forensix_server.db import (
     CaseEventRecord,
     Database,
@@ -498,6 +498,17 @@ class EvidenceTwinService:
                 },
                 created_at=now,
             )
+            CustodyService().append_evidence_source(
+                session,
+                case_id=source.case_id,
+                actor_id=principal.user_id,
+                event_type="evidence_source_registered",
+                evidence_source_id=source.id,
+                purpose=(
+                    "Imported source sealed with chunk, master, and manifest SHA-256; "
+                    "origin remains examiner-declared."
+                ),
+            )
             session.flush()
             return source
 
@@ -574,6 +585,23 @@ class EvidenceTwinService:
                 object_id=working_copy.id if working_copy else source.id,
                 detail={"status": status, "verification_hash": record.verification_hash},
                 created_at=now,
+            )
+            CustodyService().append_evidence_source(
+                session,
+                case_id=source.case_id,
+                actor_id=principal.user_id,
+                event_type=(
+                    "source_integrity_verified"
+                    if status == "verified" and working_copy is None
+                    else "working_copy_verified"
+                    if status == "verified"
+                    else "integrity_exception"
+                ),
+                evidence_source_id=source.id,
+                purpose=(
+                    f"{record.target_type} SHA-256 verification status: {status}; "
+                    f"verification record {record.id}."
+                ),
             )
             session.flush()
             return record
