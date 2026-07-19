@@ -162,10 +162,15 @@ def logout(
         )
     response.delete_cookie(SESSION_COOKIE, path="/api/v1")
     response.delete_cookie(CSRF_COOKIE, path="/api/v1")
+    response.delete_cookie(CSRF_COOKIE, path="/")
 
 
 def _set_auth_cookies(response: Response, issued: IssuedSession, settings: Settings) -> None:
     max_age = max(0, int((issued.expires_at - datetime.now(UTC)).total_seconds()))
+    # The SPA lives outside /api/v1, so its readable double-submit CSRF cookie
+    # must be visible at UI routes after a browser refresh. Remove the legacy
+    # path-scoped variant first so browsers never send two same-name cookies.
+    response.delete_cookie(CSRF_COOKIE, path="/api/v1")
     response.set_cookie(
         SESSION_COOKIE,
         issued.session_token,
@@ -182,7 +187,7 @@ def _set_auth_cookies(response: Response, issued: IssuedSession, settings: Setti
         httponly=False,
         secure=settings.secure_cookies,
         samesite="strict",
-        path="/api/v1",
+        path="/",
     )
 
 
