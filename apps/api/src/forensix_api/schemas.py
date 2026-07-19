@@ -61,6 +61,28 @@ class DeviceAssessmentRequest(BaseModel):
     case_id: str | None = Field(default=None, min_length=36, max_length=36)
 
 
+class RootAccessProbeRequest(BaseModel):
+    serial: str = Field(min_length=1, max_length=255)
+    side_effects_acknowledged: Literal[True]
+
+
+class RootAccessProbeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    case_id: str
+    device_id: str
+    probed_by: str
+    status: Literal["available", "unavailable", "indeterminate"]
+    uid: int | None
+    identity: str | None
+    reason_code: str
+    potential_side_effect: str
+    probe_hash: str
+    expires_at: datetime
+    probed_at: datetime
+
+
 class DeviceCapabilityAssessmentResponse(BaseModel):
     assessment_id: str
     case_id: str | None = None

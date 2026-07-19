@@ -17,6 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import { useState } from "react";
 
 import { caseKeys } from "../cases/caseKeys";
 import {
@@ -25,6 +26,7 @@ import {
   detectDevices,
   getCase,
   listCaseDevices,
+  probeRootAccess,
   type CaseDevice,
   type CapabilityDecision,
   type CapabilityStatus,
@@ -445,6 +447,19 @@ function DeviceCard({
 
 function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessment }) {
   const entries = Object.entries(assessment.capabilities);
+  const [rootAcknowledged, setRootAcknowledged] = useState(false);
+  const rootProbe = useMutation({
+    mutationFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id) {
+        throw new Error("A case-linked device assessment is required for elevated access.");
+      }
+      return probeRootAccess(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+      );
+    },
+  });
   return (
     <section className="mt-5 rounded-xl border border-cyan-300/16 bg-cyan-300/[0.035] p-5 sm:p-6">
       <div className="flex flex-col justify-between gap-4 border-b border-cyan-200/10 pb-5 sm:flex-row sm:items-start">
@@ -522,6 +537,54 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
           ))}
         </ul>
       </div>
+      {assessment.case_id && assessment.case_device_id && (
+        <div className="mt-5 rounded-lg border border-fuchsia-300/15 bg-fuchsia-300/[0.035] p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-fuchsia-200">
+            Optional rooted mode
+          </h3>
+          <p className="mt-2 text-xs leading-5 text-slate-400">
+            This runs only the fixed, serial-scoped command <code>su -c id</code>. It may create
+            device logs or display a root-manager prompt. It does not bypass a lock screen or grant
+            root access.
+          </p>
+          <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-fuchsia-100/70">
+            <input
+              type="checkbox"
+              checked={rootAcknowledged}
+              onChange={(event) => {
+                setRootAcknowledged(event.target.checked);
+              }}
+              className="mt-1 accent-fuchsia-300"
+            />
+            I authorize this elevated-access probe and acknowledge its possible device-side effects.
+          </label>
+          <button
+            type="button"
+            disabled={!rootAcknowledged || rootProbe.isPending}
+            onClick={() => {
+              rootProbe.mutate();
+            }}
+            className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg border border-fuchsia-300/20 bg-fuchsia-300/8 px-4 text-xs font-semibold text-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {rootProbe.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+            Probe rooted access
+          </button>
+          {rootProbe.isError && <div className="mt-3"><ErrorState error={rootProbe.error} /></div>}
+          {rootProbe.data && (
+            <div className={`mt-4 rounded-md border p-3 text-xs ${
+              rootProbe.data.status === "available"
+                ? "border-emerald-300/20 bg-emerald-300/5 text-emerald-100"
+                : "border-amber-300/20 bg-amber-300/5 text-amber-100"
+            }`}>
+              <p className="font-semibold">Root access {rootProbe.data.status}</p>
+              <p className="mt-1 opacity-70">{rootProbe.data.reason_code.replaceAll("_", " ")}</p>
+              <p className="mt-2 font-mono text-[10px] opacity-55">
+                Proof {rootProbe.data.probe_hash} · expires {new Date(rootProbe.data.expires_at).toLocaleTimeString()}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
       {assessment.case_device_id && (
         <p className="mt-4 flex items-center gap-2 text-xs font-medium text-emerald-200/75">
           <CheckCircle2 size={14} aria-hidden="true" /> Snapshot saved to this case's device history.

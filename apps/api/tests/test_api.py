@@ -434,6 +434,40 @@ def test_authorized_device_capability_assessment(tmp_path: Path) -> None:
     assert "FX-DEMO-001" not in persisted.snapshot_json
 
 
+def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient(MockAdbScenario.ROOTED))
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Rooted API case"}
+        ).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+        endpoint = f"/api/v1/cases/{case['id']}/devices/{assessment['case_device_id']}/root-probes"
+        missing_ack = client.post(
+            endpoint,
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "side_effects_acknowledged": False},
+        )
+        response = client.post(
+            endpoint,
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "side_effects_acknowledged": True},
+        )
+        listed = client.get(endpoint)
+
+    assert missing_ack.status_code == 422
+    assert response.status_code == 201
+    assert response.json()["status"] == "available"
+    assert response.json()["uid"] == 0
+    assert len(response.json()["probe_hash"]) == 64
+    assert listed.status_code == 200
+    assert listed.json()[0]["id"] == response.json()["id"]
+
+
 def test_assessment_revalidates_transport_state(tmp_path: Path) -> None:
     app = create_app(
         _settings(tmp_path),

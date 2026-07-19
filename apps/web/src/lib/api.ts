@@ -65,6 +65,21 @@ export interface DeviceCapabilityAssessment {
   assessor_version: string;
 }
 
+export interface RootAccessProbe {
+  id: string;
+  case_id: string;
+  device_id: string;
+  probed_by: string;
+  status: "available" | "unavailable" | "indeterminate";
+  uid: number | null;
+  identity: string | null;
+  reason_code: string;
+  potential_side_effect: string;
+  probe_hash: string;
+  expires_at: string;
+  probed_at: string;
+}
+
 export interface AuthUser {
   user_id: string;
   username: string;
@@ -783,6 +798,20 @@ export async function assessDevice(
     method: "POST",
     body: JSON.stringify({ serial, ...(caseId ? { case_id: caseId } : {}) }),
   });
+}
+
+export function probeRootAccess(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+): Promise<RootAccessProbe> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/root-probes`,
+    {
+      method: "POST",
+      body: JSON.stringify({ serial, side_effects_acknowledged: true }),
+    },
+  );
 }
 
 export function listCaseDevices(caseId: string): Promise<CaseDevice[]> {

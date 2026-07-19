@@ -402,6 +402,44 @@ class CaseDeviceAssessmentRecord(Base):
     snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class RootAccessProbeRecord(Base):
+    """Append-only result of an explicitly acknowledged elevated identity probe."""
+
+    __tablename__ = "root_access_probes"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('available', 'unavailable', 'indeterminate')",
+            name="ck_root_access_probes_status",
+        ),
+        CheckConstraint("uid IS NULL OR uid >= 0", name="ck_root_access_probes_uid"),
+        UniqueConstraint("probe_hash", name="uq_root_access_probes_hash"),
+        Index("ix_root_access_probes_device_time", "device_id", "probed_at", "id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("case_devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    probed_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    uid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    identity: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    potential_side_effect: Mapped[str] = mapped_column(String(500), nullable=False)
+    probe_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    probed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
 class AcquisitionPlanRecord(Base):
     """Immutable, reviewable authorization boundary for a future acquisition."""
 
