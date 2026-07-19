@@ -194,6 +194,9 @@ export type AcquisitionScope =
   | "metadata_only"
   | "quick_triage"
   | "shared_storage_inventory"
+  | "media_files"
+  | "document_files"
+  | "downloads_files"
   | "custom";
 
 export type AcquisitionModule =

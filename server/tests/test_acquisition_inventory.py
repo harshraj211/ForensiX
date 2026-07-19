@@ -472,6 +472,69 @@ async def test_bulk_acquire_rejects_unknown_inventory_item(database: Database) -
         )
 
 
+@pytest.mark.parametrize(
+    ("scope", "allowed_path", "blocked_path"),
+    [
+        (
+            AcquisitionScope.MEDIA_FILES,
+            "DCIM/Camera/IMG_0001.jpg",
+            "Documents/timeline.csv",
+        ),
+        (
+            AcquisitionScope.DOCUMENT_FILES,
+            "Documents/timeline.csv",
+            "DCIM/Camera/IMG_0001.jpg",
+        ),
+        (
+            AcquisitionScope.DOWNLOADS_FILES,
+            "Download/incident-notes.pdf",
+            "Documents/timeline.csv",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_file_acquisition_enforces_frozen_category_scope(
+    database: Database,
+    scope: AcquisitionScope,
+    allowed_path: str,
+    blocked_path: str,
+) -> None:
+    principal = _principal(database)
+    case_id, _, job_id = _ready_job(database, principal, scope=scope)
+    await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
+    with database.session() as session:
+        inventory = session.scalar(
+            select(AcquisitionInventoryRecord).where(AcquisitionInventoryRecord.job_id == job_id)
+        )
+        assert inventory is not None
+        items = {
+            item.relative_path: item.id
+            for item in session.scalars(
+                select(AcquisitionInventoryItemRecord).where(
+                    AcquisitionInventoryItemRecord.inventory_id == inventory.id
+                )
+            )
+        }
+
+    acquired = await AcquisitionFileService().acquire(
+        database, principal, case_id, job_id, items[allowed_path], MockAdbClient()
+    )
+    assert acquired.status == "completed"
+    with pytest.raises(AcquisitionFileError, match="outside the frozen"):
+        await AcquisitionFileService().acquire(
+            database, principal, case_id, job_id, items[blocked_path], MockAdbClient()
+        )
+    with pytest.raises(AcquisitionFileError, match="outside the frozen"):
+        await AcquisitionFileService().acquire_batch(
+            database,
+            principal,
+            case_id,
+            job_id,
+            [items[allowed_path], items[blocked_path]],
+            MockAdbClient(),
+        )
+
+
 @pytest.mark.asyncio
 async def test_completed_file_is_normalized_and_searchable_without_content_parsing(
     database: Database,

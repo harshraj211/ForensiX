@@ -152,6 +152,37 @@ def test_quick_triage_plan_is_frozen_to_exact_readiness_snapshot(session: Sessio
     assert plan.id in (event.safe_detail or "")
 
 
+@pytest.mark.parametrize(
+    "scope",
+    [
+        AcquisitionScope.SHARED_STORAGE_INVENTORY,
+        AcquisitionScope.MEDIA_FILES,
+        AcquisitionScope.DOCUMENT_FILES,
+        AcquisitionScope.DOWNLOADS_FILES,
+    ],
+)
+def test_storage_scopes_freeze_the_inventory_module(
+    session: Session, scope: AcquisitionScope
+) -> None:
+    now = datetime.now(UTC)
+    principal, _ = _identity(session, f"plan.{scope.value}", RoleName.INVESTIGATOR)
+    case, device, assessment = _case_device(session, principal, now)
+
+    plan = AcquisitionPlanService().create(
+        session,
+        principal,
+        case.id,
+        device_id=device.id,
+        assessment_id=assessment.id,
+        scope=scope,
+        limitations_acknowledged=True,
+        now=now,
+    )
+
+    assert plan.scope == scope.value
+    assert plan_modules(plan) == ["shared_storage_inventory"]
+
+
 def test_blocked_storage_rejects_quick_triage_but_allows_metadata(session: Session) -> None:
     now = datetime.now(UTC)
     principal, _ = _identity(session, "plan.owner", RoleName.INVESTIGATOR)

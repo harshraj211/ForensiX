@@ -7,6 +7,9 @@ class AcquisitionScope(StrEnum):
     METADATA_ONLY = "metadata_only"
     QUICK_TRIAGE = "quick_triage"
     SHARED_STORAGE_INVENTORY = "shared_storage_inventory"
+    MEDIA_FILES = "media_files"
+    DOCUMENT_FILES = "document_files"
+    DOWNLOADS_FILES = "downloads_files"
     CUSTOM = "custom"
 
 
@@ -33,8 +36,66 @@ PRESET_MODULES: dict[AcquisitionScope, tuple[AcquisitionModule, ...]] = {
         AcquisitionModule.SHARED_STORAGE_INVENTORY,
     ),
     AcquisitionScope.SHARED_STORAGE_INVENTORY: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
+    AcquisitionScope.MEDIA_FILES: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
+    AcquisitionScope.DOCUMENT_FILES: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
+    AcquisitionScope.DOWNLOADS_FILES: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
     AcquisitionScope.CUSTOM: (),
 }
+
+MEDIA_EXTENSIONS = frozenset(
+    {
+        "aac",
+        "avi",
+        "flac",
+        "gif",
+        "heic",
+        "heif",
+        "jpeg",
+        "jpg",
+        "m4a",
+        "mkv",
+        "mov",
+        "mp3",
+        "mp4",
+        "png",
+        "wav",
+        "webm",
+        "webp",
+    }
+)
+DOCUMENT_EXTENSIONS = frozenset(
+    {
+        "csv",
+        "doc",
+        "docx",
+        "md",
+        "ods",
+        "odt",
+        "pdf",
+        "ppt",
+        "pptx",
+        "rtf",
+        "txt",
+        "xls",
+        "xlsx",
+    }
+)
+
+
+def scope_allows_inventory_item(
+    scope: AcquisitionScope, relative_path: str, extension: str | None
+) -> bool:
+    """Return whether a frozen scope authorizes acquiring one inventory item."""
+    normalized_extension = (extension or "").casefold()
+    normalized_path = relative_path.replace("\\", "/").casefold()
+    if scope is AcquisitionScope.MEDIA_FILES:
+        return normalized_extension in MEDIA_EXTENSIONS
+    if scope is AcquisitionScope.DOCUMENT_FILES:
+        return normalized_extension in DOCUMENT_EXTENSIONS
+    if scope is AcquisitionScope.DOWNLOADS_FILES:
+        return normalized_path.startswith(("download/", "downloads/"))
+    return scope is not AcquisitionScope.METADATA_ONLY
+
 
 PLAN_SCHEMA_VERSION = "1.0.0"
 READINESS_MAX_AGE_MINUTES = 30

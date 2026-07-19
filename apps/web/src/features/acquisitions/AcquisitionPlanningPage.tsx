@@ -113,6 +113,18 @@ const scopeCopy: Record<AcquisitionScope, { label: string; description: string }
     label: "Storage inventory",
     description: "Plan a metadata-only inventory of approved readable shared-storage roots.",
   },
+  media_files: {
+    label: "Media only",
+    description: "Inventory shared storage and authorize acquisition of recognized images, video, and audio only.",
+  },
+  document_files: {
+    label: "Documents only",
+    description: "Inventory shared storage and authorize acquisition of recognized document formats only.",
+  },
+  downloads_files: {
+    label: "Downloads only",
+    description: "Inventory shared storage and authorize acquisition only from Download or Downloads paths.",
+  },
   custom: {
     label: "Custom",
     description: "Select individual modules supported by the exact readiness snapshot.",
@@ -507,7 +519,9 @@ function PlanHistory({
                     Cancel prepared job
                   </button>
                 )}
-                {job.result_reference && <InventoryResultPanel caseId={plan.case_id} jobId={job.id} />}
+                {job.result_reference && (
+                  <InventoryResultPanel caseId={plan.case_id} jobId={job.id} scope={plan.scope} />
+                )}
               </div>
             ) : (
               <div className="mt-4">
@@ -533,9 +547,17 @@ function PlanHistory({
   );
 }
 
-function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string }) {
+function InventoryResultPanel({
+  caseId,
+  jobId,
+  scope,
+}: {
+  caseId: string;
+  jobId: string;
+  scope: AcquisitionScope;
+}) {
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<InventoryFilter>("all");
+  const [filter, setFilter] = useState<InventoryFilter>(() => defaultFilterForScope(scope));
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [lastBatch, setLastBatch] = useState<BulkAcquireResult | null>(null);
   const inventoryQuery = useQuery({
@@ -605,7 +627,8 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
       .filter((partial) => partial.status === "retained")
       .map((partial) => [partial.evidence_file_id, partial]),
   );
-  const visibleItems = inventory.items.filter((item) => matchesInventoryFilter(item, filter));
+  const inScopeItems = inventory.items.filter((item) => itemAllowedByScope(item, scope));
+  const visibleItems = inScopeItems.filter((item) => matchesInventoryFilter(item, filter));
   const selectableVisibleIds = visibleItems
     .filter((item) => {
       const acquired = acquiredByItem.get(item.id);
@@ -658,7 +681,7 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
       <div className="mt-3 flex flex-wrap gap-2">
         {(
           [
-            ["all", "All paths"],
+            ["all", "All in scope"],
             ["media", "Media"],
             ["documents", "Documents"],
             ["downloads", "Downloads"],
@@ -872,6 +895,25 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
 function scopeModules(scope: AcquisitionScope, custom: AcquisitionModule[]): AcquisitionModule[] {
   if (scope === "custom") return custom;
   if (scope === "metadata_only") return ["device_metadata", "package_inventory"];
-  if (scope === "shared_storage_inventory") return ["shared_storage_inventory"];
+  if (
+    scope === "shared_storage_inventory" ||
+    scope === "media_files" ||
+    scope === "document_files" ||
+    scope === "downloads_files"
+  ) return ["shared_storage_inventory"];
   return ["device_metadata", "package_inventory", "shared_storage_inventory"];
+}
+
+function defaultFilterForScope(scope: AcquisitionScope): InventoryFilter {
+  if (scope === "media_files") return "media";
+  if (scope === "document_files") return "documents";
+  if (scope === "downloads_files") return "downloads";
+  return "all";
+}
+
+function itemAllowedByScope(item: AcquisitionInventoryItem, scope: AcquisitionScope): boolean {
+  if (scope === "media_files") return matchesInventoryFilter(item, "media");
+  if (scope === "document_files") return matchesInventoryFilter(item, "documents");
+  if (scope === "downloads_files") return matchesInventoryFilter(item, "downloads");
+  return scope !== "metadata_only";
 }

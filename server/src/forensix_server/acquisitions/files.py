@@ -31,6 +31,7 @@ from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
+    AcquisitionPlanRecord,
     CaseDeviceRecord,
     CaseEventRecord,
     Database,
@@ -38,6 +39,7 @@ from forensix_server.db import (
 from forensix_server.evidence import ArtifactService, TimelineService
 from forensix_server.jobs import JobState
 
+from .domain import AcquisitionScope, scope_allows_inventory_item
 from .execution import AcquisitionExecutionService
 from .inventory import AcquisitionInventoryError, DeviceIdentityChangedError
 from .recovery import AcquisitionRecoveryService
@@ -137,18 +139,14 @@ class AcquisitionFileService:
     ) -> BulkAcquireResult:
         """Acquire multiple inventory items sequentially with per-item outcomes."""
         ordered_ids = self._normalize_batch_item_ids(item_ids)
-        self._validate_batch_membership(
-            database, principal, case_id, job_id, ordered_ids
-        )
+        self._validate_batch_membership(database, principal, case_id, job_id, ordered_ids)
         batch_id = str(uuid4())
         self._record_batch_event(
             database,
             case_id=case_id,
             actor_id=principal.user_id,
             event_type="evidence_file_batch_started",
-            safe_detail=(
-                f"batch_id={batch_id};job_id={job_id};requested_count={len(ordered_ids)}"
-            ),
+            safe_detail=(f"batch_id={batch_id};job_id={job_id};requested_count={len(ordered_ids)}"),
         )
         results: list[BulkAcquireItemResult] = []
         completed_count = 0
@@ -245,6 +243,19 @@ class AcquisitionFileService:
             if inventory is None or item is None or item.inventory_id != inventory.id:
                 raise AcquisitionFileError(
                     "The selected path was not issued by this acquisition inventory."
+                )
+            plan = session.get(AcquisitionPlanRecord, job.plan_id)
+            if plan is None:
+                raise AcquisitionFileError("The frozen acquisition plan is unavailable.")
+            try:
+                frozen_scope = AcquisitionScope(plan.scope)
+            except ValueError as error:
+                raise AcquisitionFileError(
+                    "The frozen acquisition scope is unsupported."
+                ) from error
+            if not scope_allows_inventory_item(frozen_scope, item.relative_path, item.extension):
+                raise AcquisitionFileError(
+                    "The selected path is outside the frozen acquisition scope."
                 )
             existing = session.scalar(
                 select(AcquiredEvidenceFileRecord).where(
@@ -513,7 +524,7 @@ class AcquisitionFileService:
         item_ids: list[str],
     ) -> None:
         with database.session() as session:
-            AcquisitionExecutionService().get(session, principal, case_id, job_id)
+            job = AcquisitionExecutionService().get(session, principal, case_id, job_id)
             inventory = session.scalar(
                 select(AcquisitionInventoryRecord).where(
                     AcquisitionInventoryRecord.job_id == job_id
@@ -523,18 +534,35 @@ class AcquisitionFileService:
                 raise AcquisitionFileError(
                     "A completed bounded inventory job is required before file acquisition."
                 )
-            known = set(
+            items = list(
                 session.scalars(
-                    select(AcquisitionInventoryItemRecord.id).where(
+                    select(AcquisitionInventoryItemRecord).where(
                         AcquisitionInventoryItemRecord.inventory_id == inventory.id,
                         AcquisitionInventoryItemRecord.id.in_(item_ids),
                     )
                 )
             )
+            known = {item.id for item in items}
             missing = [item_id for item_id in item_ids if item_id not in known]
             if missing:
                 raise AcquisitionFileError(
                     "One or more selected paths were not issued by this acquisition inventory."
+                )
+            plan = session.get(AcquisitionPlanRecord, job.plan_id)
+            if plan is None:
+                raise AcquisitionFileError("The frozen acquisition plan is unavailable.")
+            try:
+                frozen_scope = AcquisitionScope(plan.scope)
+            except ValueError as error:
+                raise AcquisitionFileError(
+                    "The frozen acquisition scope is unsupported."
+                ) from error
+            if any(
+                not scope_allows_inventory_item(frozen_scope, item.relative_path, item.extension)
+                for item in items
+            ):
+                raise AcquisitionFileError(
+                    "One or more selected paths are outside the frozen acquisition scope."
                 )
 
     @staticmethod
