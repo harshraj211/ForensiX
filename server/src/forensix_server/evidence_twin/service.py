@@ -211,6 +211,32 @@ class EvidenceTwinService:
                 raise EvidenceTwinNotFoundError("The requested evidence source does not exist.")
             return source
 
+    def list_working_copies(
+        self, database: Database, principal: Principal, case_id: str, source_id: str
+    ) -> list[EvidenceWorkingCopyRecord]:
+        self.get_source(database, principal, case_id, source_id)
+        with database.session() as session:
+            return list(
+                session.scalars(
+                    select(EvidenceWorkingCopyRecord)
+                    .where(EvidenceWorkingCopyRecord.evidence_source_id == source_id)
+                    .order_by(EvidenceWorkingCopyRecord.created_at.desc())
+                )
+            )
+
+    def list_verifications(
+        self, database: Database, principal: Principal, case_id: str, source_id: str
+    ) -> list[EvidenceSourceVerificationRecord]:
+        self.get_source(database, principal, case_id, source_id)
+        with database.session() as session:
+            return list(
+                session.scalars(
+                    select(EvidenceSourceVerificationRecord)
+                    .where(EvidenceSourceVerificationRecord.evidence_source_id == source_id)
+                    .order_by(EvidenceSourceVerificationRecord.verified_at.desc())
+                )
+            )
+
     def verify_master(
         self, database: Database, principal: Principal, case_id: str, source_id: str
     ) -> EvidenceSourceVerificationRecord:

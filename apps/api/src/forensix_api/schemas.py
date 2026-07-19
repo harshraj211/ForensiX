@@ -449,6 +449,68 @@ class EvidenceVerificationResponse(BaseModel):
     verified_at: datetime
 
 
+class EvidenceSourceResponse(BaseModel):
+    id: str
+    case_id: str
+    device_id: str | None
+    created_by: str
+    source_type: Literal["imported_file", "logical_adb", "rooted_filesystem", "physical_block"]
+    acquisition_level: Literal["logical", "selective", "filesystem", "physical"]
+    status: Literal["pending", "sealed", "failed"]
+    display_name: str
+    source_name: str
+    container_format: Literal["raw", "img", "dd", "tar", "zip", "directory_bundle", "unknown"]
+    size_bytes: int | None
+    sha256: str | None
+    chunks_sha256: str | None
+    manifest_sha256: str | None
+    chunk_size_bytes: int
+    chunk_count: int
+    read_only_applied: bool
+    validation_state: str
+    limitations: list[str]
+    tool_version: str
+    error_code: str | None
+    error_message: str | None
+    sealed_at: datetime | None
+    created_at: datetime
+
+
+class EvidenceWorkingCopyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    evidence_source_id: str
+    case_id: str
+    created_by: str
+    status: Literal["creating", "ready", "verification_failed"]
+    size_bytes: int | None
+    expected_source_sha256: str
+    observed_sha256: str | None
+    copy_method: str
+    verified_at: datetime | None
+    created_at: datetime
+
+
+class EvidenceSourceVerificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    evidence_source_id: str
+    working_copy_id: str | None
+    case_id: str
+    verified_by: str
+    target_type: Literal["master", "working_copy"]
+    status: Literal["verified", "mismatch", "missing", "error"]
+    expected_sha256: str
+    observed_sha256: str | None
+    size_bytes: int | None
+    error_code: str | None
+    verification_hash: str
+    tool_version: str
+    verified_at: datetime
+
+
 class JobEventResponse(BaseModel):
     id: str
     job_id: str

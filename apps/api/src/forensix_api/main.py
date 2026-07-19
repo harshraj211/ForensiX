@@ -21,6 +21,7 @@ from forensix_api.routers import (
     cases,
     custody,
     devices,
+    evidence_sources,
     health,
     reports,
     timeline,
@@ -94,6 +95,7 @@ def create_app(
     app.include_router(artifacts.router)
     app.include_router(timeline.router)
     app.include_router(reports.router)
+    app.include_router(evidence_sources.router)
     app.include_router(devices.router)
     return app
 

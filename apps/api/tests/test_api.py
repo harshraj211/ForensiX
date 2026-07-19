@@ -150,11 +150,77 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
         "acquisition_plans",
         "custody_events",
         "evidence_verifications",
+        "evidence_sources",
+        "evidence_source_chunks",
+        "evidence_source_verifications",
+        "evidence_working_copies",
         "jobs",
         "job_events",
         "reports",
         "report_outputs",
     } <= tables
+
+
+def test_evidence_twin_import_verify_and_working_copy_api(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    payload = b"controlled evidence bytes" * 128
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Evidence Twin API case"}
+        ).json()
+        endpoint = f"/api/v1/cases/{case['id']}/evidence-sources/import"
+
+        missing_csrf = client.post(
+            endpoint,
+            files={"source": ("capture.raw", payload, "application/octet-stream")},
+        )
+        imported = client.post(
+            endpoint,
+            headers=headers,
+            data={"display_name": "Controlled image"},
+            files={"source": ("capture.raw", payload, "application/octet-stream")},
+        )
+
+        assert missing_csrf.status_code == 403
+        assert imported.status_code == 201
+        source = imported.json()
+        assert source["status"] == "sealed"
+        assert source["container_format"] == "raw"
+        assert source["source_name"] == "capture.raw"
+        assert source["display_name"] == "Controlled image"
+        assert source["size_bytes"] == len(payload)
+        assert len(source["sha256"]) == 64
+        assert "sealed_storage_key" not in source
+
+        listed = client.get(f"/api/v1/cases/{case['id']}/evidence-sources")
+        verified = client.post(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{source['id']}/verify",
+            headers=headers,
+        )
+        copied = client.post(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{source['id']}/working-copies",
+            headers=headers,
+        )
+        copies = client.get(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{source['id']}/working-copies"
+        )
+        verifications = client.get(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{source['id']}/verifications"
+        )
+
+        assert listed.status_code == 200
+        assert [item["id"] for item in listed.json()] == [source["id"]]
+        assert verified.status_code == 200
+        assert verified.json()["status"] == "verified"
+        assert copied.status_code == 201
+        assert copied.json()["status"] == "ready"
+        assert copied.json()["observed_sha256"] == source["sha256"]
+        assert len(copies.json()) == 1
+        assert [item["status"] for item in verifications.json()] == [
+            "verified",
+            "verified",
+        ]
 
 
 def test_preliminary_report_generation_and_verified_downloads(tmp_path: Path) -> None:
@@ -1239,9 +1305,7 @@ def test_bulk_inventory_file_acquisition_pulls_selected_items(tmp_path: Path) ->
     assert repeated.status_code == 200
     assert repeated.json()["completed_count"] == 0
     assert repeated.json()["skipped_count"] == 3
-    assert all(
-        item["outcome"] == "skipped_already_completed" for item in repeated.json()["items"]
-    )
+    assert all(item["outcome"] == "skipped_already_completed" for item in repeated.json()["items"])
     assert invalid.status_code == 409
     assert invalid.json()["error"]["code"] == "ACQUISITION_FILE_INVALID"
 

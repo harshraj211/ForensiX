@@ -22,6 +22,7 @@ from forensix_server.cases import (
     CaseVersionConflictError,
 )
 from forensix_server.evidence import ArtifactQueryError
+from forensix_server.evidence_twin import EvidenceTwinNotFoundError
 from forensix_server.reporting import ReportNotFoundError
 
 
@@ -49,7 +50,7 @@ async def security_error_handler(request: Request, error: ApiSecurityError) -> J
 
 async def case_error_handler(request: Request, error: CaseError) -> JSONResponse:
     status_code = 400
-    if isinstance(error, (CaseNotFoundError, ReportNotFoundError)):
+    if isinstance(error, (CaseNotFoundError, EvidenceTwinNotFoundError, ReportNotFoundError)):
         status_code = 404
     elif isinstance(error, CaseAccessDeniedError):
         status_code = 403
