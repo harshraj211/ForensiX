@@ -53,3 +53,34 @@ async def test_runner_stops_pull_when_partial_exceeds_limit(tmp_path: Path) -> N
             timeout_seconds=3,
             max_file_bytes=32,
         )
+
+
+@pytest.mark.asyncio
+async def test_runner_streams_binary_stdout_directly_to_new_file(tmp_path: Path) -> None:
+    runner = SubprocessAdbRunner(Path(sys.executable))
+    destination = tmp_path / "bundle.partial"
+
+    result = await runner.run_stdout_to_file(
+        ("-c", "import sys; sys.stdout.buffer.write(bytes(range(256)))"),
+        destination,
+        timeout_seconds=3,
+        max_file_bytes=512,
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    assert destination.read_bytes() == bytes(range(256))
+
+
+@pytest.mark.asyncio
+async def test_runner_limits_binary_stdout_file(tmp_path: Path) -> None:
+    runner = SubprocessAdbRunner(Path(sys.executable))
+    destination = tmp_path / "oversized-bundle.partial"
+
+    with pytest.raises(AdbTransferLimitError):
+        await runner.run_stdout_to_file(
+            ("-c", "import sys; sys.stdout.buffer.write(b'x' * 4096)"),
+            destination,
+            timeout_seconds=3,
+            max_file_bytes=32,
+        )

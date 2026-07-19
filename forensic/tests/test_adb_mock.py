@@ -1,11 +1,12 @@
+import tarfile
 from pathlib import Path
 
 import pytest
 
-from forensix_forensic.adb.errors import AdbTimeoutError
+from forensix_forensic.adb.errors import AdbCommandError, AdbTimeoutError
 from forensix_forensic.adb.mock import MockAdbClient, MockAdbScenario
 from forensix_forensic.adb.models import DeviceState
-from forensix_forensic.adb.policy import SharedStorageRoot
+from forensix_forensic.adb.policy import RootedCollectionProfile, SharedStorageRoot
 
 
 @pytest.mark.asyncio
@@ -46,6 +47,32 @@ async def test_rooted_mock_requires_explicit_rooted_scenario() -> None:
     assert ordinary.status.value == "unavailable"
     assert rooted.status.value == "available"
     assert rooted.uid == 0
+
+
+@pytest.mark.asyncio
+async def test_mock_rooted_bundle_is_a_deterministic_tar(tmp_path: Path) -> None:
+    destination = tmp_path / "providers.tar"
+    result = await MockAdbClient(MockAdbScenario.ROOTED).capture_rooted_bundle(
+        "FX-DEMO-001", RootedCollectionProfile.ANDROID_PROVIDERS, destination
+    )
+
+    assert result.size_bytes == destination.stat().st_size
+    with tarfile.open(destination, "r:") as archive:
+        names = archive.getnames()
+    assert names == [
+        "data/user_de/0/com.android.providers.contacts/databases/contacts2.db",
+        "data/user_de/0/com.android.providers.telephony/databases/mmssms.db",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_mock_rooted_bundle_rejects_ordinary_device(tmp_path: Path) -> None:
+    with pytest.raises(AdbCommandError):
+        await MockAdbClient().capture_rooted_bundle(
+            "FX-DEMO-001",
+            RootedCollectionProfile.ANDROID_PROVIDERS,
+            tmp_path / "providers.tar",
+        )
 
 
 @pytest.mark.asyncio

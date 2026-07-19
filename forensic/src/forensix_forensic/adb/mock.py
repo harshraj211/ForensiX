@@ -1,6 +1,8 @@
 """Deterministic ADB scenarios for development and acceptance tests."""
 
 import asyncio
+import io
+import tarfile
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -13,12 +15,19 @@ from .models import (
     PulledFileResult,
     RootAccessProbe,
     RootAccessStatus,
+    RootedBundleResult,
     SharedStorageRootProbe,
     StorageInventoryEntry,
     StorageInventoryResult,
     StorageProbeStatus,
 )
-from .policy import INVENTORY_MAX_DEPTH, INVENTORY_MAX_ITEMS, AdbCommandPolicy, SharedStorageRoot
+from .policy import (
+    INVENTORY_MAX_DEPTH,
+    INVENTORY_MAX_ITEMS,
+    AdbCommandPolicy,
+    RootedCollectionProfile,
+    SharedStorageRoot,
+)
 
 
 class MockAdbScenario(StrEnum):
@@ -167,6 +176,20 @@ class MockAdbClient:
             size_bytes=len(payload),
         )
 
+    async def capture_rooted_bundle(
+        self,
+        serial: str,
+        profile: RootedCollectionProfile,
+        destination: Path,
+    ) -> RootedBundleResult:
+        await self._require_authorized(serial)
+        if self.scenario is not MockAdbScenario.ROOTED:
+            raise AdbCommandError(1, "Root UID is unavailable in this mock scenario.")
+        AdbCommandPolicy.capture_rooted_bundle(serial, profile)
+        await asyncio.to_thread(_write_rooted_fixture_bundle, destination)
+        size_bytes = await asyncio.to_thread(lambda: destination.stat().st_size)
+        return RootedBundleResult(profile=profile.value, size_bytes=size_bytes)
+
     async def _require_authorized(self, serial: str) -> DeviceTransport:
         from .errors import AdbDeviceNotAuthorizedError, AdbDeviceNotFoundError
 
@@ -191,3 +214,21 @@ class MockAdbClient:
             transport_id="1",
             usb="1-1",
         )
+
+
+def _write_rooted_fixture_bundle(destination: Path) -> None:
+    fixtures = {
+        "data/user_de/0/com.android.providers.contacts/databases/contacts2.db": (
+            b"SQLite format 3\x00ForensiX synthetic contacts provider fixture"
+        ),
+        "data/user_de/0/com.android.providers.telephony/databases/mmssms.db": (
+            b"SQLite format 3\x00ForensiX synthetic telephony provider fixture"
+        ),
+    }
+    with destination.open("xb") as output, tarfile.open(fileobj=output, mode="w|") as archive:
+        for member_name, payload in fixtures.items():
+            metadata = tarfile.TarInfo(member_name)
+            metadata.size = len(payload)
+            metadata.mode = 0o400
+            metadata.mtime = 0
+            archive.addfile(metadata, io.BytesIO(payload))

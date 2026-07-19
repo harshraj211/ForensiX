@@ -102,3 +102,10 @@ class PulledFileResult(BaseModel):
     root_id: str
     relative_path: str
     size_bytes: int = Field(ge=0)
+
+
+class RootedBundleResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    profile: str
+    size_bytes: int = Field(ge=1)

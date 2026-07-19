@@ -6,6 +6,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 from .errors import AdbOutputLimitError, AdbTimeoutError, AdbTransferLimitError
 
@@ -142,6 +143,70 @@ class SubprocessAdbRunner:
             stderr=stderr_bytes.decode("utf-8", errors="replace"),
             duration_seconds=time.monotonic() - started,
         )
+
+    async def run_stdout_to_file(
+        self,
+        arguments: Sequence[str],
+        destination: Path,
+        *,
+        timeout_seconds: float,
+        max_file_bytes: int,
+    ) -> AdbCommandResult:
+        """Stream binary stdout into a new partial file with strict limits."""
+        if max_file_bytes <= 0:
+            raise ValueError("max_file_bytes must be positive")
+        argv = tuple(arguments)
+        self._validate_arguments(argv)
+        started = time.monotonic()
+        creation_flags = 0
+        if os.name == "nt":
+            creation_flags = 0x08000000 | 0x00000200
+        process = await asyncio.create_subprocess_exec(  # noqa: S603
+            str(self._adb_path),
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            creationflags=creation_flags,
+        )
+        assert process.stdout is not None
+        assert process.stderr is not None
+        try:
+            with destination.open("xb") as output:
+                async with asyncio.timeout(timeout_seconds):
+                    _, stderr_bytes = await asyncio.gather(
+                        self._copy_limited(process.stdout, output, max_file_bytes),
+                        self._read_limited(process.stderr),
+                    )
+                    exit_code = await process.wait()
+                output.flush()
+                os.fsync(output.fileno())
+        except FileExistsError:
+            await self._terminate(process)
+            raise
+        except TimeoutError as error:
+            await self._terminate(process)
+            raise AdbTimeoutError(timeout_seconds) from error
+        except (AdbOutputLimitError, AdbTransferLimitError):
+            await self._terminate(process)
+            raise
+        return AdbCommandResult(
+            argv=argv,
+            exit_code=exit_code,
+            stdout="",
+            stderr=stderr_bytes.decode("utf-8", errors="replace"),
+            duration_seconds=time.monotonic() - started,
+        )
+
+    @staticmethod
+    async def _copy_limited(
+        stream: asyncio.StreamReader, output: BinaryIO, max_file_bytes: int
+    ) -> None:
+        size = 0
+        while chunk := await stream.read(65_536):
+            size += len(chunk)
+            if size > max_file_bytes:
+                raise AdbTransferLimitError(max_file_bytes)
+            await asyncio.to_thread(output.write, chunk)
 
     async def _read_limited(self, stream: asyncio.StreamReader) -> bytes:
         chunks: list[bytes] = []

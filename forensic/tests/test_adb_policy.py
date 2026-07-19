@@ -10,6 +10,7 @@ from forensix_forensic.adb import (
     AdbCommandPolicy,
     AdbCommandResult,
     RootAccessStatus,
+    RootedCollectionProfile,
     SharedStorageRoot,
     StorageProbeStatus,
     SubprocessAdbRunner,
@@ -39,6 +40,18 @@ class RecordingRunner:
     ) -> AdbCommandResult:
         self.calls.append((arguments, timeout_seconds))
         await asyncio.to_thread(destination.write_bytes, b"known-answer")
+        return self.results.popleft()
+
+    async def run_stdout_to_file(
+        self,
+        arguments: tuple[str, ...],
+        destination: Path,
+        *,
+        timeout_seconds: float,
+        max_file_bytes: int,
+    ) -> AdbCommandResult:
+        self.calls.append((arguments, timeout_seconds))
+        await asyncio.to_thread(destination.write_bytes, b"rooted-tar-fixture")
         return self.results.popleft()
 
 
@@ -89,6 +102,21 @@ def test_root_probe_policy_is_fixed_and_serial_scoped() -> None:
         "id",
     )
     assert command.timeout_seconds == 8.0
+
+
+def test_rooted_bundle_policy_uses_only_fixed_provider_paths() -> None:
+    command = AdbCommandPolicy.capture_rooted_bundle(
+        "FX-DEMO-001", RootedCollectionProfile.ANDROID_PROVIDERS
+    )
+
+    assert command.arguments[:5] == ("-s", "FX-DEMO-001", "exec-out", "su", "-c")
+    assert command.timeout_seconds == 600.0
+    shell_text = command.arguments[5]
+    assert "FX-DEMO-001" not in shell_text
+    assert "com.android.providers.contacts/databases" in shell_text
+    assert "com.android.providers.telephony/databases" in shell_text
+    assert "com.android.providers.calendar/databases" in shell_text
+    assert "tar -cf -" in shell_text
 
 
 def test_inventory_policy_is_fixed_bounded_and_uses_no_caller_controlled_shell_text() -> None:
@@ -234,3 +262,19 @@ async def test_system_pull_writes_only_to_supplied_partial_path(tmp_path: Path) 
     assert result.size_bytes == 12
     assert runner.calls[0][0][2] == "pull"
     assert "shell" not in runner.calls[0][0]
+
+
+@pytest.mark.asyncio
+async def test_system_rooted_bundle_streams_to_supplied_new_path(tmp_path: Path) -> None:
+    runner = RecordingRunner([_result(0)])
+    client = SystemAdbClient(cast(SubprocessAdbRunner, runner))
+    destination = tmp_path / "providers.tar.partial"
+
+    result = await client.capture_rooted_bundle(
+        "FX-DEMO-001", RootedCollectionProfile.ANDROID_PROVIDERS, destination
+    )
+
+    assert destination.read_bytes() == b"rooted-tar-fixture"
+    assert result.profile == "android_providers"
+    assert result.size_bytes == len(b"rooted-tar-fixture")
+    assert runner.calls[0][0][2:5] == ("exec-out", "su", "-c")

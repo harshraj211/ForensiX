@@ -15,11 +15,16 @@ class AdbOperation(StrEnum):
     INVENTORY_STORAGE_PATHS = "inventory_storage_paths"
     PULL_INVENTORY_FILE = "pull_inventory_file"
     PROBE_ROOT_ACCESS = "probe_root_access"
+    CAPTURE_ROOTED_BUNDLE = "capture_rooted_bundle"
 
 
 class SharedStorageRoot(StrEnum):
     PRIMARY_ALIAS = "primary_alias"
     EMULATED_PRIMARY = "emulated_primary"
+
+
+class RootedCollectionProfile(StrEnum):
+    ANDROID_PROVIDERS = "android_providers"
 
 
 _STORAGE_PATHS: dict[SharedStorageRoot, str] = {
@@ -30,6 +35,18 @@ _STORAGE_PATHS: dict[SharedStorageRoot, str] = {
 INVENTORY_MAX_DEPTH = 6
 INVENTORY_MAX_ITEMS = 250
 MAX_ACQUIRED_FILE_BYTES = 100 * 1024 * 1024
+MAX_ROOTED_BUNDLE_BYTES = 1024 * 1024 * 1024
+
+_ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
+    RootedCollectionProfile.ANDROID_PROVIDERS: (
+        "/data/user_de/0/com.android.providers.contacts/databases",
+        "/data/user/0/com.android.providers.contacts/databases",
+        "/data/user_de/0/com.android.providers.telephony/databases",
+        "/data/user/0/com.android.providers.telephony/databases",
+        "/data/user_de/0/com.android.providers.calendar/databases",
+        "/data/user/0/com.android.providers.calendar/databases",
+    )
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +94,28 @@ class AdbCommandPolicy:
             ("-s", serial, "shell", "su", "-c", "id"),
             8.0,
         )
+
+    @staticmethod
+    def capture_rooted_bundle(
+        serial: str, profile: RootedCollectionProfile
+    ) -> ApprovedAdbCommand:
+        """Build one literal provider-bundle command from a closed profile enum."""
+        _validate_serial(serial)
+        quoted_paths = " ".join(f"'{path}'" for path in _ROOTED_PROFILE_PATHS[profile])
+        command = (
+            f"set --; for p in {quoted_paths}; do "
+            'if [ -e "$p" ]; then set -- "$@" "$p"; fi; done; '
+            '[ "$#" -gt 0 ] || exit 44; exec tar -cf - "$@"'
+        )
+        return ApprovedAdbCommand(
+            AdbOperation.CAPTURE_ROOTED_BUNDLE,
+            ("-s", serial, "exec-out", "su", "-c", command),
+            600.0,
+        )
+
+    @staticmethod
+    def rooted_profile_paths(profile: RootedCollectionProfile) -> tuple[str, ...]:
+        return _ROOTED_PROFILE_PATHS[profile]
 
     @staticmethod
     def storage_root_exists(serial: str, root: SharedStorageRoot) -> ApprovedAdbCommand:

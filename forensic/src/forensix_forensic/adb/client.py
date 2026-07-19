@@ -12,6 +12,7 @@ from .models import (
     PulledFileResult,
     RootAccessProbe,
     RootAccessStatus,
+    RootedBundleResult,
     SharedStorageRootProbe,
     StorageInventoryResult,
     StorageProbeStatus,
@@ -27,8 +28,10 @@ from .policy import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_ITEMS,
     MAX_ACQUIRED_FILE_BYTES,
+    MAX_ROOTED_BUNDLE_BYTES,
     AdbCommandPolicy,
     ApprovedAdbCommand,
+    RootedCollectionProfile,
     SharedStorageRoot,
 )
 from .runner import AdbCommandResult, SubprocessAdbRunner
@@ -58,6 +61,13 @@ class AdbClient(Protocol):
         relative_path: str,
         destination: Path,
     ) -> PulledFileResult: ...
+
+    async def capture_rooted_bundle(
+        self,
+        serial: str,
+        profile: RootedCollectionProfile,
+        destination: Path,
+    ) -> RootedBundleResult: ...
 
 
 class SystemAdbClient:
@@ -190,6 +200,26 @@ class SystemAdbClient:
             relative_path=relative_path,
             size_bytes=size_bytes,
         )
+
+    async def capture_rooted_bundle(
+        self,
+        serial: str,
+        profile: RootedCollectionProfile,
+        destination: Path,
+    ) -> RootedBundleResult:
+        command = AdbCommandPolicy.capture_rooted_bundle(serial, profile)
+        result = await self._runner.run_stdout_to_file(
+            command.arguments,
+            destination,
+            timeout_seconds=command.timeout_seconds,
+            max_file_bytes=MAX_ROOTED_BUNDLE_BYTES,
+        )
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        size_bytes = await asyncio.to_thread(_regular_file_size, destination)
+        if size_bytes is None or size_bytes == 0:
+            raise AdbCommandError(result.exit_code, "ADB did not create a non-empty rooted bundle.")
+        return RootedBundleResult(profile=profile.value, size_bytes=size_bytes)
 
     async def _run(self, command: ApprovedAdbCommand) -> AdbCommandResult:
         return await self._runner.run(command.arguments, timeout_seconds=command.timeout_seconds)
