@@ -6,6 +6,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
+from typing import Literal
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -42,6 +43,15 @@ from .inventory import AcquisitionInventoryError, DeviceIdentityChangedError
 from .recovery import AcquisitionRecoveryService
 
 MINIMUM_POST_TRANSFER_FREE_BYTES = 100 * 1024 * 1024
+MAX_BULK_ACQUIRE_ITEMS = 50
+
+BulkAcquireOutcome = Literal[
+    "completed",
+    "failed",
+    "skipped_already_completed",
+    "skipped_acquiring",
+    "skipped_needs_review",
+]
 
 
 class AcquisitionFileError(AcquisitionInventoryError):
@@ -50,6 +60,27 @@ class AcquisitionFileError(AcquisitionInventoryError):
 
 class EvidenceDiskSpaceError(AcquisitionFileError):
     code = "EVIDENCE_DISK_SPACE_LOW"
+
+
+@dataclass(frozen=True, slots=True)
+class BulkAcquireItemResult:
+    inventory_item_id: str
+    outcome: BulkAcquireOutcome
+    file: AcquiredEvidenceFileRecord | None
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class BulkAcquireResult:
+    batch_id: str
+    case_id: str
+    job_id: str
+    requested_count: int
+    completed_count: int
+    failed_count: int
+    skipped_count: int
+    items: tuple[BulkAcquireItemResult, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +109,7 @@ class _FileContext:
 
 
 class AcquisitionFileService:
-    """Pulls exactly one persisted inventory item into contained evidence storage."""
+    """Pulls inventory-bound evidence files into contained evidence storage."""
 
     async def acquire(
         self,
@@ -93,77 +124,77 @@ class AcquisitionFileService:
         if completed is not None:
             return completed
         assert context is not None
-        store = EvidenceStore(database.data_dir / "evidence")
-        partial_preserved = False
-        partial_id: str | None = None
-        try:
-            serial = await self._revalidate_live_device(adb_client, context)
-            stored = self._recover_sealed_file(store, context.storage_key)
-            if stored is None:
-                partial_id = str(uuid4())
-                partial_storage_key = f"c/{context.case_id[:8]}/p/{partial_id}.partial"
-                reservation = store.reserve_external(
-                    context.storage_key,
-                    partial_storage_key=partial_storage_key,
-                )
-                AcquisitionRecoveryService().begin_attempt(
-                    database,
-                    partial_id=partial_id,
-                    evidence_file_id=context.record_id,
-                    case_id=context.case_id,
-                    job_id=context.job_id,
-                    created_by=context.operator_id,
-                    storage_key=partial_storage_key,
-                )
-                try:
-                    transfer = await adb_client.pull_inventory_file(
-                        serial,
-                        context.root,
-                        context.relative_path,
-                        reservation.partial_path,
-                    )
-                    if (
-                        transfer.root_id != context.root.value
-                        or transfer.relative_path != context.relative_path
-                    ):
-                        raise AcquisitionFileError(
-                            "The ADB transfer result did not match the selected inventory item."
-                        )
-                    if reservation.partial_path.stat().st_size != transfer.size_bytes:
-                        raise AcquisitionFileError(
-                            "The evidence partial size differs from the ADB transfer result."
-                        )
-                    stored = reservation.seal()
-                    AcquisitionRecoveryService().mark_sealed(
-                        database,
-                        partial_id,
-                        size_bytes=stored.size_bytes,
-                        sha256=stored.sha256,
-                    )
-                except Exception as error:
-                    preserve_partial = not isinstance(error, AdbTransferLimitError)
-                    reservation.close(preserve_partial=preserve_partial)
-                    reconciled = AcquisitionRecoveryService().reconcile_attempt(
-                        database,
-                        partial_id,
-                        reason_code=getattr(error, "code", "TRANSFER_FAILED"),
-                        preserve=preserve_partial,
-                    )
-                    partial_preserved = reconciled.status == "retained"
-                    raise
-            return self._complete(database, store, context, stored)
-        except AdbError as error:
-            self._fail(database, context, error.code, str(error), partial_preserved)
-            raise
-        except AcquisitionFileError as error:
-            self._fail(database, context, error.code, str(error), partial_preserved)
-            raise
-        except Exception as error:
-            safe_error = AcquisitionFileError(
-                "The selected evidence file could not be sealed and recorded safely."
+        return await self._transfer(database, adb_client, context)
+
+    async def acquire_batch(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        job_id: str,
+        item_ids: list[str],
+        adb_client: AdbClient,
+    ) -> BulkAcquireResult:
+        """Acquire multiple inventory items sequentially with per-item outcomes."""
+        ordered_ids = self._normalize_batch_item_ids(item_ids)
+        self._validate_batch_membership(
+            database, principal, case_id, job_id, ordered_ids
+        )
+        batch_id = str(uuid4())
+        self._record_batch_event(
+            database,
+            case_id=case_id,
+            actor_id=principal.user_id,
+            event_type="evidence_file_batch_started",
+            safe_detail=(
+                f"batch_id={batch_id};job_id={job_id};requested_count={len(ordered_ids)}"
+            ),
+        )
+        results: list[BulkAcquireItemResult] = []
+        completed_count = 0
+        failed_count = 0
+        skipped_count = 0
+        for index, item_id in enumerate(ordered_ids, start=1):
+            item_result = await self._acquire_batch_item(
+                database, principal, case_id, job_id, item_id, adb_client
             )
-            self._fail(database, context, safe_error.code, str(safe_error), partial_preserved)
-            raise safe_error from error
+            results.append(item_result)
+            if item_result.outcome == "completed":
+                completed_count += 1
+            elif item_result.outcome == "failed":
+                failed_count += 1
+            else:
+                skipped_count += 1
+            self._record_batch_event(
+                database,
+                case_id=case_id,
+                actor_id=principal.user_id,
+                event_type="evidence_file_batch_progress",
+                safe_detail=(
+                    f"batch_id={batch_id};index={index};total={len(ordered_ids)};"
+                    f"inventory_item_id={item_id};outcome={item_result.outcome}"
+                ),
+            )
+        self._record_batch_event(
+            database,
+            case_id=case_id,
+            actor_id=principal.user_id,
+            event_type="evidence_file_batch_completed",
+            safe_detail=(
+                f"batch_id={batch_id};job_id={job_id};completed={completed_count};"
+                f"failed={failed_count};skipped={skipped_count}"
+            ),
+        )
+        return BulkAcquireResult(
+            batch_id=batch_id,
+            case_id=case_id,
+            job_id=job_id,
+            requested_count=len(ordered_ids),
+            completed_count=completed_count,
+            failed_count=failed_count,
+            skipped_count=skipped_count,
+            items=tuple(results),
+        )
 
     def list_for_job(
         self,
@@ -316,6 +347,230 @@ class AcquisitionFileService:
                     started_at=started_at,
                 ),
                 None,
+            )
+
+    async def _transfer(
+        self,
+        database: Database,
+        adb_client: AdbClient,
+        context: _FileContext,
+    ) -> AcquiredEvidenceFileRecord:
+        store = EvidenceStore(database.data_dir / "evidence")
+        partial_preserved = False
+        try:
+            serial = await self._revalidate_live_device(adb_client, context)
+            stored = self._recover_sealed_file(store, context.storage_key)
+            if stored is None:
+                partial_id = str(uuid4())
+                partial_storage_key = f"c/{context.case_id[:8]}/p/{partial_id}.partial"
+                reservation = store.reserve_external(
+                    context.storage_key,
+                    partial_storage_key=partial_storage_key,
+                )
+                AcquisitionRecoveryService().begin_attempt(
+                    database,
+                    partial_id=partial_id,
+                    evidence_file_id=context.record_id,
+                    case_id=context.case_id,
+                    job_id=context.job_id,
+                    created_by=context.operator_id,
+                    storage_key=partial_storage_key,
+                )
+                try:
+                    transfer = await adb_client.pull_inventory_file(
+                        serial,
+                        context.root,
+                        context.relative_path,
+                        reservation.partial_path,
+                    )
+                    if (
+                        transfer.root_id != context.root.value
+                        or transfer.relative_path != context.relative_path
+                    ):
+                        raise AcquisitionFileError(
+                            "The ADB transfer result did not match the selected inventory item."
+                        )
+                    if reservation.partial_path.stat().st_size != transfer.size_bytes:
+                        raise AcquisitionFileError(
+                            "The evidence partial size differs from the ADB transfer result."
+                        )
+                    stored = reservation.seal()
+                    AcquisitionRecoveryService().mark_sealed(
+                        database,
+                        partial_id,
+                        size_bytes=stored.size_bytes,
+                        sha256=stored.sha256,
+                    )
+                except Exception as error:
+                    preserve_partial = not isinstance(error, AdbTransferLimitError)
+                    reservation.close(preserve_partial=preserve_partial)
+                    reconciled = AcquisitionRecoveryService().reconcile_attempt(
+                        database,
+                        partial_id,
+                        reason_code=getattr(error, "code", "TRANSFER_FAILED"),
+                        preserve=preserve_partial,
+                    )
+                    partial_preserved = reconciled.status == "retained"
+                    raise
+            return self._complete(database, store, context, stored)
+        except AdbError as error:
+            self._fail(database, context, error.code, str(error), partial_preserved)
+            raise
+        except AcquisitionFileError as error:
+            self._fail(database, context, error.code, str(error), partial_preserved)
+            raise
+        except Exception as error:
+            safe_error = AcquisitionFileError(
+                "The selected evidence file could not be sealed and recorded safely."
+            )
+            self._fail(database, context, safe_error.code, str(safe_error), partial_preserved)
+            raise safe_error from error
+
+    async def _acquire_batch_item(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        job_id: str,
+        item_id: str,
+        adb_client: AdbClient,
+    ) -> BulkAcquireItemResult:
+        try:
+            context, completed = self._begin(database, principal, case_id, job_id, item_id)
+            if completed is not None:
+                return BulkAcquireItemResult(
+                    inventory_item_id=item_id,
+                    outcome="skipped_already_completed",
+                    file=completed,
+                    error_code=None,
+                    error_message=None,
+                )
+            assert context is not None
+            record = await self._transfer(database, adb_client, context)
+            return BulkAcquireItemResult(
+                inventory_item_id=item_id,
+                outcome="completed",
+                file=record,
+                error_code=None,
+                error_message=None,
+            )
+        except AcquisitionFileError as error:
+            message = str(error)
+            if "already being acquired" in message:
+                outcome: BulkAcquireOutcome = "skipped_acquiring"
+            elif "retain or discard" in message:
+                outcome = "skipped_needs_review"
+            else:
+                outcome = "failed"
+            failed_record = self._latest_file_for_item(database, case_id, job_id, item_id)
+            return BulkAcquireItemResult(
+                inventory_item_id=item_id,
+                outcome=outcome,
+                file=failed_record,
+                error_code=error.code,
+                error_message=message[:1000],
+            )
+        except AdbError as error:
+            failed_record = self._latest_file_for_item(database, case_id, job_id, item_id)
+            return BulkAcquireItemResult(
+                inventory_item_id=item_id,
+                outcome="failed",
+                file=failed_record,
+                error_code=error.code,
+                error_message=str(error)[:1000],
+            )
+
+    @staticmethod
+    def _normalize_batch_item_ids(item_ids: list[str]) -> list[str]:
+        if not item_ids:
+            raise AcquisitionFileError("Select at least one inventory item to acquire.")
+        if len(item_ids) > MAX_BULK_ACQUIRE_ITEMS:
+            raise AcquisitionFileError(
+                f"Bulk acquisition is limited to {MAX_BULK_ACQUIRE_ITEMS} inventory items."
+            )
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for item_id in item_ids:
+            normalized = item_id.strip()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            ordered.append(normalized)
+        if not ordered:
+            raise AcquisitionFileError("Select at least one inventory item to acquire.")
+        if len(ordered) > MAX_BULK_ACQUIRE_ITEMS:
+            raise AcquisitionFileError(
+                f"Bulk acquisition is limited to {MAX_BULK_ACQUIRE_ITEMS} inventory items."
+            )
+        return ordered
+
+    def _validate_batch_membership(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        job_id: str,
+        item_ids: list[str],
+    ) -> None:
+        with database.session() as session:
+            AcquisitionExecutionService().get(session, principal, case_id, job_id)
+            inventory = session.scalar(
+                select(AcquisitionInventoryRecord).where(
+                    AcquisitionInventoryRecord.job_id == job_id
+                )
+            )
+            if inventory is None or inventory.case_id != case_id:
+                raise AcquisitionFileError(
+                    "A completed bounded inventory job is required before file acquisition."
+                )
+            known = set(
+                session.scalars(
+                    select(AcquisitionInventoryItemRecord.id).where(
+                        AcquisitionInventoryItemRecord.inventory_id == inventory.id,
+                        AcquisitionInventoryItemRecord.id.in_(item_ids),
+                    )
+                )
+            )
+            missing = [item_id for item_id in item_ids if item_id not in known]
+            if missing:
+                raise AcquisitionFileError(
+                    "One or more selected paths were not issued by this acquisition inventory."
+                )
+
+    @staticmethod
+    def _record_batch_event(
+        database: Database,
+        *,
+        case_id: str,
+        actor_id: str,
+        event_type: str,
+        safe_detail: str,
+    ) -> None:
+        with database.session() as session:
+            session.add(
+                CaseEventRecord(
+                    case_id=case_id,
+                    actor_id=actor_id,
+                    event_type=event_type,
+                    safe_detail=safe_detail[:1000],
+                )
+            )
+            session.flush()
+
+    @staticmethod
+    def _latest_file_for_item(
+        database: Database,
+        case_id: str,
+        job_id: str,
+        item_id: str,
+    ) -> AcquiredEvidenceFileRecord | None:
+        with database.session() as session:
+            return session.scalar(
+                select(AcquiredEvidenceFileRecord).where(
+                    AcquiredEvidenceFileRecord.case_id == case_id,
+                    AcquiredEvidenceFileRecord.job_id == job_id,
+                    AcquiredEvidenceFileRecord.inventory_item_id == item_id,
+                )
             )
 
     async def _revalidate_live_device(self, adb_client: AdbClient, context: _FileContext) -> str:

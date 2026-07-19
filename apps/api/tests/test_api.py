@@ -322,11 +322,15 @@ def test_openapi_exposes_no_arbitrary_shell_operation(tmp_path: Path) -> None:
     acquire = schema["paths"][
         "/api/v1/cases/{case_id}/acquisitions/{job_id}/inventory/items/{item_id}/acquire"
     ]["post"]
+    bulk_acquire = schema["paths"][
+        "/api/v1/cases/{case_id}/acquisitions/{job_id}/inventory/acquire-batch"
+    ]["post"]
     verify = schema["paths"][
         "/api/v1/cases/{case_id}/acquisitions/{job_id}/files/{evidence_file_id}/verify"
     ]["post"]
     assert "requestBody" not in detect
     assert "requestBody" not in acquire
+    assert "requestBody" in bulk_acquire
     assert "requestBody" not in verify
 
 
@@ -343,6 +347,28 @@ def test_first_run_bootstrap_creates_secure_local_session(tmp_path: Path) -> Non
     assert me.json()["roles"] == ["administrator"]
     assert "users:manage" in me.json()["permissions"]
     assert headers["X-CSRF-Token"]
+
+
+def test_bootstrap_sets_spa_readable_csrf_cookie_at_root_path(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/auth/bootstrap",
+            json={
+                "username": "admin.user",
+                "display_name": "Test Administrator",
+                "password": PASSWORD,
+            },
+        )
+
+    csrf_headers = [
+        value
+        for value in response.headers.get_list("set-cookie")
+        if value.startswith("forensix_csrf=") and "Max-Age=" in value and "Path=/;" in value
+    ]
+    assert csrf_headers
+    assert "Path=/;" in csrf_headers[0]
+    assert "HttpOnly" not in csrf_headers[0]
 
 
 def test_bootstrap_is_rejected_after_first_administrator(tmp_path: Path) -> None:
@@ -1171,6 +1197,53 @@ def test_file_acquisition_rejects_caller_supplied_or_unknown_item(tmp_path: Path
 
     assert rejected.status_code == 409
     assert rejected.json()["error"]["code"] == "ACQUISITION_FILE_INVALID"
+
+
+def test_bulk_inventory_file_acquisition_pulls_selected_items(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+        inventory = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers).json()
+        item_ids = [entry["id"] for entry in inventory["items"]]
+
+        batch = client.post(
+            f"{endpoint}/{job['id']}/inventory/acquire-batch",
+            headers=headers,
+            json={"item_ids": item_ids},
+        )
+        listed = client.get(f"{endpoint}/{job['id']}/files")
+        repeated = client.post(
+            f"{endpoint}/{job['id']}/inventory/acquire-batch",
+            headers=headers,
+            json={"item_ids": item_ids},
+        )
+        invalid = client.post(
+            f"{endpoint}/{job['id']}/inventory/acquire-batch",
+            headers=headers,
+            json={"item_ids": ["00000000-0000-0000-0000-000000000000"]},
+        )
+
+    assert batch.status_code == 200
+    body = batch.json()
+    assert body["requested_count"] == 3
+    assert body["completed_count"] == 3
+    assert body["failed_count"] == 0
+    assert body["skipped_count"] == 0
+    assert len(body["items"]) == 3
+    assert all(item["outcome"] == "completed" for item in body["items"])
+    assert all(item["file"]["status"] == "completed" for item in body["items"])
+    assert len(listed.json()) == 3
+    assert repeated.status_code == 200
+    assert repeated.json()["completed_count"] == 0
+    assert repeated.json()["skipped_count"] == 3
+    assert all(
+        item["outcome"] == "skipped_already_completed" for item in repeated.json()["items"]
+    )
+    assert invalid.status_code == 409
+    assert invalid.json()["error"]["code"] == "ACQUISITION_FILE_INVALID"
 
 
 def test_prepared_acquisition_job_can_be_cancelled_without_execution(tmp_path: Path) -> None:

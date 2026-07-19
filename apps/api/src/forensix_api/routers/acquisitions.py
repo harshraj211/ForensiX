@@ -20,6 +20,9 @@ from forensix_api.schemas import (
     AcquisitionJobResponse,
     AcquisitionPartialResponse,
     AcquisitionResumeRequest,
+    BulkAcquireItemResponse,
+    BulkAcquireRequest,
+    BulkAcquireResponse,
     EvidenceVerificationResponse,
     JobEventResponse,
 )
@@ -30,6 +33,7 @@ from forensix_server.acquisitions import (
     AcquisitionInventoryService,
     AcquisitionRecoveryError,
     AcquisitionRecoveryService,
+    BulkAcquireResult,
     EvidenceVerificationService,
     event_checkpoint,
     job_checkpoint,
@@ -197,6 +201,29 @@ async def acquire_inventory_file(
         adb_client,
     )
     return _file_response(record)
+
+
+@router.post(
+    "/{job_id}/inventory/acquire-batch",
+    response_model=BulkAcquireResponse,
+)
+async def acquire_inventory_batch(
+    case_id: str,
+    job_id: str,
+    request: BulkAcquireRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+) -> BulkAcquireResponse:
+    result = await AcquisitionFileService().acquire_batch(
+        database,
+        authenticated.principal,
+        case_id,
+        job_id,
+        request.item_ids,
+        adb_client,
+    )
+    return _bulk_response(result)
 
 
 @router.get("/{job_id}/partials", response_model=list[AcquisitionPartialResponse])
@@ -437,6 +464,28 @@ def _file_response(record: AcquiredEvidenceFileRecord) -> AcquiredEvidenceFileRe
         error_message=record.error_message,
         started_at=record.started_at,
         completed_at=record.completed_at,
+    )
+
+
+def _bulk_response(result: BulkAcquireResult) -> BulkAcquireResponse:
+    return BulkAcquireResponse(
+        batch_id=result.batch_id,
+        case_id=result.case_id,
+        job_id=result.job_id,
+        requested_count=result.requested_count,
+        completed_count=result.completed_count,
+        failed_count=result.failed_count,
+        skipped_count=result.skipped_count,
+        items=[
+            BulkAcquireItemResponse(
+                inventory_item_id=item.inventory_item_id,
+                outcome=item.outcome,
+                file=_file_response(item.file) if item.file is not None else None,
+                error_code=item.error_code,
+                error_message=item.error_message,
+            )
+            for item in result.items
+        ],
     )
 
 

@@ -47,6 +47,7 @@ from forensix_server.db import (
     AcquisitionPartialRecord,
     ArtifactRecord,
     AuditLogRecord,
+    CaseEventRecord,
     Database,
     EvidenceVerificationRecord,
     JobRecord,
@@ -394,6 +395,81 @@ async def test_selected_inventory_item_is_pulled_hashed_and_manifested(
     with database.session() as session:
         records = list(session.scalars(select(AcquiredEvidenceFileRecord)))
     assert len(records) == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_acquire_pulls_multiple_items_sequentially_and_skips_completed(
+    database: Database,
+) -> None:
+    principal = _principal(database)
+    case_id, _, job_id = _ready_job(database, principal)
+    await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
+    with database.session() as session:
+        inventory = session.scalar(
+            select(AcquisitionInventoryRecord).where(AcquisitionInventoryRecord.job_id == job_id)
+        )
+        assert inventory is not None
+        items = list(
+            session.scalars(
+                select(AcquisitionInventoryItemRecord)
+                .where(AcquisitionInventoryItemRecord.inventory_id == inventory.id)
+                .order_by(AcquisitionInventoryItemRecord.ordinal)
+            )
+        )
+        assert len(items) == 3
+        item_ids = [item.id for item in items]
+
+    first = await AcquisitionFileService().acquire(
+        database, principal, case_id, job_id, item_ids[0], MockAdbClient()
+    )
+    batch = await AcquisitionFileService().acquire_batch(
+        database, principal, case_id, job_id, item_ids, MockAdbClient()
+    )
+
+    assert batch.requested_count == 3
+    assert batch.completed_count == 2
+    assert batch.failed_count == 0
+    assert batch.skipped_count == 1
+    assert batch.items[0].outcome == "skipped_already_completed"
+    assert batch.items[0].file is not None
+    assert batch.items[0].file.id == first.id
+    assert batch.items[1].outcome == "completed"
+    assert batch.items[2].outcome == "completed"
+    with database.session() as session:
+        records = list(session.scalars(select(AcquiredEvidenceFileRecord)))
+        events = list(
+            session.scalars(
+                select(CaseEventRecord).where(
+                    CaseEventRecord.case_id == case_id,
+                    CaseEventRecord.event_type.like("evidence_file_batch_%"),
+                )
+            )
+        )
+    assert len(records) == 3
+    assert all(record.status == "completed" for record in records)
+    assert {event.event_type for event in events} == {
+        "evidence_file_batch_started",
+        "evidence_file_batch_progress",
+        "evidence_file_batch_completed",
+    }
+    assert sum(1 for event in events if event.event_type == "evidence_file_batch_progress") == 3
+
+
+@pytest.mark.asyncio
+async def test_bulk_acquire_rejects_unknown_inventory_item(database: Database) -> None:
+    principal = _principal(database)
+    case_id, _, job_id = _ready_job(database, principal)
+    await AcquisitionInventoryService().run(database, principal, case_id, job_id, MockAdbClient())
+
+    with pytest.raises(AcquisitionFileError, match="not issued"):
+        await AcquisitionFileService().acquire_batch(
+            database,
+            principal,
+            case_id,
+            job_id,
+            ["00000000-0000-0000-0000-000000000000"],
+            MockAdbClient(),
+        )
 
 
 @pytest.mark.asyncio

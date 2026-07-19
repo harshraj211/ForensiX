@@ -648,6 +648,35 @@ describe("acquisition planning", () => {
                 relative_path: "DCIM/Camera/IMG_0001.jpg",
                 path_hash: "d".repeat(64),
                 extension: "jpg",
+                size_bytes: 31,
+                modified_time_raw: null,
+                modified_at: null,
+                timestamp_source: null,
+                timestamp_confidence: null,
+              },
+              {
+                id: "item-2",
+                ordinal: 2,
+                relative_path: "Documents/timeline.csv",
+                path_hash: "c".repeat(64),
+                extension: "csv",
+                size_bytes: 40,
+                modified_time_raw: null,
+                modified_at: null,
+                timestamp_source: null,
+                timestamp_confidence: null,
+              },
+              {
+                id: "item-3",
+                ordinal: 3,
+                relative_path: "Download/notes.txt",
+                path_hash: "b".repeat(64),
+                extension: "txt",
+                size_bytes: 12,
+                modified_time_raw: null,
+                modified_at: null,
+                timestamp_source: null,
+                timestamp_confidence: null,
               },
             ],
             total: 3,
@@ -678,6 +707,58 @@ describe("acquisition planning", () => {
                     size_bytes: 31,
                     sha256: "e".repeat(64),
                     manifest_hash: "f".repeat(64),
+                    transfer_limit_bytes: 104857600,
+                    tool_version: "0.1.0",
+                    validation_state: "not_physically_validated",
+                    partial_preserved: false,
+                    error_code: null,
+                    error_message: null,
+                    started_at: assessedAt,
+                    completed_at: assessedAt,
+                  },
+                  {
+                    id: "file-2",
+                    inventory_id: "inventory-1",
+                    inventory_item_id: "item-2",
+                    job_id: "job-1",
+                    case_id: "case-1",
+                    plan_id: "plan-1",
+                    device_id: "device-1",
+                    acquired_by: "user-1",
+                    status: "completed",
+                    source_root_id: "primary_alias",
+                    source_path_hash: "c".repeat(64),
+                    storage_key: "c/case-1/r/file-2.csv",
+                    manifest_storage_key: "c/case-1/m/file-2.json",
+                    size_bytes: 40,
+                    sha256: "1".repeat(64),
+                    manifest_hash: "2".repeat(64),
+                    transfer_limit_bytes: 104857600,
+                    tool_version: "0.1.0",
+                    validation_state: "not_physically_validated",
+                    partial_preserved: false,
+                    error_code: null,
+                    error_message: null,
+                    started_at: assessedAt,
+                    completed_at: assessedAt,
+                  },
+                  {
+                    id: "file-3",
+                    inventory_id: "inventory-1",
+                    inventory_item_id: "item-3",
+                    job_id: "job-1",
+                    case_id: "case-1",
+                    plan_id: "plan-1",
+                    device_id: "device-1",
+                    acquired_by: "user-1",
+                    status: "completed",
+                    source_root_id: "primary_alias",
+                    source_path_hash: "b".repeat(64),
+                    storage_key: "c/case-1/r/file-3.txt",
+                    manifest_storage_key: "c/case-1/m/file-3.json",
+                    size_bytes: 12,
+                    sha256: "3".repeat(64),
+                    manifest_hash: "4".repeat(64),
                     transfer_limit_bytes: 104857600,
                     tool_version: "0.1.0",
                     validation_state: "not_physically_validated",
@@ -722,6 +803,57 @@ describe("acquisition planning", () => {
                 ]
               : [],
           ),
+        );
+      }
+      if (
+        url === "/api/v1/cases/case-1/acquisitions/job-1/inventory/acquire-batch" &&
+        init?.method === "POST"
+      ) {
+        fileAcquired = true;
+        return Promise.resolve(
+          jsonResponse({
+            batch_id: "batch-1",
+            case_id: "case-1",
+            job_id: "job-1",
+            requested_count: 3,
+            completed_count: 3,
+            failed_count: 0,
+            skipped_count: 0,
+            items: [
+              {
+                inventory_item_id: "item-1",
+                outcome: "completed",
+                file: {
+                  id: "file-1",
+                  inventory_id: "inventory-1",
+                  inventory_item_id: "item-1",
+                  job_id: "job-1",
+                  case_id: "case-1",
+                  plan_id: "plan-1",
+                  device_id: "device-1",
+                  acquired_by: "user-1",
+                  status: "completed",
+                  source_root_id: "primary_alias",
+                  source_path_hash: "d".repeat(64),
+                  storage_key: "c/case-1/r/file-1.jpg",
+                  manifest_storage_key: "c/case-1/m/file-1.json",
+                  size_bytes: 31,
+                  sha256: "e".repeat(64),
+                  manifest_hash: "f".repeat(64),
+                  transfer_limit_bytes: 104857600,
+                  tool_version: "0.1.0",
+                  validation_state: "not_physically_validated",
+                  partial_preserved: false,
+                  error_code: null,
+                  error_message: null,
+                  started_at: assessedAt,
+                  completed_at: assessedAt,
+                },
+                error_code: null,
+                error_message: null,
+              },
+            ],
+          }),
         );
       }
       if (
@@ -807,11 +939,24 @@ describe("acquisition planning", () => {
     await user.click(screen.getByRole("button", { name: "Run bounded path inventory" }));
     expect(await screen.findByText("3 path records · completed")).toBeInTheDocument();
     expect(screen.getByText("DCIM/Camera/IMG_0001.jpg")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Acquire selected file" }));
+    await user.click(screen.getByRole("button", { name: "Select all visible" }));
+    await user.click(screen.getByRole("button", { name: "Acquire selected (3)" }));
+    expect(await screen.findByText(/Batch batch-1… finished: 3 completed/i)).toBeInTheDocument();
     expect(await screen.findByText("31 bytes acquired")).toBeInTheDocument();
     expect(screen.getByText(`SHA-256 ${"e".repeat(64)}`)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Verify integrity" }));
+    const verifyButtons = screen.getAllByRole("button", { name: "Verify integrity" });
+    expect(verifyButtons.length).toBeGreaterThan(0);
+    const verifyButton = verifyButtons.at(0);
+    if (!verifyButton) throw new Error("Expected an integrity verification button.");
+    await user.click(verifyButton);
     expect(await screen.findByText("Integrity verified")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/cases/case-1/acquisitions/job-1/inventory/acquire-batch",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ item_ids: ["item-1", "item-2", "item-3"] }),
+      }),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/cases/case-1/acquisition-plans",
       expect.objectContaining({

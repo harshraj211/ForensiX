@@ -719,6 +719,46 @@ export function acquireInventoryFile(
   );
 }
 
+export type BulkAcquireOutcome =
+  | "completed"
+  | "failed"
+  | "skipped_already_completed"
+  | "skipped_acquiring"
+  | "skipped_needs_review";
+
+export interface BulkAcquireItemResult {
+  inventory_item_id: string;
+  outcome: BulkAcquireOutcome;
+  file: AcquiredEvidenceFile | null;
+  error_code: string | null;
+  error_message: string | null;
+}
+
+export interface BulkAcquireResult {
+  batch_id: string;
+  case_id: string;
+  job_id: string;
+  requested_count: number;
+  completed_count: number;
+  failed_count: number;
+  skipped_count: number;
+  items: BulkAcquireItemResult[];
+}
+
+export function acquireInventoryBatch(
+  caseId: string,
+  jobId: string,
+  itemIds: string[],
+): Promise<BulkAcquireResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/inventory/acquire-batch`,
+    {
+      method: "POST",
+      body: JSON.stringify({ item_ids: itemIds }),
+    },
+  );
+}
+
 export function listAcquiredFiles(
   caseId: string,
   jobId: string,

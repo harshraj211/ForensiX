@@ -248,6 +248,35 @@ class AcquiredEvidenceFileResponse(BaseModel):
     completed_at: datetime | None
 
 
+class BulkAcquireRequest(BaseModel):
+    item_ids: list[str] = Field(min_length=1, max_length=50)
+
+
+class BulkAcquireItemResponse(BaseModel):
+    inventory_item_id: str
+    outcome: Literal[
+        "completed",
+        "failed",
+        "skipped_already_completed",
+        "skipped_acquiring",
+        "skipped_needs_review",
+    ]
+    file: AcquiredEvidenceFileResponse | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class BulkAcquireResponse(BaseModel):
+    batch_id: str
+    case_id: str
+    job_id: str
+    requested_count: int
+    completed_count: int
+    failed_count: int
+    skipped_count: int
+    items: list[BulkAcquireItemResponse]
+
+
 class AcquisitionResumeRequest(BaseModel):
     partial_disposition: Literal["retain", "discard"]
 

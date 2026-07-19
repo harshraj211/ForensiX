@@ -15,6 +15,7 @@ import { caseKeys } from "../cases/caseKeys";
 import { CaseError } from "../cases/CasesPage";
 import {
   cancelAcquisitionJob,
+  acquireInventoryBatch,
   acquireInventoryFile,
   createAcquisitionPlan,
   getAcquisitionInventory,
@@ -30,12 +31,74 @@ import {
   runAcquisitionInventory,
   resumeEvidenceFile,
   verifyEvidenceFile,
+  type AcquisitionInventoryItem,
   type AcquisitionJob,
   type AcquisitionModule,
   type AcquisitionPlan,
   type AcquisitionScope,
+  type BulkAcquireResult,
   type EvidenceVerification,
 } from "../../lib/api";
+
+const MEDIA_EXTENSIONS = new Set([
+  "jpg",
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "heic",
+  "heif",
+  "mp4",
+  "mov",
+  "avi",
+  "mkv",
+  "webm",
+  "mp3",
+  "wav",
+  "m4a",
+  "aac",
+  "flac",
+]);
+const DOCUMENT_EXTENSIONS = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "txt",
+  "csv",
+  "md",
+  "rtf",
+  "odt",
+  "ods",
+]);
+
+type InventoryFilter = "all" | "media" | "documents" | "downloads";
+
+function matchesInventoryFilter(item: AcquisitionInventoryItem, filter: InventoryFilter): boolean {
+  if (filter === "all") return true;
+  const extension = (item.extension ?? "").toLowerCase();
+  const path = item.relative_path.toLowerCase();
+  if (filter === "media") return MEDIA_EXTENSIONS.has(extension);
+  if (filter === "documents") return DOCUMENT_EXTENSIONS.has(extension);
+  return path.startsWith("download/") || path.startsWith("downloads/");
+}
+
+function isAcquirableStatus(status: string | undefined): boolean {
+  return status !== "completed" && status !== "acquiring";
+}
+
+/**
+ * SQLite returns historical UTC values without an offset. Treat those API values
+ * as UTC rather than letting the browser reinterpret them in the investigator's
+ * local timezone.
+ */
+function utcTimestamp(value: string): number {
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(value);
+  return new Date(hasTimezone ? value : `${value}Z`).getTime();
+}
 
 const scopeCopy: Record<AcquisitionScope, { label: string; description: string }> = {
   metadata_only: {
@@ -117,7 +180,7 @@ export function AcquisitionPlanningPage() {
   const requiredModules = scopeModules(scope, modules);
   const scopeSupported = requiredModules.every((module) => supportedModules.has(module));
   const readinessFresh = latestAssessment
-    ? pageOpenedAt <= new Date(latestAssessment.assessed_at).getTime() + 30 * 60 * 1000
+    ? pageOpenedAt <= utcTimestamp(latestAssessment.assessed_at) + 30 * 60 * 1000
     : false;
   const caseWritable = caseQuery.data
     ? !new Set(["closed", "archived"]).has(caseQuery.data.status)
@@ -398,7 +461,7 @@ function PlanHistory({
       <div className="mt-5 space-y-3">
         {plans.map((plan) => {
           const job = jobs.find((item) => item.plan_id === plan.id);
-          const planFresh = referenceTime <= new Date(plan.readiness_expires_at).getTime();
+          const planFresh = referenceTime <= utcTimestamp(plan.readiness_expires_at);
           const cancellable = job && new Set(["created", "validating", "ready", "paused", "interrupted"]).has(job.state);
           const inventoryAllowed = job?.state === "ready" && plan.modules.includes("shared_storage_inventory");
           return (
@@ -472,6 +535,9 @@ function PlanHistory({
 
 function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string }) {
   const queryClient = useQueryClient();
+  const [filter, setFilter] = useState<InventoryFilter>("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [lastBatch, setLastBatch] = useState<BulkAcquireResult | null>(null);
   const inventoryQuery = useQuery({
     queryKey: ["acquisition-inventory", caseId, jobId],
     queryFn: () => getAcquisitionInventory(caseId, jobId),
@@ -492,6 +558,15 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
     mutationFn: (itemId: string) => acquireInventoryFile(caseId, jobId, itemId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["acquired-files", caseId, jobId] });
+    },
+  });
+  const acquireBatch = useMutation({
+    mutationFn: (itemIds: string[]) => acquireInventoryBatch(caseId, jobId, itemIds),
+    onSuccess: (result) => {
+      setLastBatch(result);
+      setSelectedIds(new Set());
+      void queryClient.invalidateQueries({ queryKey: ["acquired-files", caseId, jobId] });
+      void queryClient.invalidateQueries({ queryKey: ["acquisition-partials", caseId, jobId] });
     },
   });
   const verifyFile = useMutation({
@@ -530,6 +605,44 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
       .filter((partial) => partial.status === "retained")
       .map((partial) => [partial.evidence_file_id, partial]),
   );
+  const visibleItems = inventory.items.filter((item) => matchesInventoryFilter(item, filter));
+  const selectableVisibleIds = visibleItems
+    .filter((item) => {
+      const acquired = acquiredByItem.get(item.id);
+      if (acquired?.partial_preserved && retainedPartialByFile.has(acquired.id)) return false;
+      return isAcquirableStatus(acquired?.status);
+    })
+    .map((item) => item.id);
+  const selectedVisibleCount = selectableVisibleIds.filter((id) => selectedIds.has(id)).length;
+  const allVisibleSelected =
+    selectableVisibleIds.length > 0 && selectedVisibleCount === selectableVisibleIds.length;
+  const busy = acquireFile.isPending || acquireBatch.isPending || resumeFile.isPending;
+
+  const toggleSelected = (itemId: string, enabled: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (enabled) next.add(itemId);
+      else next.delete(itemId);
+      return next;
+    });
+  };
+
+  const selectVisible = () => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      for (const id of selectableVisibleIds) next.add(id);
+      return next;
+    });
+  };
+
+  const clearVisible = () => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      for (const id of selectableVisibleIds) next.delete(id);
+      return next;
+    });
+  };
+
   return (
     <div className="mt-3 rounded-lg border border-emerald-200/10 bg-emerald-200/5 p-3">
       <p className="text-xs font-semibold text-emerald-200">
@@ -539,112 +652,203 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
         Manifest SHA-256 {inventory.manifest_hash}
       </p>
       <p className="mt-2 text-[10px] leading-4 text-amber-200/80">
-        File acquisition is limited to 100 MiB per selected path and is not physically validated.
+        File acquisition is limited to 100 MiB per selected path (max 50 per bulk batch) and is not
+        physically validated. Transfers run sequentially; failures do not abort the rest of the batch.
       </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {(
+          [
+            ["all", "All paths"],
+            ["media", "Media"],
+            ["documents", "Documents"],
+            ["downloads", "Downloads"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => {
+              setFilter(value);
+            }}
+            className={`min-h-8 rounded-full border px-3 text-[10px] font-semibold uppercase tracking-wide ${
+              filter === value
+                ? "border-cyan-200/30 bg-cyan-300/15 text-cyan-100"
+                : "border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={selectableVisibleIds.length === 0 || busy}
+          onClick={() => {
+            if (allVisibleSelected) clearVisible();
+            else selectVisible();
+          }}
+          className="min-h-9 rounded border border-white/10 px-3 text-[10px] font-semibold text-slate-300 disabled:opacity-40"
+        >
+          {allVisibleSelected ? "Clear visible selection" : "Select all visible"}
+        </button>
+        <button
+          type="button"
+          disabled={selectedIds.size === 0 || busy}
+          onClick={() => {
+            acquireBatch.mutate([...selectedIds]);
+          }}
+          className="inline-flex min-h-9 items-center gap-2 rounded bg-cyan-300 px-3 text-[10px] font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {acquireBatch.isPending ? (
+            <LoaderCircle size={13} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <ShieldCheck size={13} aria-hidden="true" />
+          )}
+          {acquireBatch.isPending
+            ? `Acquiring batch of ${String(selectedIds.size)}…`
+            : `Acquire selected (${String(selectedIds.size)})`}
+        </button>
+        <span className="text-[10px] text-slate-500">
+          {String(selectedVisibleCount)} of {String(selectableVisibleIds.length)} visible selectable
+        </span>
+      </div>
+      {lastBatch && (
+        <div
+          role="status"
+          className="mt-3 rounded border border-cyan-200/15 bg-cyan-200/5 p-2 text-[10px] leading-4 text-cyan-100/85"
+        >
+          Batch {lastBatch.batch_id.slice(0, 8)}… finished: {lastBatch.completed_count} completed ·{" "}
+          {lastBatch.failed_count} failed · {lastBatch.skipped_count} skipped of{" "}
+          {lastBatch.requested_count} requested.
+        </div>
+      )}
       <ul className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1 text-[11px] text-slate-400">
-        {inventory.items.map((item) => {
+        {visibleItems.length === 0 && (
+          <li className="rounded border border-white/5 p-2 text-slate-500">
+            No inventory paths match this filter.
+          </li>
+        )}
+        {visibleItems.map((item) => {
           const acquired = acquiredByItem.get(item.id);
           const verification = acquired
             ? latestVerificationByFile.get(acquired.id)
             : undefined;
           const retainedPartial = acquired ? retainedPartialByFile.get(acquired.id) : undefined;
+          const needsReview = Boolean(acquired?.partial_preserved && retainedPartial);
+          const selectable = isAcquirableStatus(acquired?.status) && !needsReview;
+          const selected = selectedIds.has(item.id);
           return (
             <li key={item.id} className="rounded border border-white/5 p-2">
-              <p className="truncate font-mono" title={item.relative_path}>
-                {item.relative_path}
-              </p>
-              {item.modified_at && (
-                <p className="mt-1 text-[10px] text-slate-500">
-                  Android-reported modified {new Date(item.modified_at).toLocaleString()}
-                  {item.size_bytes !== null ? ` · ${String(item.size_bytes)} bytes` : ""}
-                  {item.timestamp_confidence ? ` · ${item.timestamp_confidence} confidence` : ""}
-                </p>
-              )}
-              {acquired?.status === "completed" ? (
-                <div className="mt-2 text-[10px] text-emerald-200">
-                  <p>{acquired.size_bytes} bytes acquired</p>
-                  <p className="truncate font-mono" title={acquired.sha256 ?? undefined}>
-                    SHA-256 {acquired.sha256}
+              <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 shrink-0 rounded border-white/20 bg-transparent accent-cyan-300 disabled:opacity-30"
+                  checked={selected}
+                  disabled={!selectable || busy}
+                  aria-label={`Select ${item.relative_path}`}
+                  onChange={(event) => {
+                    toggleSelected(item.id, event.target.checked);
+                  }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-mono" title={item.relative_path}>
+                    {item.relative_path}
                   </p>
-                  <button
-                    type="button"
-                    disabled={verifyFile.isPending || verificationsQuery.isPending}
-                    onClick={() => {
-                      verifyFile.mutate(acquired.id);
-                    }}
-                    className="mt-2 min-h-9 rounded border border-emerald-200/20 px-3 text-[10px] font-semibold text-emerald-100 disabled:opacity-40"
-                  >
-                    {verifyFile.isPending && verifyFile.variables === acquired.id
-                      ? "Verifying..."
-                      : "Verify integrity"}
-                  </button>
-                  {verification && (
-                    <p
-                      className={`mt-2 font-semibold ${
-                        verification.status === "verified"
-                          ? "text-emerald-200"
-                          : "text-rose-200"
-                      }`}
+                  {item.modified_at && (
+                    <p className="mt-1 text-[10px] text-slate-500">
+                      Android-reported modified {new Date(item.modified_at).toLocaleString()}
+                      {item.size_bytes !== null ? ` · ${String(item.size_bytes)} bytes` : ""}
+                      {item.timestamp_confidence ? ` · ${item.timestamp_confidence} confidence` : ""}
+                    </p>
+                  )}
+                  {acquired?.status === "completed" ? (
+                    <div className="mt-2 text-[10px] text-emerald-200">
+                      <p>{acquired.size_bytes} bytes acquired</p>
+                      <p className="truncate font-mono" title={acquired.sha256 ?? undefined}>
+                        SHA-256 {acquired.sha256}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={verifyFile.isPending || verificationsQuery.isPending}
+                        onClick={() => {
+                          verifyFile.mutate(acquired.id);
+                        }}
+                        className="mt-2 min-h-9 rounded border border-emerald-200/20 px-3 text-[10px] font-semibold text-emerald-100 disabled:opacity-40"
+                      >
+                        {verifyFile.isPending && verifyFile.variables === acquired.id
+                          ? "Verifying..."
+                          : "Verify integrity"}
+                      </button>
+                      {verification && (
+                        <p
+                          className={`mt-2 font-semibold ${
+                            verification.status === "verified"
+                              ? "text-emerald-200"
+                              : "text-rose-200"
+                          }`}
+                        >
+                          {verification.status === "verified"
+                            ? "Integrity verified"
+                            : `Integrity ${verification.status}`}
+                        </p>
+                      )}
+                    </div>
+                  ) : needsReview && acquired && retainedPartial ? (
+                    <div className="mt-2 rounded border border-amber-200/15 bg-amber-200/5 p-2 text-[10px] text-amber-100/80">
+                      <p className="font-semibold">Interrupted partial requires review</p>
+                      <p className="mt-1">{retainedPartial.size_bytes ?? 0} bytes retained</p>
+                      <p className="mt-1 truncate font-mono" title={retainedPartial.sha256 ?? undefined}>
+                        SHA-256 {retainedPartial.sha256}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={resumeFile.isPending}
+                          onClick={() => {
+                            resumeFile.mutate({ evidenceFileId: acquired.id, disposition: "retain" });
+                          }}
+                          className="min-h-9 rounded border border-cyan-200/20 px-3 font-semibold text-cyan-100 disabled:opacity-40"
+                        >
+                          Restart and retain partial
+                        </button>
+                        <button
+                          type="button"
+                          disabled={resumeFile.isPending}
+                          onClick={() => {
+                            resumeFile.mutate({ evidenceFileId: acquired.id, disposition: "discard" });
+                          }}
+                          className="min-h-9 rounded border border-rose-200/20 px-3 font-semibold text-rose-100 disabled:opacity-40"
+                        >
+                          Verify, discard, and restart
+                        </button>
+                      </div>
+                      <p className="mt-2">Restart begins from byte zero; ADB byte-range resume is not claimed.</p>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy || filesQuery.isPending}
+                      onClick={() => {
+                        acquireFile.mutate(item.id);
+                      }}
+                      className="mt-2 min-h-9 rounded border border-cyan-200/15 px-3 text-[10px] font-semibold text-cyan-200 disabled:opacity-40"
                     >
-                      {verification.status === "verified"
-                        ? "Integrity verified"
-                        : `Integrity ${verification.status}`}
+                      {acquireFile.isPending && acquireFile.variables === item.id
+                        ? "Acquiring..."
+                        : acquired?.status === "failed" || acquired?.status === "interrupted"
+                          ? "Retry selected file"
+                          : "Acquire selected file"}
+                    </button>
+                  )}
+                  {acquired && acquired.status !== "completed" && (
+                    <p className="mt-1 text-[10px] text-rose-200">
+                      {acquired.error_code ?? acquired.status}
+                      {acquired.partial_preserved ? " · partial preserved" : ""}
                     </p>
                   )}
                 </div>
-              ) : acquired?.partial_preserved && retainedPartial ? (
-                <div className="mt-2 rounded border border-amber-200/15 bg-amber-200/5 p-2 text-[10px] text-amber-100/80">
-                  <p className="font-semibold">Interrupted partial requires review</p>
-                  <p className="mt-1">{retainedPartial.size_bytes ?? 0} bytes retained</p>
-                  <p className="mt-1 truncate font-mono" title={retainedPartial.sha256 ?? undefined}>
-                    SHA-256 {retainedPartial.sha256}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={resumeFile.isPending}
-                      onClick={() => {
-                        resumeFile.mutate({ evidenceFileId: acquired.id, disposition: "retain" });
-                      }}
-                      className="min-h-9 rounded border border-cyan-200/20 px-3 font-semibold text-cyan-100 disabled:opacity-40"
-                    >
-                      Restart and retain partial
-                    </button>
-                    <button
-                      type="button"
-                      disabled={resumeFile.isPending}
-                      onClick={() => {
-                        resumeFile.mutate({ evidenceFileId: acquired.id, disposition: "discard" });
-                      }}
-                      className="min-h-9 rounded border border-rose-200/20 px-3 font-semibold text-rose-100 disabled:opacity-40"
-                    >
-                      Verify, discard, and restart
-                    </button>
-                  </div>
-                  <p className="mt-2">Restart begins from byte zero; ADB byte-range resume is not claimed.</p>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={acquireFile.isPending || filesQuery.isPending}
-                  onClick={() => {
-                    acquireFile.mutate(item.id);
-                  }}
-                  className="mt-2 min-h-9 rounded border border-cyan-200/15 px-3 text-[10px] font-semibold text-cyan-200 disabled:opacity-40"
-                >
-                  {acquireFile.isPending && acquireFile.variables === item.id
-                    ? "Acquiring..."
-                    : acquired?.status === "failed" || acquired?.status === "interrupted"
-                      ? "Retry selected file"
-                      : "Acquire selected file"}
-                </button>
-              )}
-              {acquired && acquired.status !== "completed" && (
-                <p className="mt-1 text-[10px] text-rose-200">
-                  {acquired.error_code ?? acquired.status}
-                  {acquired.partial_preserved ? " · partial preserved" : ""}
-                </p>
-              )}
+              </div>
             </li>
           );
         })}
@@ -653,6 +857,7 @@ function InventoryResultPanel({ caseId, jobId }: { caseId: string; jobId: string
       {verificationsQuery.isError && <div className="mt-3"><CaseError error={verificationsQuery.error} /></div>}
       {partialsQuery.isError && <div className="mt-3"><CaseError error={partialsQuery.error} /></div>}
       {acquireFile.isError && <div className="mt-3"><CaseError error={acquireFile.error} /></div>}
+      {acquireBatch.isError && <div className="mt-3"><CaseError error={acquireBatch.error} /></div>}
       {resumeFile.isError && <div className="mt-3"><CaseError error={resumeFile.error} /></div>}
       {verifyFile.isError && <div className="mt-3"><CaseError error={verifyFile.error} /></div>}
       {inventory.total > inventory.items.length && (

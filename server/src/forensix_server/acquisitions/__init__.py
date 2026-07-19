@@ -8,7 +8,14 @@ from .execution import (
     event_checkpoint,
     job_checkpoint,
 )
-from .files import AcquisitionFileError, AcquisitionFileService, EvidenceDiskSpaceError
+from .files import (
+    MAX_BULK_ACQUIRE_ITEMS,
+    AcquisitionFileError,
+    AcquisitionFileService,
+    BulkAcquireItemResult,
+    BulkAcquireResult,
+    EvidenceDiskSpaceError,
+)
 from .inventory import (
     AcquisitionInventoryError,
     AcquisitionInventoryService,
@@ -31,6 +38,7 @@ from .service import (
 from .verification import EvidenceVerificationError, EvidenceVerificationService
 
 __all__ = [
+    "MAX_BULK_ACQUIRE_ITEMS",
     "AcquisitionModule",
     "AcquisitionExecutionService",
     "AcquisitionFileError",
@@ -45,6 +53,8 @@ __all__ = [
     "AcquisitionRecoveryError",
     "AcquisitionRecoveryService",
     "AcquisitionScope",
+    "BulkAcquireItemResult",
+    "BulkAcquireResult",
     "DeviceIdentityChangedError",
     "EvidenceDiskSpaceError",
     "EvidenceVerificationError",
