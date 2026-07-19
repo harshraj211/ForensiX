@@ -960,6 +960,209 @@ class EvidenceVerificationRecord(Base):
     )
 
 
+class EvidenceSourceRecord(Base):
+    """One imported or acquired master source sealed for offline examination."""
+
+    __tablename__ = "evidence_sources"
+    __table_args__ = (
+        CheckConstraint(
+            "source_type IN ('imported_file', 'logical_adb', 'rooted_filesystem', "
+            "'physical_block')",
+            name="ck_evidence_sources_type",
+        ),
+        CheckConstraint(
+            "acquisition_level IN ('logical', 'selective', 'filesystem', 'physical')",
+            name="ck_evidence_sources_level",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'sealed', 'failed')",
+            name="ck_evidence_sources_status",
+        ),
+        CheckConstraint(
+            "container_format IN ('raw', 'img', 'dd', 'tar', 'zip', 'directory_bundle', 'unknown')",
+            name="ck_evidence_sources_format",
+        ),
+        CheckConstraint(
+            "size_bytes IS NULL OR size_bytes >= 0",
+            name="ck_evidence_sources_size",
+        ),
+        CheckConstraint(
+            "chunk_size_bytes >= 1048576 AND chunk_size_bytes <= 67108864",
+            name="ck_evidence_sources_chunk_size",
+        ),
+        CheckConstraint("chunk_count >= 0", name="ck_evidence_sources_chunk_count"),
+        UniqueConstraint("sealed_storage_key", name="uq_evidence_sources_storage_key"),
+        UniqueConstraint("manifest_storage_key", name="uq_evidence_sources_manifest_key"),
+        Index("ix_evidence_sources_case_created", "case_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    device_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("case_devices.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    acquisition_level: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    container_format: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    sealed_storage_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    manifest_storage_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    chunk_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    read_only_applied: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    validation_state: Mapped[str] = mapped_column(String(64), nullable=False)
+    limitations_json: Mapped[str] = mapped_column(Text, nullable=False)
+    tool_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    sealed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class EvidenceSourceChunkRecord(Base):
+    """Deterministic chunk digest supporting interruption and corruption detection."""
+
+    __tablename__ = "evidence_source_chunks"
+    __table_args__ = (
+        CheckConstraint("ordinal >= 0", name="ck_evidence_source_chunks_ordinal"),
+        CheckConstraint("offset_bytes >= 0", name="ck_evidence_source_chunks_offset"),
+        CheckConstraint("size_bytes >= 1", name="ck_evidence_source_chunks_size"),
+        UniqueConstraint("evidence_source_id", "ordinal", name="uq_evidence_source_chunks_ordinal"),
+        UniqueConstraint(
+            "evidence_source_id", "offset_bytes", name="uq_evidence_source_chunks_offset"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    offset_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+
+class EvidenceWorkingCopyRecord(Base):
+    """A verified examination copy derived from one sealed master source."""
+
+    __tablename__ = "evidence_working_copies"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('creating', 'ready', 'verification_failed')",
+            name="ck_evidence_working_copies_status",
+        ),
+        CheckConstraint(
+            "size_bytes IS NULL OR size_bytes >= 0",
+            name="ck_evidence_working_copies_size",
+        ),
+        UniqueConstraint("storage_key", name="uq_evidence_working_copies_storage_key"),
+        Index("ix_evidence_working_copies_source_created", "evidence_source_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expected_source_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    observed_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    copy_method: Mapped[str] = mapped_column(String(32), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class EvidenceSourceVerificationRecord(Base):
+    """Append-only integrity observation for a master or working copy."""
+
+    __tablename__ = "evidence_source_verifications"
+    __table_args__ = (
+        CheckConstraint(
+            "target_type IN ('master', 'working_copy')",
+            name="ck_evidence_source_verifications_target",
+        ),
+        CheckConstraint(
+            "status IN ('verified', 'mismatch', 'missing', 'error')",
+            name="ck_evidence_source_verifications_status",
+        ),
+        CheckConstraint(
+            "(target_type = 'master' AND working_copy_id IS NULL) OR "
+            "(target_type = 'working_copy' AND working_copy_id IS NOT NULL)",
+            name="ck_evidence_source_verifications_reference",
+        ),
+        UniqueConstraint("verification_hash", name="uq_evidence_source_verifications_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    working_copy_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("evidence_working_copies.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    verified_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    target_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    expected_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    observed_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verification_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    tool_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    verified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class ReportRecord(Base):
     """Immutable report snapshot and generation result."""
 
