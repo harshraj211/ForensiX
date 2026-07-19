@@ -656,6 +656,16 @@ class PhysicalAcquisitionDiagnosticResponse(BaseModel):
     warning: str
 
 
+class ApplicationArtifactSupportResponse(BaseModel):
+    app_id: str
+    display_name: str
+    status: Literal["plaintext_parser", "interchange_parser", "detection_only"]
+    maturity: Literal["experimental", "validated"]
+    native_parser_id: str | None
+    acquisition_requirements: list[str]
+    limitations: list[str]
+
+
 class EvidenceToolOutputResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

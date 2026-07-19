@@ -20,6 +20,7 @@ class ParserMetadata:
     required_tables: frozenset[str]
     access_level: Literal["logical", "filesystem", "physical"]
     maturity: Literal["experimental", "validated"] = "experimental"
+    source_path_hints: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,11 +75,18 @@ class ParserRegistry:
         except KeyError as error:
             raise ParserRegistryError(f"Parser '{parser_id}' is not registered.") from error
 
-    def compatible(self, tables: frozenset[str]) -> tuple[EvidenceParser, ...]:
+    def compatible(
+        self, tables: frozenset[str], *, source_locator: str = ""
+    ) -> tuple[EvidenceParser, ...]:
+        locator = source_locator.casefold()
         return tuple(
             parser
             for parser in self._parsers.values()
             if parser.metadata.required_tables.issubset(tables) and parser.can_parse(tables)
+            and (
+                not parser.metadata.source_path_hints
+                or any(hint.casefold() in locator for hint in parser.metadata.source_path_hints)
+            )
         )
 
     def metadata(self) -> tuple[ParserMetadata, ...]:

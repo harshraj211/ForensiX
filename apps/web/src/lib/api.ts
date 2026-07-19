@@ -334,6 +334,16 @@ export interface AleappDiagnostic {
   message: string;
 }
 
+export interface ApplicationArtifactSupport {
+  app_id: string;
+  display_name: string;
+  status: "plaintext_parser" | "interchange_parser" | "detection_only";
+  maturity: "experimental" | "validated";
+  native_parser_id: string | null;
+  acquisition_requirements: string[];
+  limitations: string[];
+}
+
 export interface EvidenceToolOutput {
   id: string;
   parser_run_id: string;
@@ -1296,6 +1306,10 @@ export function listEvidenceSourceArtifacts(
 
 export function getAleappDiagnostic(): Promise<AleappDiagnostic> {
   return apiRequest("/api/v1/integrations/aleapp");
+}
+
+export function getApplicationArtifactSupport(): Promise<ApplicationArtifactSupport[]> {
+  return apiRequest("/api/v1/integrations/application-artifacts");
 }
 
 export function runAleapp(

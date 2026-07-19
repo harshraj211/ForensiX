@@ -22,6 +22,7 @@ from forensix_forensic.evidence_io import (
     ParserRegistry,
     ParserRegistryError,
     SafeArchiveExtractor,
+    SafeSQLiteError,
     SafeSQLiteReader,
 )
 from forensix_forensic.storage import EvidenceStore
@@ -104,7 +105,9 @@ class EvidenceExaminationService:
         with SafeSQLiteReader(path) as reader:
             compatible = {
                 parser.metadata.parser_id: parser
-                for parser in registry.compatible(reader.table_names())
+                for parser in registry.compatible(
+                    reader.table_names(), source_locator=source.source_name
+                )
             }
             selected = self._select_parsers(registry, compatible, parser_ids)
             return [
@@ -149,21 +152,35 @@ class EvidenceExaminationService:
                     "No bounded SQLite database member was found in the archive."
                 )
             scheduled: list[tuple[ExtractedArchiveMember, tuple[EvidenceParser, ...]]] = []
+            readable_sqlite_count = 0
             for member in candidates:
                 member_path = store.resolve(member.storage_key, require_file=True)
-                with SafeSQLiteReader(member_path) as reader:
-                    compatible = {
-                        parser.metadata.parser_id: parser
-                        for parser in registry.compatible(reader.table_names())
-                    }
-                    selected = tuple(
-                        parser
-                        for parser_id, parser in compatible.items()
-                        if requested is None or parser_id in requested
-                    )
-                    matched.update(parser.metadata.parser_id for parser in selected)
-                    if selected:
-                        scheduled.append((member, selected))
+                try:
+                    with SafeSQLiteReader(member_path) as reader:
+                        readable_sqlite_count += 1
+                        compatible = {
+                            parser.metadata.parser_id: parser
+                            for parser in registry.compatible(
+                                reader.table_names(), source_locator=member.original_name
+                            )
+                        }
+                        selected = tuple(
+                            parser
+                            for parser_id, parser in compatible.items()
+                            if requested is None or parser_id in requested
+                        )
+                        matched.update(parser.metadata.parser_id for parser in selected)
+                        if selected:
+                            scheduled.append((member, selected))
+                except SafeSQLiteError:
+                    # Application databases may be SQLCipher-encrypted or merely use a .db suffix.
+                    # They are never opened with fallback credentials or mutating recovery flags.
+                    continue
+            if readable_sqlite_count == 0:
+                raise EvidenceTwinError(
+                    "Database-like archive members were encrypted, opaque, or not valid SQLite; "
+                    "ForensiX does not bypass application encryption."
+                )
             if requested is not None and matched != requested:
                 missing = ", ".join(sorted(requested - matched))
                 raise EvidenceTwinError(

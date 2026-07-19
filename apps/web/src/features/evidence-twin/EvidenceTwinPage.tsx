@@ -17,6 +17,7 @@ import { caseKeys } from "../cases/caseKeys";
 import {
   createEvidenceWorkingCopy,
   getAleappDiagnostic,
+  getApplicationArtifactSupport,
   getCase,
   getEvidenceWorkingCopyInspection,
   importEvidenceSource,
@@ -36,6 +37,7 @@ import {
   type EvidenceToolOutput,
   type EvidenceWorkingCopy,
   type AleappDiagnostic,
+  type ApplicationArtifactSupport,
 } from "../../lib/api";
 
 const twinKeys = {
@@ -53,6 +55,7 @@ const twinKeys = {
   toolOutputs: (caseId: string, sourceId: string) =>
     ["evidence-twin", caseId, sourceId, "tool-outputs"] as const,
   aleapp: ["integrations", "aleapp"] as const,
+  applicationArtifacts: ["integrations", "application-artifacts"] as const,
 };
 
 export function EvidenceTwinPage() {
@@ -73,6 +76,10 @@ export function EvidenceTwinPage() {
   const aleappQuery = useQuery({
     queryKey: twinKeys.aleapp,
     queryFn: getAleappDiagnostic,
+  });
+  const applicationSupportQuery = useQuery({
+    queryKey: twinKeys.applicationArtifacts,
+    queryFn: getApplicationArtifactSupport,
   });
   const importSource = useMutation({
     mutationFn: () => {
@@ -207,6 +214,36 @@ export function EvidenceTwinPage() {
         </div>
       </section>
 
+      <section className="mt-8 rounded-2xl border border-white/8 bg-white/[0.02] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+              Application database support
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-white">Schema-gated, not access-bypassing</h2>
+          </div>
+          <span className="rounded-full border border-amber-200/15 px-3 py-1 text-[10px] uppercase tracking-wide text-amber-200">
+            Experimental adapters
+          </span>
+        </div>
+        <p className="mt-3 max-w-4xl text-xs leading-5 text-slate-400">
+          These parsers operate only on lawfully obtained, verified plaintext database copies.
+          They do not make private app databases readable through ordinary non-rooted ADB and do
+          not decrypt Signal, backups, or encrypted userdata images.
+        </p>
+        {applicationSupportQuery.isPending && (
+          <p role="status" className="mt-5 text-xs text-slate-500">Loading application support matrix…</p>
+        )}
+        {applicationSupportQuery.isError && (
+          <div className="mt-5"><CaseError error={applicationSupportQuery.error} /></div>
+        )}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {applicationSupportQuery.data?.map((app) => (
+            <ApplicationSupportCard key={app.app_id} app={app} />
+          ))}
+        </div>
+      </section>
+
       <section className="mt-8">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -235,6 +272,26 @@ export function EvidenceTwinPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function ApplicationSupportCard({ app }: { app: ApplicationArtifactSupport }) {
+  const parserAvailable = app.status !== "detection_only";
+  return (
+    <article className="rounded-xl border border-white/8 bg-black/10 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-sm font-semibold text-white">{app.display_name}</h3>
+        <span className={`text-[9px] font-semibold uppercase tracking-wide ${parserAvailable ? "text-emerald-200" : "text-amber-200"}`}>
+          {app.status.replaceAll("_", " ")}
+        </span>
+      </div>
+      <p className="mt-3 text-[11px] leading-5 text-slate-500">
+        {app.limitations[0]}
+      </p>
+      <p className="mt-3 font-mono text-[9px] text-cyan-200/60">
+        {app.native_parser_id ?? "No native content parser"}
+      </p>
+    </article>
   );
 }
 

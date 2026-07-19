@@ -240,3 +240,82 @@ def test_native_parsers_safely_examine_sqlite_members_in_rooted_tar(
     assert repeated[0].run.id == results[0].run.id
     extraction_parent = database.data_dir / "work" / "archive-examination"
     assert not extraction_parent.exists() or not any(extraction_parent.iterdir())
+
+
+def test_social_parser_is_selected_by_archive_path_and_opaque_databases_are_skipped(
+    database: Database, tmp_path: Path
+) -> None:
+    principal, case_id = _principal_and_case(database)
+    database_path = tmp_path / "msgstore.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        "CREATE TABLE message (_id INTEGER PRIMARY KEY, timestamp INTEGER, "
+        "text_data TEXT, from_me INTEGER)"
+    )
+    connection.execute(
+        "INSERT INTO message VALUES (1, 1704067200000, 'Known WhatsApp archive row', 0)"
+    )
+    connection.commit()
+    connection.close()
+    archive_buffer = BytesIO()
+    member_name = "data/data/com.whatsapp/databases/msgstore.db"
+    with tarfile.open(fileobj=archive_buffer, mode="w") as archive:
+        opaque = b"SQLCipher or other opaque database fixture"
+        opaque_member = tarfile.TarInfo("data/data/org.thoughtcrime.securesms/databases/signal.db")
+        opaque_member.size = len(opaque)
+        archive.addfile(opaque_member, BytesIO(opaque))
+        payload = database_path.read_bytes()
+        member = tarfile.TarInfo(member_name)
+        member.size = len(payload)
+        archive.addfile(member, BytesIO(payload))
+    source = EvidenceTwinService().import_stream(
+        database,
+        principal,
+        case_id,
+        BytesIO(archive_buffer.getvalue()),
+        source_name="social-apps.tar",
+    )
+    working_copy = EvidenceTwinService().create_working_copy(
+        database, principal, case_id, source.id
+    )
+
+    result = EvidenceExaminationService().run_native_parsers(
+        database,
+        principal,
+        case_id,
+        source.id,
+        working_copy.id,
+        parser_ids=("android.whatsapp.message",),
+    )[0]
+
+    assert result.run.input_locator == member_name
+    assert result.run.status == "completed"
+    assert result.artifacts[0].subtype == "whatsapp_message"
+    assert result.artifacts[0].summary == "Known WhatsApp archive row"
+
+
+def test_archive_with_only_opaque_database_reports_no_decryption_bypass(
+    database: Database,
+) -> None:
+    principal, case_id = _principal_and_case(database)
+    archive_buffer = BytesIO()
+    with tarfile.open(fileobj=archive_buffer, mode="w") as archive:
+        opaque = b"not a SQLite signature and no fallback is permitted"
+        member = tarfile.TarInfo("data/data/org.thoughtcrime.securesms/databases/signal.db")
+        member.size = len(opaque)
+        archive.addfile(member, BytesIO(opaque))
+    source = EvidenceTwinService().import_stream(
+        database,
+        principal,
+        case_id,
+        BytesIO(archive_buffer.getvalue()),
+        source_name="signal-rooted.tar",
+    )
+    working_copy = EvidenceTwinService().create_working_copy(
+        database, principal, case_id, source.id
+    )
+
+    with pytest.raises(EvidenceTwinError, match="does not bypass application encryption"):
+        EvidenceExaminationService().run_native_parsers(
+            database, principal, case_id, source.id, working_copy.id
+        )

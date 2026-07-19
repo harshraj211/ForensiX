@@ -7,8 +7,10 @@ from fastapi import APIRouter, Depends
 from forensix_api.dependencies import get_authenticated_session, get_settings
 from forensix_api.schemas import (
     AleappDiagnosticResponse,
+    ApplicationArtifactSupportResponse,
     PhysicalAcquisitionDiagnosticResponse,
 )
+from forensix_forensic.android_artifacts import application_artifact_support
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.config import Settings
 from forensix_server.evidence_twin import AleappEvidenceService
@@ -43,3 +45,16 @@ def physical_acquisition_diagnostic(
             "hardware write blocking, and is not resumable in the current release."
         ),
     )
+
+
+@router.get(
+    "/application-artifacts", response_model=list[ApplicationArtifactSupportResponse]
+)
+def application_artifact_support_matrix(
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+) -> list[ApplicationArtifactSupportResponse]:
+    del authenticated
+    return [
+        ApplicationArtifactSupportResponse.model_validate(item, from_attributes=True)
+        for item in application_artifact_support()
+    ]

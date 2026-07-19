@@ -140,6 +140,33 @@ def test_optional_aleapp_diagnostic_is_authenticated_and_disabled_by_default(
     assert diagnostic.json()["release_label"] == "not_configured"
 
 
+def test_application_artifact_support_matrix_is_authenticated_and_truthful(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        unauthenticated = client.get("/api/v1/integrations/application-artifacts")
+        _authorize(client)
+        response = client.get("/api/v1/integrations/application-artifacts")
+
+    assert unauthenticated.status_code == 401
+    assert response.status_code == 200
+    matrix = {item["app_id"]: item for item in response.json()}
+    assert set(matrix) == {
+        "whatsapp",
+        "telegram",
+        "signal",
+        "messenger",
+        "facebook",
+        "instagram",
+        "snapchat",
+    }
+    assert matrix["whatsapp"]["native_parser_id"] == "android.whatsapp.message"
+    assert matrix["signal"]["status"] == "detection_only"
+    assert matrix["signal"]["native_parser_id"] is None
+    assert "does not extract keys" in " ".join(matrix["signal"]["limitations"])
+
+
 def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> None:
     settings = Settings(environment="development", data_dir=tmp_path, adb_mode="mock")
     app = create_app(settings, adb_client=MockAdbClient())

@@ -1261,6 +1261,28 @@ describe("Evidence Twin workspace", () => {
           message: "ALEAPP is optional and not configured.",
         }));
       }
+      if (url === "/api/v1/integrations/application-artifacts") {
+        return Promise.resolve(jsonResponse([
+          {
+            app_id: "whatsapp",
+            display_name: "WhatsApp",
+            status: "plaintext_parser",
+            maturity: "experimental",
+            native_parser_id: "android.whatsapp.message",
+            acquisition_requirements: ["A lawfully acquired plaintext database is required."],
+            limitations: ["Non-rooted ADB cannot normally read the private database."],
+          },
+          {
+            app_id: "signal",
+            display_name: "Signal",
+            status: "detection_only",
+            maturity: "experimental",
+            native_parser_id: null,
+            acquisition_requirements: ["A lawfully acquired database is required."],
+            limitations: ["Signal databases are commonly SQLCipher-encrypted."],
+          },
+        ]));
+      }
       if (url.endsWith("/working-copies")) return Promise.resolve(jsonResponse([workingCopy]));
       if (url.endsWith("/inspection")) return Promise.resolve(jsonResponse(inspection));
       if (url.endsWith("/verifications")) return Promise.resolve(jsonResponse([]));
@@ -1286,6 +1308,9 @@ describe("Evidence Twin workspace", () => {
     expect(screen.getByRole("button", { name: "Run compatible Android parsers" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Run pinned ALEAPP" })).toBeDisabled();
     expect(screen.getByText(/ALEAPP is optional and not configured/i)).toBeInTheDocument();
+    expect(await screen.findByText("WhatsApp")).toBeInTheDocument();
+    expect(screen.getByText("No native content parser")).toBeInTheDocument();
+    expect(screen.getByText(/do not decrypt Signal/i)).toBeInTheDocument();
     expect(screen.getByText(/not claimed to have been acquired by ForensiX/i)).toBeInTheDocument();
   });
 });
