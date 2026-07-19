@@ -992,6 +992,7 @@ class EvidenceSourceRecord(Base):
         ),
         CheckConstraint("chunk_count >= 0", name="ck_evidence_sources_chunk_count"),
         UniqueConstraint("sealed_storage_key", name="uq_evidence_sources_storage_key"),
+        UniqueConstraint("chunks_storage_key", name="uq_evidence_sources_chunks_key"),
         UniqueConstraint("manifest_storage_key", name="uq_evidence_sources_manifest_key"),
         Index("ix_evidence_sources_case_created", "case_id", "created_at"),
     )
@@ -1016,9 +1017,11 @@ class EvidenceSourceRecord(Base):
     source_name: Mapped[str] = mapped_column(String(255), nullable=False)
     container_format: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     sealed_storage_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    chunks_storage_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     manifest_storage_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    chunks_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     chunk_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

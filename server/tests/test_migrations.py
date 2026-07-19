@@ -21,6 +21,9 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     inventory_item_columns = {
         column["name"] for column in inspect(engine).get_columns("acquisition_inventory_items")
     }
+    evidence_source_columns = {
+        column["name"] for column in inspect(engine).get_columns("evidence_sources")
+    }
 
     assert {
         "alembic_version",
@@ -70,6 +73,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "timestamp_source",
         "timestamp_confidence",
     } <= inventory_item_columns
+    assert {"chunks_storage_key", "chunks_sha256"} <= evidence_source_columns
 
     engine.dispose()
     command.downgrade(config, "base")
@@ -155,7 +159,7 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "custody_events" in inspector.get_table_names()
     assert "audit_logs" in inspector.get_table_names()
     assert {"case_id", "plan_id", "checkpoint_json", "last_event_sequence"} <= job_columns
-    assert revision == "0020_evidence_twin_foundation"
+    assert revision == "0021_evidence_twin_chunk_manifest"
     database.dispose()
 
 

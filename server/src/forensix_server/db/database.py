@@ -52,7 +52,12 @@ class Database:
                 if "acquisition_inventory_items" in tables
                 else set()
             )
-            legacy_revision = _legacy_revision(tables, inventory_columns)
+            evidence_source_columns = (
+                {column["name"] for column in inspector.get_columns("evidence_sources")}
+                if "evidence_sources" in tables
+                else set()
+            )
+            legacy_revision = _legacy_revision(tables, inventory_columns, evidence_source_columns)
             command.stamp(config, legacy_revision)
         command.upgrade(config, "head")
 
@@ -101,9 +106,13 @@ def sqlite_pragmas(engine: Engine) -> dict[str, int | str]:
         }
 
 
-def _legacy_revision(tables: set[str], inventory_columns: set[str]) -> str:
+def _legacy_revision(
+    tables: set[str], inventory_columns: set[str], evidence_source_columns: set[str]
+) -> str:
     """Identify the newest schema marker created before migration tracking was enabled."""
     if "evidence_sources" in tables:
+        if "chunks_storage_key" in evidence_source_columns:
+            return "0021_evidence_twin_chunk_manifest"
         return "0020_evidence_twin_foundation"
     if "report_outputs" in tables and "modified_at" in inventory_columns:
         return "0018_source_timestamps"
