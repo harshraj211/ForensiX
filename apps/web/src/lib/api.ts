@@ -156,6 +156,64 @@ export interface PreliminaryReport {
   outputs: ReportOutput[];
 }
 
+export interface EvidenceSource {
+  id: string;
+  case_id: string;
+  device_id: string | null;
+  created_by: string;
+  source_type: "imported_file" | "logical_adb" | "rooted_filesystem" | "physical_block";
+  acquisition_level: "logical" | "selective" | "filesystem" | "physical";
+  status: "pending" | "sealed" | "failed";
+  display_name: string;
+  source_name: string;
+  container_format: "raw" | "img" | "dd" | "tar" | "zip" | "directory_bundle" | "unknown";
+  size_bytes: number | null;
+  sha256: string | null;
+  chunks_sha256: string | null;
+  manifest_sha256: string | null;
+  chunk_size_bytes: number;
+  chunk_count: number;
+  read_only_applied: boolean;
+  validation_state: string;
+  limitations: string[];
+  tool_version: string;
+  error_code: string | null;
+  error_message: string | null;
+  sealed_at: string | null;
+  created_at: string;
+}
+
+export interface EvidenceWorkingCopy {
+  id: string;
+  evidence_source_id: string;
+  case_id: string;
+  created_by: string;
+  status: "creating" | "ready" | "verification_failed";
+  size_bytes: number | null;
+  expected_source_sha256: string;
+  observed_sha256: string | null;
+  copy_method: string;
+  verified_at: string | null;
+  created_at: string;
+}
+
+export interface EvidenceSourceVerification {
+  id: string;
+  evidence_source_id: string;
+  working_copy_id: string | null;
+  case_id: string;
+  verified_by: string;
+  target_type: "master" | "working_copy";
+  status: "verified" | "mismatch" | "missing" | "error";
+  expected_sha256: string;
+  observed_sha256: string | null;
+  size_bytes: number | null;
+  error_code: string | null;
+  verification_hash: string;
+  tool_version: string;
+  verified_at: string;
+}
+
 export interface CaseDevice {
   id: string;
   case_id: string;
@@ -897,6 +955,62 @@ export function generateReport(caseId: string): Promise<PreliminaryReport> {
   });
 }
 
+export function listEvidenceSources(caseId: string): Promise<EvidenceSource[]> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources`);
+}
+
+export function importEvidenceSource(
+  caseId: string,
+  source: File,
+  displayName: string,
+): Promise<EvidenceSource> {
+  const body = new FormData();
+  body.set("source", source);
+  if (displayName.trim()) body.set("display_name", displayName.trim());
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/import`, {
+    method: "POST",
+    body,
+  });
+}
+
+export function verifyEvidenceSource(
+  caseId: string,
+  sourceId: string,
+): Promise<EvidenceSourceVerification> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/verify`,
+    { method: "POST" },
+  );
+}
+
+export function listEvidenceSourceVerifications(
+  caseId: string,
+  sourceId: string,
+): Promise<EvidenceSourceVerification[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/verifications`,
+  );
+}
+
+export function createEvidenceWorkingCopy(
+  caseId: string,
+  sourceId: string,
+): Promise<EvidenceWorkingCopy> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies`,
+    { method: "POST" },
+  );
+}
+
+export function listEvidenceWorkingCopies(
+  caseId: string,
+  sourceId: string,
+): Promise<EvidenceWorkingCopy[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies`,
+  );
+}
+
 export function reportDownloadUrl(
   caseId: string,
   reportId: string,
@@ -953,7 +1067,7 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
   const method = options.method?.toUpperCase() ?? "GET";
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
-  if (options.body) {
+  if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (!new Set(["GET", "HEAD", "OPTIONS"]).has(method)) {

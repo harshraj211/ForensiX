@@ -979,6 +979,81 @@ describe("acquisition planning", () => {
   });
 });
 
+describe("Evidence Twin workspace", () => {
+  it("shows sealed source integrity and working-copy controls", async () => {
+    const now = "2026-07-19T12:00:00Z";
+    const source = {
+      id: "source-1",
+      case_id: "case-1",
+      device_id: null,
+      created_by: "user-1",
+      source_type: "imported_file",
+      acquisition_level: "filesystem",
+      status: "sealed",
+      display_name: "Controlled Android image",
+      source_name: "capture.raw",
+      container_format: "raw",
+      size_bytes: 4096,
+      sha256: "a".repeat(64),
+      chunks_sha256: "b".repeat(64),
+      manifest_sha256: "c".repeat(64),
+      chunk_size_bytes: 4 * 1024 * 1024,
+      chunk_count: 1,
+      read_only_applied: true,
+      validation_state: "sealed_unverified_import",
+      limitations: ["Imported evidence is not claimed to have been acquired by ForensiX."],
+      tool_version: "0.1.0",
+      error_code: null,
+      error_message: null,
+      sealed_at: now,
+      created_at: now,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(jsonResponse({
+          id: "case-1",
+          case_number: "FX-2026-TWIN0001",
+          title: "Evidence Twin case",
+          description: null,
+          legal_authority: "Controlled validation",
+          status: "active",
+          created_by: "user-1",
+          created_at: now,
+          updated_at: now,
+          closed_at: null,
+          version: 1,
+        }));
+      }
+      if (url === "/api/v1/cases/case-1/evidence-sources") {
+        return Promise.resolve(jsonResponse([source]));
+      }
+      if (url.endsWith("/working-copies")) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith("/verifications")) return Promise.resolve(jsonResponse([]));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/cases/case-1/evidence-twin");
+
+    expect(await screen.findByRole("heading", { name: "Evidence Twin" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Evidence image or extraction")).toHaveAttribute(
+      "accept",
+      expect.stringContaining(".raw"),
+    );
+    expect(await screen.findByRole("heading", { name: "Controlled Android image" })).toBeInTheDocument();
+    expect(screen.getByText(`Master SHA-256`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Verify sealed master" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Create verified working copy" })).toBeEnabled();
+    expect(screen.getByText(/not claimed to have been acquired by ForensiX/i)).toBeInTheDocument();
+  });
+});
+
 describe("evidence explorer", () => {
   it("searches normalized metadata and shows provenance without rendering content", async () => {
     const collectedAt = "2026-07-16T10:00:00Z";
