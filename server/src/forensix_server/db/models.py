@@ -1166,6 +1166,59 @@ class EvidenceSourceVerificationRecord(Base):
     )
 
 
+class EvidenceSourceInspectionRecord(Base):
+    """Immutable signature-based classification of one verified working copy."""
+
+    __tablename__ = "evidence_source_inspections"
+    __table_args__ = (
+        CheckConstraint(
+            "detected_type IN ('zip', 'tar', 'sqlite', 'android_sparse', 'ext4', "
+            "'f2fs', 'opaque', 'unknown')",
+            name="ck_evidence_source_inspections_type",
+        ),
+        CheckConstraint(
+            "confidence IN ('high', 'medium', 'low')",
+            name="ck_evidence_source_inspections_confidence",
+        ),
+        CheckConstraint(
+            "encryption_state IN ('not_detected', 'suspected', 'unknown')",
+            name="ck_evidence_source_inspections_encryption",
+        ),
+        UniqueConstraint("working_copy_id", name="uq_evidence_source_inspections_working_copy"),
+        UniqueConstraint("inspection_hash", name="uq_evidence_source_inspections_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    working_copy_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_working_copies.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    inspected_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    detected_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    confidence: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    encryption_state: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    signature_json: Mapped[str] = mapped_column(Text, nullable=False)
+    warnings_json: Mapped[str] = mapped_column(Text, nullable=False)
+    detector_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    inspection_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    inspected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class ReportRecord(Base):
     """Immutable report snapshot and generation result."""
 

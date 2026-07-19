@@ -6,6 +6,14 @@ from .domain import (
     EvidenceContainerFormat,
     EvidenceSourceType,
 )
+from .inspection import (
+    DETECTOR_VERSION,
+    EvidenceInspectionService,
+    InspectionDecision,
+    detect_evidence_container,
+    inspection_signature,
+    inspection_warnings,
+)
 from .service import (
     EvidenceTwinError,
     EvidenceTwinIntegrityError,
@@ -24,4 +32,10 @@ __all__ = [
     "EvidenceTwinNotFoundError",
     "EvidenceTwinService",
     "EvidenceTwinStorageError",
+    "DETECTOR_VERSION",
+    "EvidenceInspectionService",
+    "InspectionDecision",
+    "detect_evidence_container",
+    "inspection_signature",
+    "inspection_warnings",
 ]
