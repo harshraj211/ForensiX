@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import hashlib
 import json
 import re
 from collections import Counter
@@ -42,6 +43,7 @@ from forensix_server.db import (
     EvidenceWorkingCopyRecord,
     ReportOutputRecord,
     ReportRecord,
+    ReportReviewEventRecord,
     TagRecord,
     TimelineEventRecord,
 )
@@ -84,6 +86,7 @@ class ReportNotFoundError(ReportError):
 class ReportBundle:
     report: ReportRecord
     outputs: tuple[ReportOutputRecord, ...]
+    latest_review: ReportReviewEventRecord | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +96,16 @@ class ReportContent:
 
 
 class ReportService:
-    def generate(self, database: Database, principal: Principal, case_id: str) -> ReportBundle:
+    def generate(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        *,
+        redaction_profile: str = "full",
+    ) -> ReportBundle:
+        if redaction_profile not in {"full", "mask_sensitive", "metadata_only"}:
+            raise ReportError("The selected report redaction profile is unsupported.")
         report_id = str(uuid4())
         generated_at = datetime.now(UTC)
         with database.session() as session:
@@ -103,6 +115,7 @@ class ReportService:
             snapshot = self._snapshot(
                 session, principal, case_id, report_id, generated_at=generated_at
             )
+            snapshot = _apply_redaction(snapshot, redaction_profile)
             snapshot_bytes = _canonical_bytes(snapshot)
             rendered = {
                 "pdf": ("application/pdf", render_pdf(snapshot)),
@@ -121,6 +134,7 @@ class ReportService:
                 title=f"Preliminary report - {case.case_number}",
                 schema_version=snapshot.schema_version,
                 template_version=snapshot.template_version,
+                redaction_profile=redaction_profile,
                 snapshot_storage_key=stored_snapshot.storage_key,
                 snapshot_size_bytes=stored_snapshot.size_bytes,
                 snapshot_sha256=stored_snapshot.sha256,
@@ -164,11 +178,12 @@ class ReportService:
                     "snapshot_sha256": stored_snapshot.sha256,
                     "outputs": {item.format: item.sha256 for item in outputs},
                     "report_type": "preliminary",
+                    "redaction_profile": redaction_profile,
                 },
                 created_at=generated_at,
             )
             session.flush()
-            return ReportBundle(report=report, outputs=tuple(outputs))
+            return ReportBundle(report=report, outputs=tuple(outputs), latest_review=None)
 
     def list(
         self, session: Session, principal: Principal, case_id: str
@@ -181,7 +196,14 @@ class ReportService:
                 .order_by(ReportRecord.generated_at.desc(), ReportRecord.id.desc())
             )
         )
-        return [ReportBundle(item, tuple(self._outputs(session, item.id))) for item in reports]
+        return [
+            ReportBundle(
+                item,
+                tuple(self._outputs(session, item.id)),
+                self._latest_review(session, item.id),
+            )
+            for item in reports
+        ]
 
     def get(
         self, session: Session, principal: Principal, case_id: str, report_id: str
@@ -190,7 +212,88 @@ class ReportService:
         report = session.get(ReportRecord, report_id)
         if report is None or report.case_id != case_id:
             raise ReportNotFoundError("The requested report does not exist in this case.")
-        return ReportBundle(report, tuple(self._outputs(session, report_id)))
+        return ReportBundle(
+            report,
+            tuple(self._outputs(session, report_id)),
+            self._latest_review(session, report_id),
+        )
+
+    def review(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        report_id: str,
+        *,
+        decision: str,
+        note: str,
+    ) -> ReportBundle:
+        if decision not in {"approved", "rejected"}:
+            raise ReportError("The report review decision is unsupported.")
+        normalized_note = note.strip()
+        if not 5 <= len(normalized_note) <= 1000:
+            raise ReportError("A review note between 5 and 1000 characters is required.")
+        now = datetime.now(UTC)
+        with database.session() as session:
+            bundle = self.get(session, principal, case_id, report_id)
+            if not principal.can(Permission.REPORTS_APPROVE):
+                raise CaseAccessDeniedError("The current user cannot approve reports.")
+            if bundle.report.generated_by == principal.user_id:
+                raise ReportError("A report must be reviewed by a different authorized user.")
+            store = EvidenceStore(database.data_dir / "evidence")
+            if not store.verify(
+                bundle.report.snapshot_storage_key, bundle.report.snapshot_sha256
+            ) or any(not store.verify(item.storage_key, item.sha256) for item in bundle.outputs):
+                raise ReportError("Report review was blocked by an integrity verification failure.")
+            previous = self._latest_review(session, report_id)
+            sequence = (previous.sequence if previous else 0) + 1
+            previous_hash = previous.event_hash if previous else "0" * 64
+            event_id = str(uuid4())
+            canonical = {
+                "case_id": case_id,
+                "created_at": now.isoformat(),
+                "decision": decision,
+                "id": event_id,
+                "note": normalized_note,
+                "previous_hash": previous_hash,
+                "report_id": report_id,
+                "reviewed_by": principal.user_id,
+                "sequence": sequence,
+            }
+            event_hash = hashlib.sha256(
+                json.dumps(canonical, separators=(",", ":"), sort_keys=True).encode("utf-8")
+            ).hexdigest()
+            review = ReportReviewEventRecord(
+                id=event_id,
+                report_id=report_id,
+                case_id=case_id,
+                reviewed_by=principal.user_id,
+                sequence=sequence,
+                decision=decision,
+                note=normalized_note,
+                previous_hash=previous_hash,
+                event_hash=event_hash,
+                created_at=now,
+            )
+            session.add(review)
+            session.flush()
+            AuditService().append(
+                session,
+                case_id=case_id,
+                actor_id=principal.user_id,
+                event_type=f"report.{decision}",
+                object_type="report",
+                object_id=report_id,
+                detail={
+                    "event_hash": event_hash,
+                    "redaction_profile": bundle.report.redaction_profile,
+                    "review_sequence": sequence,
+                    "snapshot_sha256": bundle.report.snapshot_sha256,
+                },
+                created_at=now,
+            )
+            session.flush()
+            return ReportBundle(bundle.report, bundle.outputs, review)
 
     def content(
         self,
@@ -229,6 +332,15 @@ class ReportService:
                 .where(ReportOutputRecord.report_id == report_id)
                 .order_by(ReportOutputRecord.format)
             )
+        )
+
+    @staticmethod
+    def _latest_review(session: Session, report_id: str) -> ReportReviewEventRecord | None:
+        return session.scalar(
+            select(ReportReviewEventRecord)
+            .where(ReportReviewEventRecord.report_id == report_id)
+            .order_by(ReportReviewEventRecord.sequence.desc())
+            .limit(1)
         )
 
     def _snapshot(
@@ -428,6 +540,7 @@ class ReportService:
                 generated_by_id=principal.user_id,
                 generated_by_name=principal.display_name,
                 preliminary_warning=PRELIMINARY_WARNING,
+                redaction_profile="full",
             ),
             case=CaseSnapshot(
                 id=case.id,
@@ -581,6 +694,62 @@ class ReportService:
             ],
             tool_version=__version__,
         )
+
+
+def _apply_redaction(snapshot: ReportSnapshot, profile: str) -> ReportSnapshot:
+    if profile == "full":
+        return snapshot
+    mask_sensitive = profile == "mask_sensitive"
+    metadata_only = profile == "metadata_only"
+    case = snapshot.case.model_copy(update={"description": None, "legal_authority": "[REDACTED]"})
+    devices = [
+        item.model_copy(
+            update={
+                "build_fingerprint": None,
+                "latest_assessment": None if metadata_only else item.latest_assessment,
+            }
+        )
+        for item in snapshot.devices
+    ]
+    selected_artifacts = (
+        []
+        if metadata_only
+        else [
+            item.model_copy(
+                update={
+                    "source_relative_path": "[REDACTED]",
+                    "analyst_notes": [] if mask_sensitive else item.analyst_notes,
+                }
+            )
+            for item in snapshot.selected_artifacts
+        ]
+    )
+    imported_artifacts = (
+        []
+        if metadata_only
+        else [
+            item.model_copy(update={"summary": "[REDACTED]", "source_locator": "[REDACTED]"})
+            for item in snapshot.imported_artifacts
+        ]
+    )
+    timeline = (
+        []
+        if metadata_only
+        else [item.model_copy(update={"summary": "[REDACTED]"}) for item in snapshot.timeline]
+    )
+    return snapshot.model_copy(
+        update={
+            "report": snapshot.report.model_copy(update={"redaction_profile": profile}),
+            "case": case,
+            "devices": devices,
+            "selected_artifacts": selected_artifacts,
+            "imported_artifacts": imported_artifacts,
+            "timeline": timeline,
+            "limitations": snapshot.limitations + [f"Report redaction profile applied: {profile}."],
+            "methodology": snapshot.methodology
+            + ["Redaction was applied before rendering; sealed source evidence was unchanged."],
+        }
+    )
 
 
 def _acquisition_snapshot(

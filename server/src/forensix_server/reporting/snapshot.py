@@ -17,6 +17,7 @@ class ReportIdentity(FrozenModel):
     generated_by_id: str
     generated_by_name: str
     preliminary_warning: str
+    redaction_profile: Literal["full", "mask_sensitive", "metadata_only"] = "full"
 
 
 class CaseSnapshot(FrozenModel):

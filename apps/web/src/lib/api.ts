@@ -205,6 +205,18 @@ export interface PreliminaryReport {
   snapshot_size_bytes: number;
   snapshot_sha256: string;
   generated_at: string;
+  redaction_profile: "full" | "mask_sensitive" | "metadata_only";
+  approval_state: "unreviewed" | "approved" | "rejected";
+  latest_review: {
+    id: string;
+    sequence: number;
+    decision: "approved" | "rejected";
+    reviewed_by: string;
+    note: string;
+    previous_hash: string;
+    event_hash: string;
+    created_at: string;
+  } | null;
   outputs: ReportOutput[];
 }
 
@@ -1191,10 +1203,26 @@ export function listReports(caseId: string): Promise<PreliminaryReport[]> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/reports`);
 }
 
-export function generateReport(caseId: string): Promise<PreliminaryReport> {
+export function generateReport(
+  caseId: string,
+  redactionProfile: "full" | "mask_sensitive" | "metadata_only" = "full",
+): Promise<PreliminaryReport> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/reports`, {
     method: "POST",
+    body: JSON.stringify({ redaction_profile: redactionProfile }),
   });
+}
+
+export function reviewReport(
+  caseId: string,
+  reportId: string,
+  decision: "approved" | "rejected",
+  note: string,
+): Promise<PreliminaryReport> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/reports/${encodeURIComponent(reportId)}/review`,
+    { method: "POST", body: JSON.stringify({ decision, note }) },
+  );
 }
 
 export function listEvidenceSources(caseId: string): Promise<EvidenceSource[]> {

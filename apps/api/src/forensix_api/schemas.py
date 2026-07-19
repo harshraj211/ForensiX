@@ -841,6 +841,26 @@ class ReportOutputResponse(BaseModel):
     created_at: datetime
 
 
+class ReportGenerateRequest(BaseModel):
+    redaction_profile: Literal["full", "mask_sensitive", "metadata_only"] = "full"
+
+
+class ReportReviewRequest(BaseModel):
+    decision: Literal["approved", "rejected"]
+    note: str = Field(min_length=5, max_length=1000)
+
+
+class ReportReviewResponse(BaseModel):
+    id: str
+    sequence: int
+    decision: Literal["approved", "rejected"]
+    reviewed_by: str
+    note: str
+    previous_hash: str
+    event_hash: str
+    created_at: datetime
+
+
 class ReportResponse(BaseModel):
     id: str
     case_id: str
@@ -853,6 +873,9 @@ class ReportResponse(BaseModel):
     snapshot_size_bytes: int
     snapshot_sha256: str
     generated_at: datetime
+    redaction_profile: Literal["full", "mask_sensitive", "metadata_only"]
+    approval_state: Literal["unreviewed", "approved", "rejected"]
+    latest_review: ReportReviewResponse | None
     outputs: list[ReportOutputResponse]
 
 

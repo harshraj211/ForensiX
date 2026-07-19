@@ -1,8 +1,8 @@
 """Versioned preliminary report generation and verified downloads."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Body, Depends, status
 from fastapi.responses import FileResponse
 
 from forensix_api.dependencies import (
@@ -10,7 +10,13 @@ from forensix_api.dependencies import (
     get_database,
     require_csrf_session,
 )
-from forensix_api.schemas import ReportOutputResponse, ReportResponse
+from forensix_api.schemas import (
+    ReportGenerateRequest,
+    ReportOutputResponse,
+    ReportResponse,
+    ReportReviewRequest,
+    ReportReviewResponse,
+)
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.db import Database
 from forensix_server.reporting import ReportBundle, ReportService
@@ -40,8 +46,39 @@ def generate_report(
     case_id: str,
     authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
     database: Annotated[Database, Depends(get_database)],
+    request: Annotated[ReportGenerateRequest | None, Body()] = None,
 ) -> ReportResponse:
-    return _response(ReportService().generate(database, authenticated.principal, case_id))
+    return _response(
+        ReportService().generate(
+            database,
+            authenticated.principal,
+            case_id,
+            redaction_profile=request.redaction_profile if request else "full",
+        )
+    )
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/reports/{report_id}/review",
+    response_model=ReportResponse,
+)
+def review_report(
+    case_id: str,
+    report_id: str,
+    request: ReportReviewRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> ReportResponse:
+    return _response(
+        ReportService().review(
+            database,
+            authenticated.principal,
+            case_id,
+            report_id,
+            decision=request.decision,
+            note=request.note,
+        )
+    )
 
 
 @router.get("/api/v1/cases/{case_id}/reports/{report_id}", response_model=ReportResponse)
@@ -82,6 +119,7 @@ def download_report(
 
 def _response(bundle: ReportBundle) -> ReportResponse:
     report = bundle.report
+    review = bundle.latest_review
     return ReportResponse(
         id=report.id,
         case_id=report.case_id,
@@ -94,5 +132,26 @@ def _response(bundle: ReportBundle) -> ReportResponse:
         snapshot_size_bytes=report.snapshot_size_bytes,
         snapshot_sha256=report.snapshot_sha256,
         generated_at=report.generated_at,
+        redaction_profile=cast(
+            Literal["full", "mask_sensitive", "metadata_only"], report.redaction_profile
+        ),
+        approval_state=cast(
+            Literal["unreviewed", "approved", "rejected"],
+            review.decision if review else "unreviewed",
+        ),
+        latest_review=(
+            ReportReviewResponse(
+                id=review.id,
+                sequence=review.sequence,
+                decision=cast(Literal["approved", "rejected"], review.decision),
+                reviewed_by=review.reviewed_by,
+                note=review.note,
+                previous_hash=review.previous_hash,
+                event_hash=review.event_hash,
+                created_at=review.created_at,
+            )
+            if review
+            else None
+        ),
         outputs=[ReportOutputResponse.model_validate(item) for item in bundle.outputs],
     )

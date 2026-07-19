@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import sqlite3
 from pathlib import Path
 from typing import NoReturn
@@ -23,6 +24,7 @@ from forensix_server.db import (
     CaseDeviceAssessmentRecord,
     CaseDeviceDetectionRecord,
     CaseDeviceRecord,
+    CaseMemberRecord,
     DeviceCapabilityRun,
     JobEventRecord,
     JobRecord,
@@ -368,6 +370,85 @@ def test_preliminary_report_generation_and_verified_downloads(tmp_path: Path) ->
         custody = client.get(f"/api/v1/cases/{case['id']}/custody").json()
         assert custody[-1]["event_type"] == "report_generated"
         assert custody[-1]["report_id"] == report["id"]
+
+
+def test_report_redaction_and_independent_hash_chained_approval(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases",
+            headers=headers,
+            json={
+                "title": "Sensitive report case",
+                "description": "Sensitive narrative",
+                "legal_authority": "Restricted authority",
+            },
+        ).json()
+        generated = client.post(
+            f"/api/v1/cases/{case['id']}/reports",
+            headers=headers,
+            json={"redaction_profile": "mask_sensitive"},
+        )
+        report = generated.json()
+        self_review = client.post(
+            f"/api/v1/cases/{case['id']}/reports/{report['id']}/review",
+            headers=headers,
+            json={"decision": "approved", "note": "Independent review complete."},
+        )
+        json_output = client.get(f"/api/v1/cases/{case['id']}/reports/{report['id']}/download/json")
+
+        with app.state.database.session() as session:
+            administrator = session.scalar(select(UserRecord))
+            supervisor_role = session.scalar(
+                select(RoleRecord).where(RoleRecord.name == RoleName.SUPERVISOR.value)
+            )
+            assert administrator is not None
+            assert supervisor_role is not None
+            supervisor = UserRecord(
+                username="review.supervisor",
+                display_name="Independent Supervisor",
+                password_hash=administrator.password_hash,
+                password_changed_at=administrator.password_changed_at,
+                created_at=administrator.created_at,
+                updated_at=administrator.updated_at,
+            )
+            session.add(supervisor)
+            session.flush()
+            session.add(UserRoleRecord(user_id=supervisor.id, role_id=supervisor_role.id))
+            session.add(
+                CaseMemberRecord(
+                    case_id=case["id"],
+                    user_id=supervisor.id,
+                    access_level="supervisor",
+                    assigned_by=administrator.id,
+                )
+            )
+
+        client.post("/api/v1/auth/logout", headers=headers)
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "review.supervisor", "password": PASSWORD},
+        )
+        supervisor_headers = {"X-CSRF-Token": login.json()["csrf_token"]}
+        approved = client.post(
+            f"/api/v1/cases/{case['id']}/reports/{report['id']}/review",
+            headers=supervisor_headers,
+            json={"decision": "approved", "note": "Hashes and limitations reviewed."},
+        )
+
+    snapshot = json.loads(json_output.content)
+    assert generated.status_code == 201
+    assert report["redaction_profile"] == "mask_sensitive"
+    assert report["approval_state"] == "unreviewed"
+    assert self_review.status_code == 409
+    assert snapshot["case"]["description"] is None
+    assert snapshot["case"]["legal_authority"] == "[REDACTED]"
+    assert snapshot["report"]["redaction_profile"] == "mask_sensitive"
+    assert approved.status_code == 200
+    assert approved.json()["approval_state"] == "approved"
+    assert approved.json()["latest_review"]["sequence"] == 1
+    assert len(approved.json()["latest_review"]["event_hash"]) == 64
 
 
 @pytest.mark.parametrize(

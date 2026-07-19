@@ -1527,6 +1527,10 @@ class ReportRecord(Base):
     __table_args__ = (
         CheckConstraint("status IN ('available')", name="ck_reports_status"),
         CheckConstraint("report_type IN ('preliminary')", name="ck_reports_type"),
+        CheckConstraint(
+            "redaction_profile IN ('full', 'mask_sensitive', 'metadata_only')",
+            name="ck_reports_redaction_profile",
+        ),
         CheckConstraint("snapshot_size_bytes >= 1", name="ck_reports_snapshot_size"),
         UniqueConstraint("snapshot_storage_key", name="uq_reports_snapshot_storage_key"),
         UniqueConstraint("snapshot_sha256", name="uq_reports_snapshot_sha256"),
@@ -1544,11 +1548,45 @@ class ReportRecord(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
     template_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    redaction_profile: Mapped[str] = mapped_column(String(32), nullable=False, default="full")
     snapshot_storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
     snapshot_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     snapshot_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class ReportReviewEventRecord(Base):
+    """Append-only, hash-chained supervisory decision for one frozen report."""
+
+    __tablename__ = "report_review_events"
+    __table_args__ = (
+        CheckConstraint("sequence >= 1", name="ck_report_review_events_sequence"),
+        CheckConstraint(
+            "decision IN ('approved', 'rejected')", name="ck_report_review_events_decision"
+        ),
+        UniqueConstraint("report_id", "sequence", name="uq_report_review_sequence"),
+        UniqueConstraint("event_hash", name="uq_report_review_event_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    report_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("reports.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    reviewed_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    note: Mapped[str] = mapped_column(String(1000), nullable=False)
+    previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
     )
 
 

@@ -66,6 +66,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "roles",
         "reports",
         "report_outputs",
+        "report_review_events",
         "system_events",
         "user_roles",
         "users",
@@ -126,6 +127,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     assert "system_events" not in downgraded_tables
     assert "reports" not in downgraded_tables
     assert "report_outputs" not in downgraded_tables
+    assert "report_review_events" not in downgraded_tables
     downgraded_engine.dispose()
 
 
@@ -174,7 +176,10 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert {"case_id", "plan_id", "checkpoint_json", "last_event_sequence"} <= job_columns
     preview_columns = {column["name"] for column in inspector.get_columns("artifact_previews")}
     assert {"source_width", "source_height", "media_metadata_json"} <= preview_columns
-    assert revision == "0029_media_metadata"
+    assert "report_review_events" in inspector.get_table_names()
+    report_columns = {column["name"] for column in inspector.get_columns("reports")}
+    assert "redaction_profile" in report_columns
+    assert revision == "0030_report_review_redaction"
     database.dispose()
 
 
