@@ -9,6 +9,8 @@ from .errors import AdbCommandError
 from .models import (
     AdbServerInfo,
     DeviceTransport,
+    PhysicalBlockCaptureResult,
+    PhysicalBlockProbe,
     PulledFileResult,
     RootAccessProbe,
     RootAccessStatus,
@@ -28,9 +30,11 @@ from .policy import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_ITEMS,
     MAX_ACQUIRED_FILE_BYTES,
+    MAX_PHYSICAL_BLOCK_BYTES,
     MAX_ROOTED_BUNDLE_BYTES,
     AdbCommandPolicy,
     ApprovedAdbCommand,
+    PhysicalBlockProfile,
     RootedCollectionProfile,
     SharedStorageRoot,
 )
@@ -68,6 +72,19 @@ class AdbClient(Protocol):
         profile: RootedCollectionProfile,
         destination: Path,
     ) -> RootedBundleResult: ...
+
+    async def probe_physical_block(
+        self, serial: str, profile: PhysicalBlockProfile
+    ) -> PhysicalBlockProbe: ...
+
+    async def capture_physical_block(
+        self,
+        serial: str,
+        profile: PhysicalBlockProfile,
+        destination: Path,
+        *,
+        expected_size_bytes: int,
+    ) -> PhysicalBlockCaptureResult: ...
 
 
 class SystemAdbClient:
@@ -220,6 +237,52 @@ class SystemAdbClient:
         if size_bytes is None or size_bytes == 0:
             raise AdbCommandError(result.exit_code, "ADB did not create a non-empty rooted bundle.")
         return RootedBundleResult(profile=profile.value, size_bytes=size_bytes)
+
+    async def probe_physical_block(
+        self, serial: str, profile: PhysicalBlockProfile
+    ) -> PhysicalBlockProbe:
+        result = await self._run(AdbCommandPolicy.probe_physical_block(serial, profile))
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        value = result.stdout.strip()
+        if not value.isdecimal():
+            raise AdbCommandError(result.exit_code, "The block-device size was not numeric.")
+        size_bytes = int(value)
+        if size_bytes < 1 or size_bytes > MAX_PHYSICAL_BLOCK_BYTES:
+            raise AdbCommandError(result.exit_code, "The block-device size violates policy.")
+        return PhysicalBlockProbe(
+            profile=profile.value,
+            device_path=AdbCommandPolicy.physical_block_path(profile),
+            size_bytes=size_bytes,
+            encryption_state="unknown",
+        )
+
+    async def capture_physical_block(
+        self,
+        serial: str,
+        profile: PhysicalBlockProfile,
+        destination: Path,
+        *,
+        expected_size_bytes: int,
+    ) -> PhysicalBlockCaptureResult:
+        if expected_size_bytes < 1 or expected_size_bytes > MAX_PHYSICAL_BLOCK_BYTES:
+            raise ValueError("Expected physical block size violates policy.")
+        command = AdbCommandPolicy.capture_physical_block(serial, profile)
+        result = await self._runner.run_stdout_to_file(
+            command.arguments,
+            destination,
+            timeout_seconds=command.timeout_seconds,
+            max_file_bytes=expected_size_bytes,
+        )
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        size_bytes = await asyncio.to_thread(_regular_file_size, destination)
+        if size_bytes != expected_size_bytes:
+            raise AdbCommandError(
+                result.exit_code,
+                "The physical capture size did not match the pre-acquisition probe.",
+            )
+        return PhysicalBlockCaptureResult(profile=profile.value, size_bytes=size_bytes)
 
     async def _run(self, command: ApprovedAdbCommand) -> AdbCommandResult:
         return await self._runner.run(command.arguments, timeout_seconds=command.timeout_seconds)

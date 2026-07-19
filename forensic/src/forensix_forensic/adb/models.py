@@ -109,3 +109,19 @@ class RootedBundleResult(BaseModel):
 
     profile: str
     size_bytes: int = Field(ge=1)
+
+
+class PhysicalBlockProbe(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    profile: str
+    device_path: str
+    size_bytes: int = Field(ge=1)
+    encryption_state: str = "unknown"
+
+
+class PhysicalBlockCaptureResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    profile: str
+    size_bytes: int = Field(ge=1)

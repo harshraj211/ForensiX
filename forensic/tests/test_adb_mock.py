@@ -6,7 +6,11 @@ import pytest
 from forensix_forensic.adb.errors import AdbCommandError, AdbTimeoutError
 from forensix_forensic.adb.mock import MockAdbClient, MockAdbScenario
 from forensix_forensic.adb.models import DeviceState
-from forensix_forensic.adb.policy import RootedCollectionProfile, SharedStorageRoot
+from forensix_forensic.adb.policy import (
+    PhysicalBlockProfile,
+    RootedCollectionProfile,
+    SharedStorageRoot,
+)
 
 
 @pytest.mark.asyncio
@@ -72,6 +76,30 @@ async def test_mock_rooted_bundle_rejects_ordinary_device(tmp_path: Path) -> Non
             "FX-DEMO-001",
             RootedCollectionProfile.ANDROID_PROVIDERS,
             tmp_path / "providers.tar",
+        )
+
+
+@pytest.mark.asyncio
+async def test_mock_physical_block_requires_root_and_exact_size(tmp_path: Path) -> None:
+    rooted = MockAdbClient(MockAdbScenario.ROOTED)
+    probe = await rooted.probe_physical_block(
+        "FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME
+    )
+    destination = tmp_path / "userdata.dd"
+
+    capture = await rooted.capture_physical_block(
+        "FX-DEMO-001",
+        PhysicalBlockProfile.USERDATA_BY_NAME,
+        destination,
+        expected_size_bytes=probe.size_bytes,
+    )
+
+    assert probe.size_bytes == 8192
+    assert capture.size_bytes == 8192
+    assert destination.stat().st_size == 8192
+    with pytest.raises(AdbCommandError):
+        await MockAdbClient().probe_physical_block(
+            "FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME
         )
 
 

@@ -16,6 +16,8 @@ class AdbOperation(StrEnum):
     PULL_INVENTORY_FILE = "pull_inventory_file"
     PROBE_ROOT_ACCESS = "probe_root_access"
     CAPTURE_ROOTED_BUNDLE = "capture_rooted_bundle"
+    PROBE_PHYSICAL_BLOCK = "probe_physical_block"
+    CAPTURE_PHYSICAL_BLOCK = "capture_physical_block"
 
 
 class SharedStorageRoot(StrEnum):
@@ -27,6 +29,10 @@ class RootedCollectionProfile(StrEnum):
     ANDROID_PROVIDERS = "android_providers"
 
 
+class PhysicalBlockProfile(StrEnum):
+    USERDATA_BY_NAME = "userdata_by_name"
+
+
 _STORAGE_PATHS: dict[SharedStorageRoot, str] = {
     SharedStorageRoot.PRIMARY_ALIAS: "/sdcard",
     SharedStorageRoot.EMULATED_PRIMARY: "/storage/emulated/0",
@@ -36,6 +42,7 @@ INVENTORY_MAX_DEPTH = 6
 INVENTORY_MAX_ITEMS = 250
 MAX_ACQUIRED_FILE_BYTES = 100 * 1024 * 1024
 MAX_ROOTED_BUNDLE_BYTES = 1024 * 1024 * 1024
+MAX_PHYSICAL_BLOCK_BYTES = 512 * 1024 * 1024 * 1024
 
 _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
     RootedCollectionProfile.ANDROID_PROVIDERS: (
@@ -46,6 +53,10 @@ _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
         "/data/user_de/0/com.android.providers.calendar/databases",
         "/data/user/0/com.android.providers.calendar/databases",
     )
+}
+
+_PHYSICAL_BLOCK_PATHS: dict[PhysicalBlockProfile, str] = {
+    PhysicalBlockProfile.USERDATA_BY_NAME: "/dev/block/by-name/userdata"
 }
 
 
@@ -116,6 +127,36 @@ class AdbCommandPolicy:
     @staticmethod
     def rooted_profile_paths(profile: RootedCollectionProfile) -> tuple[str, ...]:
         return _ROOTED_PROFILE_PATHS[profile]
+
+    @staticmethod
+    def probe_physical_block(
+        serial: str, profile: PhysicalBlockProfile
+    ) -> ApprovedAdbCommand:
+        _validate_serial(serial)
+        path = _PHYSICAL_BLOCK_PATHS[profile]
+        command = f"blockdev --getsize64 '{path}'"
+        return ApprovedAdbCommand(
+            AdbOperation.PROBE_PHYSICAL_BLOCK,
+            ("-s", serial, "exec-out", "su", "-c", command),
+            10.0,
+        )
+
+    @staticmethod
+    def capture_physical_block(
+        serial: str, profile: PhysicalBlockProfile
+    ) -> ApprovedAdbCommand:
+        _validate_serial(serial)
+        path = _PHYSICAL_BLOCK_PATHS[profile]
+        command = f"exec dd if='{path}' bs=1048576"
+        return ApprovedAdbCommand(
+            AdbOperation.CAPTURE_PHYSICAL_BLOCK,
+            ("-s", serial, "exec-out", "su", "-c", command),
+            24 * 60 * 60.0,
+        )
+
+    @staticmethod
+    def physical_block_path(profile: PhysicalBlockProfile) -> str:
+        return _PHYSICAL_BLOCK_PATHS[profile]
 
     @staticmethod
     def storage_root_exists(serial: str, root: SharedStorageRoot) -> ApprovedAdbCommand:

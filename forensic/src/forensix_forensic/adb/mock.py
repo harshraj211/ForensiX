@@ -12,6 +12,8 @@ from .models import (
     AdbServerInfo,
     DeviceState,
     DeviceTransport,
+    PhysicalBlockCaptureResult,
+    PhysicalBlockProbe,
     PulledFileResult,
     RootAccessProbe,
     RootAccessStatus,
@@ -25,6 +27,7 @@ from .policy import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_ITEMS,
     AdbCommandPolicy,
+    PhysicalBlockProfile,
     RootedCollectionProfile,
     SharedStorageRoot,
 )
@@ -189,6 +192,37 @@ class MockAdbClient:
         await asyncio.to_thread(_write_rooted_fixture_bundle, destination)
         size_bytes = await asyncio.to_thread(lambda: destination.stat().st_size)
         return RootedBundleResult(profile=profile.value, size_bytes=size_bytes)
+
+    async def probe_physical_block(
+        self, serial: str, profile: PhysicalBlockProfile
+    ) -> PhysicalBlockProbe:
+        await self._require_authorized(serial)
+        if self.scenario is not MockAdbScenario.ROOTED:
+            raise AdbCommandError(1, "Root UID is unavailable in this mock scenario.")
+        return PhysicalBlockProbe(
+            profile=profile.value,
+            device_path=AdbCommandPolicy.physical_block_path(profile),
+            size_bytes=8192,
+            encryption_state="unknown",
+        )
+
+    async def capture_physical_block(
+        self,
+        serial: str,
+        profile: PhysicalBlockProfile,
+        destination: Path,
+        *,
+        expected_size_bytes: int,
+    ) -> PhysicalBlockCaptureResult:
+        await self._require_authorized(serial)
+        if self.scenario is not MockAdbScenario.ROOTED:
+            raise AdbCommandError(1, "Root UID is unavailable in this mock scenario.")
+        if expected_size_bytes != 8192:
+            raise AdbCommandError(1, "The synthetic block size does not match its probe.")
+        AdbCommandPolicy.capture_physical_block(serial, profile)
+        payload = bytes(range(256)) * 32
+        await asyncio.to_thread(destination.write_bytes, payload)
+        return PhysicalBlockCaptureResult(profile=profile.value, size_bytes=len(payload))
 
     async def _require_authorized(self, serial: str) -> DeviceTransport:
         from .errors import AdbDeviceNotAuthorizedError, AdbDeviceNotFoundError

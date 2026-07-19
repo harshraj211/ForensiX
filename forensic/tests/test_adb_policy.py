@@ -9,6 +9,7 @@ from forensix_forensic.adb import (
     AdbCommandError,
     AdbCommandPolicy,
     AdbCommandResult,
+    PhysicalBlockProfile,
     RootAccessStatus,
     RootedCollectionProfile,
     SharedStorageRoot,
@@ -117,6 +118,21 @@ def test_rooted_bundle_policy_uses_only_fixed_provider_paths() -> None:
     assert "com.android.providers.telephony/databases" in shell_text
     assert "com.android.providers.calendar/databases" in shell_text
     assert "tar -cf -" in shell_text
+
+
+def test_physical_block_policy_is_fixed_and_has_no_caller_path() -> None:
+    probe = AdbCommandPolicy.probe_physical_block(
+        "FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME
+    )
+    capture = AdbCommandPolicy.capture_physical_block(
+        "FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME
+    )
+
+    assert probe.arguments[:5] == ("-s", "FX-DEMO-001", "exec-out", "su", "-c")
+    assert probe.arguments[5] == "blockdev --getsize64 '/dev/block/by-name/userdata'"
+    assert capture.arguments[5] == "exec dd if='/dev/block/by-name/userdata' bs=1048576"
+    assert "FX-DEMO-001" not in probe.arguments[5]
+    assert capture.timeout_seconds == 24 * 60 * 60
 
 
 def test_inventory_policy_is_fixed_bounded_and_uses_no_caller_controlled_shell_text() -> None:
@@ -278,3 +294,25 @@ async def test_system_rooted_bundle_streams_to_supplied_new_path(tmp_path: Path)
     assert result.profile == "android_providers"
     assert result.size_bytes == len(b"rooted-tar-fixture")
     assert runner.calls[0][0][2:5] == ("exec-out", "su", "-c")
+
+
+@pytest.mark.asyncio
+async def test_system_physical_block_probe_and_exact_capture(tmp_path: Path) -> None:
+    runner = RecordingRunner([_result(0, stdout="18\n"), _result(0)])
+    client = SystemAdbClient(cast(SubprocessAdbRunner, runner))
+    destination = tmp_path / "userdata.dd.partial"
+
+    probe = await client.probe_physical_block(
+        "FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME
+    )
+    capture = await client.capture_physical_block(
+        "FX-DEMO-001",
+        PhysicalBlockProfile.USERDATA_BY_NAME,
+        destination,
+        expected_size_bytes=probe.size_bytes,
+    )
+
+    assert probe.device_path == "/dev/block/by-name/userdata"
+    assert probe.size_bytes == 18
+    assert capture.size_bytes == 18
+    assert destination.read_bytes() == b"rooted-tar-fixture"
