@@ -1,5 +1,6 @@
 """Read-only, immutable SQLite access for allowlisted parser code."""
 
+import re
 import sqlite3
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -50,6 +51,7 @@ _DENIED_ACTIONS = frozenset(
     if action >= 0
 )
 _DENIED_FUNCTIONS = frozenset({"load_extension", "readfile", "writefile"})
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 
 
 class SafeSQLiteReader:
@@ -149,6 +151,16 @@ class SafeSQLiteReader:
         )
         return frozenset(str(row["name"]) for row in rows)
 
+    def column_names(self, table: str) -> frozenset[str]:
+        if not _IDENTIFIER.fullmatch(table):
+            raise SafeSQLiteError("The SQLite table identifier is invalid.")
+        connection = self._require_connection()
+        try:
+            rows = connection.execute(f'PRAGMA table_info("{table}")').fetchall()
+        except sqlite3.Error as error:
+            raise SafeSQLiteError("SQLite table metadata could not be read.") from error
+        return frozenset(str(row[1]) for row in rows)
+
     def _require_connection(self) -> sqlite3.Connection:
         if self._connection is None:
             raise SafeSQLiteError("The SQLite reader is not open.")
@@ -162,7 +174,13 @@ def _authorizer(
     database_name: str | None,
     trigger_name: str | None,
 ) -> int:
-    del argument_one, database_name, trigger_name
+    del database_name, trigger_name
+    if action == sqlite3.SQLITE_PRAGMA:
+        return (
+            sqlite3.SQLITE_OK
+            if (argument_one or "").casefold() == "table_info" and argument_two
+            else sqlite3.SQLITE_DENY
+        )
     if action in _DENIED_ACTIONS:
         return sqlite3.SQLITE_DENY
     if action == sqlite3.SQLITE_FUNCTION and (argument_two or "").casefold() in _DENIED_FUNCTIONS:
