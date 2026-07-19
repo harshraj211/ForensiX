@@ -27,6 +27,17 @@ class DeviceCapabilityAssessor:
         storage_roots = await self._adb_client.probe_shared_storage(serial)
         sdk_level = _parse_sdk_level(properties.get("ro.build.version.sdk"))
         accessible_roots = tuple(root for root in storage_roots if root.readable)
+        shared_file_decision = (
+            _supported(
+                "SHARED_STORAGE_ROOT_READABLE",
+                "Accessible shared storage can be filtered for this artifact category.",
+            )
+            if accessible_roots
+            else _blocked(
+                "SHARED_STORAGE_NOT_READABLE",
+                "No approved shared-storage root is currently readable.",
+            )
+        )
         capabilities = {
             "device_metadata": _supported(
                 "ADB_PROPERTY_ACCESS",
@@ -61,6 +72,25 @@ class DeviceCapabilityAssessor:
                 "PRIVATE_APP_DATA_INACCESSIBLE",
                 "ADB authorization does not grant access to private application sandboxes.",
             ),
+            "download_files": shared_file_decision,
+            "media_files": shared_file_decision,
+            "document_files": shared_file_decision,
+            "contacts": _elevated_only("READ_CONTACTS_REQUIRED"),
+            "sms_mms": _elevated_only("READ_SMS_REQUIRED"),
+            "call_logs": _elevated_only("READ_CALL_LOG_REQUIRED"),
+            "calendar": _elevated_only("READ_CALENDAR_REQUIRED"),
+            "notifications": _elevated_only("NOTIFICATION_LISTENER_ACCESS_REQUIRED"),
+            "wifi_records": _elevated_only("PRIVILEGED_WIFI_ACCESS_REQUIRED"),
+            "bluetooth_records": _elevated_only("PRIVILEGED_BLUETOOTH_ACCESS_REQUIRED"),
+            "location_artifacts": _elevated_only("PRIVATE_LOCATION_DATA_INACCESSIBLE"),
+            "browser_history": _elevated_only("PRIVATE_BROWSER_DATA_INACCESSIBLE"),
+            "whatsapp_private_data": _private_app_only("WhatsApp"),
+            "telegram_private_data": _private_app_only("Telegram"),
+            "signal_private_data": _private_app_only("Signal"),
+            "messenger_private_data": _private_app_only("Messenger"),
+            "instagram_private_data": _private_app_only("Instagram"),
+            "facebook_private_data": _private_app_only("Facebook"),
+            "snapchat_private_data": _private_app_only("Snapchat"),
             "deleted_data_recovery": _unsupported(
                 "BLOCK_ACCESS_UNAVAILABLE",
                 (
@@ -114,4 +144,32 @@ def _unsupported(reason_code: str, explanation: str) -> CapabilityDecision:
         status=CapabilityStatus.UNSUPPORTED,
         reason_code=reason_code,
         explanation=explanation,
+    )
+
+
+def _blocked(reason_code: str, explanation: str) -> CapabilityDecision:
+    return CapabilityDecision(
+        status=CapabilityStatus.BLOCKED,
+        reason_code=reason_code,
+        explanation=explanation,
+    )
+
+
+def _elevated_only(reason_code: str) -> CapabilityDecision:
+    return _unsupported(
+        reason_code,
+        (
+            "Ordinary non-rooted ADB shell access does not hold the Android permission "
+            "required for this provider."
+        ),
+    )
+
+
+def _private_app_only(application_name: str) -> CapabilityDecision:
+    return _unsupported(
+        "PRIVATE_APP_SANDBOX_INACCESSIBLE",
+        (
+            f"{application_name} private databases are sandboxed and unavailable to ordinary "
+            "non-rooted ADB."
+        ),
     )
