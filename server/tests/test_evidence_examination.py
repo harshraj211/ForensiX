@@ -204,9 +204,7 @@ def test_native_parsers_safely_examine_sqlite_members_in_rooted_tar(
     principal, case_id = _principal_and_case(database)
     contacts = _contacts_database(tmp_path / "rooted-contacts2.db")
     archive_buffer = BytesIO()
-    member_name = (
-        "data/user_de/0/com.android.providers.contacts/databases/contacts2.db"
-    )
+    member_name = "data/user_de/0/com.android.providers.contacts/databases/contacts2.db"
     with tarfile.open(fileobj=archive_buffer, mode="w") as archive:
         member = tarfile.TarInfo(member_name)
         member.size = len(contacts)
@@ -319,3 +317,53 @@ def test_archive_with_only_opaque_database_reports_no_decryption_bypass(
         EvidenceExaminationService().run_native_parsers(
             database, principal, case_id, source.id, working_copy.id
         )
+
+
+def test_wifi_and_bluetooth_documents_are_parsed_from_sealed_archive(
+    database: Database,
+) -> None:
+    principal, case_id = _principal_and_case(database)
+    wifi = b"""<WifiConfigStoreData><NetworkList><Network><WifiConfiguration>
+    <string name="SSID">&quot;Known WiFi&quot;</string>
+    <string name="PreSharedKey">&quot;SecretFixture&quot;</string>
+    </WifiConfiguration></Network></NetworkList></WifiConfigStoreData>"""
+    bluetooth = b"""[AA:BB:CC:DD:EE:FF]
+Name = Known Headset
+LinkKey = 00112233445566778899AABBCCDDEEFF
+"""
+    archive_buffer = BytesIO()
+    with tarfile.open(fileobj=archive_buffer, mode="w") as archive:
+        for name, payload in (
+            ("data/misc/apexdata/com.android.wifi/WifiConfigStore.xml", wifi),
+            ("data/misc/bluedroid/bt_config.conf", bluetooth),
+        ):
+            member = tarfile.TarInfo(name)
+            member.size = len(payload)
+            archive.addfile(member, BytesIO(payload))
+    source = EvidenceTwinService().import_stream(
+        database,
+        principal,
+        case_id,
+        BytesIO(archive_buffer.getvalue()),
+        source_name="system-artifacts.tar",
+    )
+    working_copy = EvidenceTwinService().create_working_copy(
+        database, principal, case_id, source.id
+    )
+
+    results = EvidenceExaminationService().run_native_parsers(
+        database, principal, case_id, source.id, working_copy.id
+    )
+
+    assert {result.run.parser_id for result in results} == {
+        "android.wifi.config_store",
+        "android.bluetooth.config",
+    }
+    artifacts = [artifact for result in results for artifact in result.artifacts]
+    assert {artifact.subtype for artifact in artifacts} == {
+        "wifi_network",
+        "bluetooth_device",
+    }
+    serialized = " ".join(item.metadata_json for item in artifacts)
+    assert "SecretFixture" not in serialized
+    assert "00112233445566778899AABBCCDDEEFF" not in serialized

@@ -4,6 +4,12 @@ from .applications import MetaMessageParser, TelegramMessageParser, WhatsAppMess
 from .common import AndroidArtifactParserError
 from .communications import AndroidCallLogParser, AndroidMmsParser, AndroidSmsParser
 from .contacts import AndroidContactsParser
+from .documents import (
+    AndroidBluetoothConfigParser,
+    AndroidDocumentParserError,
+    AndroidWifiConfigParser,
+    android_document_parser_registry,
+)
 from .registry import android_parser_registry
 from .support import ApplicationArtifactSupport, application_artifact_support
 from .system import (
@@ -19,6 +25,9 @@ __all__ = [
     "AndroidArtifactParserError",
     "AndroidCallLogParser",
     "AndroidContactsParser",
+    "AndroidBluetoothConfigParser",
+    "AndroidDocumentParserError",
+    "AndroidWifiConfigParser",
     "AndroidMmsParser",
     "AndroidSmsParser",
     "MetaMessageParser",
@@ -33,4 +42,5 @@ __all__ = [
     "AndroidNotificationParser",
     "ChromeHistoryParser",
     "android_parser_registry",
+    "android_document_parser_registry",
 ]

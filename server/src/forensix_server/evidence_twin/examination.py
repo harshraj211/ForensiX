@@ -12,9 +12,14 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from forensix_forensic.android_artifacts import android_parser_registry
+from forensix_forensic.android_artifacts import (
+    android_document_parser_registry,
+    android_parser_registry,
+)
 from forensix_forensic.evidence_io import (
     ArchivePolicy,
+    DocumentEvidenceParser,
+    DocumentParserRegistry,
     EvidenceParser,
     ExtractedArchiveMember,
     ParsedArtifact,
@@ -45,6 +50,9 @@ from .service import EvidenceTwinError, EvidenceTwinIntegrityError, EvidenceTwin
 class ParserExecutionResult:
     run: EvidenceParserRunRecord
     artifacts: tuple[EvidenceSourceArtifactRecord, ...]
+
+
+type VersionedParser = EvidenceParser | DocumentEvidenceParser
 
 
 class EvidenceExaminationService:
@@ -88,6 +96,7 @@ class EvidenceExaminationService:
             input_sha256=working_copy.expected_source_sha256,
         )
         registry = android_parser_registry()
+        document_registry = android_document_parser_registry()
         if inspection.detected_type in {"zip", "tar"}:
             return self._run_archive_parsers(
                 database,
@@ -96,11 +105,27 @@ class EvidenceExaminationService:
                 context,
                 path,
                 registry,
+                document_registry,
                 parser_ids,
             )
         if inspection.detected_type != "sqlite":
+            compatible_documents = {
+                parser.metadata.parser_id: parser
+                for parser in document_registry.compatible(source.source_name)
+            }
+            selected_documents = self._select_document_parsers(
+                registry, document_registry, compatible_documents, parser_ids
+            )
+            if selected_documents:
+                return [
+                    self._execute_document_parser(
+                        database, principal, inspection.id, context, parser, path
+                    )
+                    for parser in selected_documents
+                ]
             raise EvidenceTwinError(
-                "Native Android provider parsers require SQLite or a safely extractable archive."
+                "Native Android parsers require SQLite, a supported bounded document, or a "
+                "safely extractable archive."
             )
         with SafeSQLiteReader(path) as reader:
             compatible = {
@@ -130,9 +155,10 @@ class EvidenceExaminationService:
         base_context: ParserContext,
         archive_path: Path,
         registry: ParserRegistry,
+        document_registry: DocumentParserRegistry,
         parser_ids: tuple[str, ...] | None,
     ) -> list[ParserExecutionResult]:
-        requested = self._validate_parser_ids(registry, parser_ids)
+        requested = self._validate_parser_ids(registry, document_registry, parser_ids)
         workspace = _new_archive_workspace(database.data_dir)
         store = EvidenceStore(workspace)
         matched: set[str] = set()
@@ -147,11 +173,16 @@ class EvidenceExaminationService:
                 )
             ).extract(archive_path, store, "members")
             candidates = _sqlite_archive_candidates(members)
-            if not candidates:
+            document_candidates = _document_archive_candidates(members, document_registry)
+            if not candidates and not document_candidates:
                 raise EvidenceTwinError(
-                    "No bounded SQLite database member was found in the archive."
+                    "No bounded supported database or configuration member was found in the "
+                    "archive."
                 )
             scheduled: list[tuple[ExtractedArchiveMember, tuple[EvidenceParser, ...]]] = []
+            scheduled_documents: list[
+                tuple[ExtractedArchiveMember, tuple[DocumentEvidenceParser, ...]]
+            ] = []
             readable_sqlite_count = 0
             for member in candidates:
                 member_path = store.resolve(member.storage_key, require_file=True)
@@ -176,7 +207,16 @@ class EvidenceExaminationService:
                     # Application databases may be SQLCipher-encrypted or merely use a .db suffix.
                     # They are never opened with fallback credentials or mutating recovery flags.
                     continue
-            if readable_sqlite_count == 0:
+            for member in document_candidates:
+                selected_documents = tuple(
+                    parser
+                    for parser in document_registry.compatible(member.original_name)
+                    if requested is None or parser.metadata.parser_id in requested
+                )
+                matched.update(parser.metadata.parser_id for parser in selected_documents)
+                if selected_documents:
+                    scheduled_documents.append((member, selected_documents))
+            if candidates and readable_sqlite_count == 0 and not scheduled_documents:
                 raise EvidenceTwinError(
                     "Database-like archive members were encrypted, opaque, or not valid SQLite; "
                     "ForensiX does not bypass application encryption."
@@ -186,9 +226,9 @@ class EvidenceExaminationService:
                 raise EvidenceTwinError(
                     f"Selected parser(s) were not compatible with archive members: {missing}."
                 )
-            if not scheduled:
+            if not scheduled and not scheduled_documents:
                 raise EvidenceTwinError(
-                    "The archive contained SQLite files but no compatible Android provider schema."
+                    "The archive contained readable inputs but no compatible Android schema."
                 )
             for member, selected in scheduled:
                 member_path = store.resolve(member.storage_key, require_file=True)
@@ -213,6 +253,28 @@ class EvidenceExaminationService:
                         )
                         for parser in selected
                     )
+            for member, selected_documents in scheduled_documents:
+                member_path = store.resolve(member.storage_key, require_file=True)
+                context = ParserContext(
+                    case_id=base_context.case_id,
+                    evidence_source_id=base_context.evidence_source_id,
+                    working_copy_id=base_context.working_copy_id,
+                    source_sha256=base_context.source_sha256,
+                    source_label=f"{base_context.source_label}:{member.original_name}",
+                    input_locator=member.original_name,
+                    input_sha256=member.sha256,
+                )
+                results.extend(
+                    self._execute_document_parser(
+                        database,
+                        principal,
+                        inspection_id,
+                        context,
+                        parser,
+                        member_path,
+                    )
+                    for parser in selected_documents
+                )
             return results
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
@@ -286,7 +348,9 @@ class EvidenceExaminationService:
 
     @staticmethod
     def _validate_parser_ids(
-        registry: ParserRegistry, parser_ids: tuple[str, ...] | None
+        registry: ParserRegistry,
+        document_registry: DocumentParserRegistry,
+        parser_ids: tuple[str, ...] | None,
     ) -> set[str] | None:
         if parser_ids is None:
             return None
@@ -296,8 +360,30 @@ class EvidenceExaminationService:
             try:
                 registry.get(parser_id)
             except ParserRegistryError as error:
-                raise EvidenceTwinError(str(error)) from error
+                try:
+                    document_registry.get(parser_id)
+                except ParserRegistryError:
+                    raise EvidenceTwinError(str(error)) from error
         return set(parser_ids)
+
+    @staticmethod
+    def _select_document_parsers(
+        registry: ParserRegistry,
+        document_registry: DocumentParserRegistry,
+        compatible: dict[str, DocumentEvidenceParser],
+        parser_ids: tuple[str, ...] | None,
+    ) -> tuple[DocumentEvidenceParser, ...]:
+        if parser_ids is None:
+            return tuple(compatible.values())
+        EvidenceExaminationService._validate_parser_ids(registry, document_registry, parser_ids)
+        selected: list[DocumentEvidenceParser] = []
+        for parser_id in parser_ids:
+            if parser_id not in compatible:
+                raise EvidenceTwinError(
+                    f"Parser '{parser_id}' is not compatible with this document."
+                )
+            selected.append(compatible[parser_id])
+        return tuple(selected)
 
     def _execute_parser(
         self,
@@ -324,12 +410,37 @@ class EvidenceExaminationService:
                 database, principal, inspection_id, context, parser, error, started_at
             )
 
+    def _execute_document_parser(
+        self,
+        database: Database,
+        principal: Principal,
+        inspection_id: str,
+        context: ParserContext,
+        parser: DocumentEvidenceParser,
+        path: Path,
+    ) -> ParserExecutionResult:
+        existing = self._existing_result(
+            database, context.working_copy_id, context.input_locator, parser
+        )
+        if existing is not None:
+            return existing
+        started_at = datetime.now(UTC)
+        try:
+            parsed = parser.parse(path, context)
+            return self._persist_success(
+                database, principal, inspection_id, context, parser, parsed, started_at
+            )
+        except Exception as error:
+            return self._persist_failure(
+                database, principal, inspection_id, context, parser, error, started_at
+            )
+
     @staticmethod
     def _existing_result(
         database: Database,
         working_copy_id: str,
         input_locator: str,
-        parser: EvidenceParser,
+        parser: VersionedParser,
     ) -> ParserExecutionResult | None:
         with database.session() as session:
             run = session.scalar(
@@ -359,7 +470,7 @@ class EvidenceExaminationService:
         principal: Principal,
         inspection_id: str,
         context: ParserContext,
-        parser: EvidenceParser,
+        parser: VersionedParser,
         parsed: list[ParsedArtifact],
         started_at: datetime,
     ) -> ParserExecutionResult:
@@ -469,7 +580,7 @@ class EvidenceExaminationService:
         principal: Principal,
         inspection_id: str,
         context: ParserContext,
-        parser: EvidenceParser,
+        parser: VersionedParser,
         error: Exception,
         started_at: datetime,
     ) -> ParserExecutionResult:
@@ -536,7 +647,7 @@ class EvidenceExaminationService:
 
     @staticmethod
     def _artifact_payload(
-        context: ParserContext, parser: EvidenceParser, artifact: ParsedArtifact
+        context: ParserContext, parser: VersionedParser, artifact: ParsedArtifact
     ) -> dict[str, Any]:
         return {
             "artifact": {
@@ -609,4 +720,17 @@ def _sqlite_archive_candidates(
     )
     if len(candidates) > 32:
         raise EvidenceTwinError("The archive exceeds the SQLite candidate-count limit.")
+    return candidates
+
+
+def _document_archive_candidates(
+    members: list[ExtractedArchiveMember], registry: DocumentParserRegistry
+) -> tuple[ExtractedArchiveMember, ...]:
+    candidates = tuple(
+        member
+        for member in members
+        if len(member.original_name) <= 1024 and registry.compatible(member.original_name)
+    )
+    if len(candidates) > 64:
+        raise EvidenceTwinError("The archive exceeds the document candidate-count limit.")
     return candidates

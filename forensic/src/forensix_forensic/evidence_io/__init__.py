@@ -7,6 +7,8 @@ from .archive import (
     SafeArchiveExtractor,
 )
 from .parser import (
+    DocumentEvidenceParser,
+    DocumentParserRegistry,
     EvidenceParser,
     ParsedArtifact,
     ParserContext,
@@ -19,6 +21,8 @@ from .sqlite import SafeSQLiteError, SafeSQLiteReader
 __all__ = [
     "ArchiveExtractionError",
     "ArchivePolicy",
+    "DocumentEvidenceParser",
+    "DocumentParserRegistry",
     "EvidenceParser",
     "ExtractedArchiveMember",
     "ParsedArtifact",

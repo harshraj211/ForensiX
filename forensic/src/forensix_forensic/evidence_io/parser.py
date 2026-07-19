@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from .sqlite import SafeSQLiteReader
@@ -55,6 +56,14 @@ class EvidenceParser(Protocol):
     def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]: ...
 
 
+class DocumentEvidenceParser(Protocol):
+    metadata: ParserMetadata
+
+    def can_parse(self, source_locator: str) -> bool: ...
+
+    def parse(self, path: Path, context: ParserContext) -> list[ParsedArtifact]: ...
+
+
 class ParserRegistry:
     """Allows only parser objects registered by trusted application code."""
 
@@ -88,6 +97,35 @@ class ParserRegistry:
                 not parser.metadata.source_path_hints
                 or any(hint.casefold() in locator for hint in parser.metadata.source_path_hints)
             )
+        )
+
+    def metadata(self) -> tuple[ParserMetadata, ...]:
+        return tuple(parser.metadata for parser in self._parsers.values())
+
+
+class DocumentParserRegistry:
+    """Closed registry for bounded non-SQLite evidence document parsers."""
+
+    def __init__(self) -> None:
+        self._parsers: dict[str, DocumentEvidenceParser] = {}
+
+    def register(self, parser: DocumentEvidenceParser) -> None:
+        parser_id = parser.metadata.parser_id
+        if not parser_id or not parser.metadata.version:
+            raise ParserRegistryError("Parser ID and version are required.")
+        if parser_id in self._parsers:
+            raise ParserRegistryError(f"Parser '{parser_id}' is already registered.")
+        self._parsers[parser_id] = parser
+
+    def get(self, parser_id: str) -> DocumentEvidenceParser:
+        try:
+            return self._parsers[parser_id]
+        except KeyError as error:
+            raise ParserRegistryError(f"Parser '{parser_id}' is not registered.") from error
+
+    def compatible(self, source_locator: str) -> tuple[DocumentEvidenceParser, ...]:
+        return tuple(
+            parser for parser in self._parsers.values() if parser.can_parse(source_locator)
         )
 
     def metadata(self) -> tuple[ParserMetadata, ...]:
