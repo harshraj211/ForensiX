@@ -1240,6 +1240,35 @@ describe("Evidence Twin workspace", () => {
       inspection_hash: "d".repeat(64),
       inspected_at: now,
     };
+    const recoveryAssessment = {
+      id: "recovery-1",
+      evidence_source_id: source.id,
+      working_copy_id: workingCopy.id,
+      inspection_id: inspection.id,
+      case_id: source.case_id,
+      assessed_by: "user-1",
+      maturity: "experimental",
+      status: "candidate_regions_observed",
+      candidate_region_count: 3,
+      candidates: [
+        {
+          source_locator: "working_copy",
+          source_kind: "sqlite_database",
+          status: "candidate_regions_observed",
+          confidence: "medium",
+          page_size_bytes: 4096,
+          candidate_region_count: 3,
+          source_size_bytes: 4096,
+          metadata: { freelist_page_count_header: 3 },
+          limitations: ["Freelist pages do not prove deleted records exist."],
+          candidate_hash: "e".repeat(64),
+        },
+      ],
+      limitations: ["Candidate regions are not recovered records or proof of deletion."],
+      assessment_hash: "f".repeat(64),
+      tool_version: "1.0.0",
+      assessed_at: now,
+    };
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url =
         typeof input === "string"
@@ -1299,6 +1328,9 @@ describe("Evidence Twin workspace", () => {
       }
       if (url.endsWith("/working-copies")) return Promise.resolve(jsonResponse([workingCopy]));
       if (url.endsWith("/inspection")) return Promise.resolve(jsonResponse(inspection));
+      if (url.endsWith("/recovery-assessment")) {
+        return Promise.resolve(jsonResponse(recoveryAssessment));
+      }
       if (url.endsWith("/verifications")) return Promise.resolve(jsonResponse([]));
       if (url.endsWith("/parser-runs")) return Promise.resolve(jsonResponse([]));
       if (url.endsWith("/artifacts")) return Promise.resolve(jsonResponse([]));
@@ -1320,6 +1352,15 @@ describe("Evidence Twin workspace", () => {
     expect(screen.getByRole("button", { name: "Create verified working copy" })).toBeEnabled();
     expect(await screen.findByText(/Detected/)).toHaveTextContent("sqlite");
     expect(screen.getByRole("button", { name: "Run compatible Android parsers" })).toBeEnabled();
+    const recoveryButton = screen.getByRole("button", {
+      name: "Assess recovery candidates (experimental)",
+    });
+    expect(recoveryButton).toBeEnabled();
+    await userEvent.click(recoveryButton);
+    expect(
+      await screen.findByText("Candidate regions are not recovered records"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/observed 3 candidate region/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run pinned ALEAPP" })).toBeDisabled();
     expect(screen.getByText(/ALEAPP is optional and not configured/i)).toBeInTheDocument();
     expect(await screen.findByText("WhatsApp")).toBeInTheDocument();

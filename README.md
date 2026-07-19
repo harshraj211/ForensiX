@@ -51,6 +51,7 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Global tamper-evident audit chain for custody actions with canonical serialization, genesis hash, sequence/link verification, protected audit APIs, and no claim that local SQLite is tamper-proof
 - Deterministic mock ADB scenarios and safe API error envelopes
 - Device-readiness UI with forensic limitations and operator guidance
+- Experimental, metadata-only SQLite/WAL/rollback-journal recovery-readiness assessment on verified Evidence Twin copies, with sealed results and no claim that candidate pages are deleted or recovered records
 - CI for frontend lint/type/test/build and backend Ruff/mypy/Pytest
 
 ## Local setup
@@ -114,6 +115,10 @@ is formally validated.
 Create a privacy-preserving, integrity-sealed mock or controlled-device validation record with
 `scripts/run-forensic-validation.py`; see [forensic validation](docs/FORENSIC_VALIDATION.md). A
 passing mock run is regression evidence and does not replace the physical-device release matrix.
+
+Verified SQLite databases and safe ZIP/TAR working copies can be checked for recovery candidates
+from the Evidence Twin screen. This experimental probe reads bounded metadata only; it does not
+carve deleted rows or prove deletion. See [deleted-data research](docs/DELETED_DATA_RESEARCH.md).
 
 Unsigned portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, and GitHub build
 attestations are defined in [release packaging](docs/RELEASE_PACKAGING.md). Native code signing,

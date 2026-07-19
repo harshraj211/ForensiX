@@ -15,6 +15,7 @@ import { Link, useParams } from "react-router-dom";
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
 import {
+  assessEvidenceRecoveryCandidates,
   createEvidenceWorkingCopy,
   getAleappDiagnostic,
   getApplicationArtifactSupport,
@@ -36,6 +37,7 @@ import {
   type EvidenceSourceArtifact,
   type EvidenceToolOutput,
   type EvidenceWorkingCopy,
+  type RecoveryAssessment,
   type AleappDiagnostic,
   type ApplicationArtifactSupport,
 } from "../../lib/api";
@@ -451,6 +453,7 @@ function WorkingCopyPanel({
   toolOutputs: EvidenceToolOutput[];
 }) {
   const queryClient = useQueryClient();
+  const [recoveryAssessment, setRecoveryAssessment] = useState<RecoveryAssessment | null>(null);
   const inspectionQuery = useQuery({
     queryKey: twinKeys.inspection(caseId, sourceId, workingCopy.id),
     queryFn: () => getEvidenceWorkingCopyInspection(caseId, sourceId, workingCopy.id),
@@ -488,7 +491,17 @@ function WorkingCopyPanel({
       void queryClient.invalidateQueries({ queryKey: twinKeys.verifications(caseId, sourceId) });
     },
   });
+  const assessRecovery = useMutation({
+    mutationFn: () =>
+      assessEvidenceRecoveryCandidates(caseId, sourceId, workingCopy.id),
+    onSuccess: (assessment) => {
+      setRecoveryAssessment(assessment);
+    },
+  });
   const inspection = inspectionQuery.data;
+  const recoverySupported = Boolean(
+    inspection && new Set(["sqlite", "zip", "tar"]).has(inspection.detected_type),
+  );
 
   return (
     <section className="mt-5 rounded-xl border border-cyan-200/10 bg-cyan-200/[0.025] p-4">
@@ -561,6 +574,18 @@ function WorkingCopyPanel({
         >
           {runAleappParser.isPending ? "Running ALEAPP…" : "Run pinned ALEAPP"}
         </button>
+        <button
+          type="button"
+          disabled={assessRecovery.isPending || !recoverySupported}
+          onClick={() => {
+            assessRecovery.mutate();
+          }}
+          className="min-h-9 rounded-lg border border-amber-200/20 px-3 text-xs font-semibold text-amber-100 disabled:opacity-40"
+        >
+          {assessRecovery.isPending
+            ? "Assessing recovery metadata…"
+            : "Assess recovery candidates (experimental)"}
+        </button>
       </div>
       {inspection && (
         <div className="mt-4 rounded-lg border border-white/8 bg-black/10 p-3 text-xs text-slate-400">
@@ -578,6 +603,9 @@ function WorkingCopyPanel({
             </p>
           ))}
         </div>
+      )}
+      {recoveryAssessment && (
+        <RecoveryAssessmentPanel assessment={recoveryAssessment} />
       )}
       <p className="mt-4 text-xs text-slate-500">
         {parserRunCount} parser run(s) · {artifacts.length} normalized artifact(s)
@@ -608,7 +636,69 @@ function WorkingCopyPanel({
       {verifyCopy.isError && <div className="mt-4"><CaseError error={verifyCopy.error} /></div>}
       {runParsers.isError && <div className="mt-4"><CaseError error={runParsers.error} /></div>}
       {runAleappParser.isError && <div className="mt-4"><CaseError error={runAleappParser.error} /></div>}
+      {assessRecovery.isError && <div className="mt-4"><CaseError error={assessRecovery.error} /></div>}
     </section>
+  );
+}
+
+function RecoveryAssessmentPanel({ assessment }: { assessment: RecoveryAssessment }) {
+  return (
+    <div className="mt-4 rounded-lg border border-amber-200/20 bg-amber-200/[0.04] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-100">
+            Experimental recovery readiness
+          </p>
+          <p className="mt-2 text-sm font-semibold text-white">
+            Candidate regions are not recovered records
+          </p>
+        </div>
+        <span className="rounded-full border border-amber-200/20 px-2 py-1 text-[10px] uppercase text-amber-100">
+          {assessment.status.replaceAll("_", " ")}
+        </span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-amber-100/75">
+        This metadata-only probe observed {assessment.candidate_region_count} candidate region(s)
+        across {assessment.candidates.length} supported SQLite source(s). It did not carve rows,
+        reconstruct transactions, bypass encryption, or prove that a user deleted data.
+      </p>
+      {assessment.candidates.length > 0 && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {assessment.candidates.map((candidate) => (
+            <div
+              key={candidate.candidate_hash}
+              className="rounded-lg border border-white/8 bg-black/10 p-3"
+            >
+              <p
+                className="truncate font-mono text-[10px] text-slate-300"
+                title={candidate.source_locator}
+              >
+                {candidate.source_locator}
+              </p>
+              <p className="mt-2 text-[10px] uppercase tracking-wide text-amber-100/75">
+                {candidate.source_kind.replaceAll("_", " ")} ·{" "}
+                {candidate.status.replaceAll("_", " ")} · {candidate.confidence} confidence
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                {candidate.candidate_region_count} candidate region(s) ·{" "}
+                {formatBytes(candidate.source_size_bytes)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+      {assessment.limitations.map((limitation) => (
+        <p key={limitation} className="mt-2 text-xs leading-5 text-slate-500">
+          • {limitation}
+        </p>
+      ))}
+      <p
+        className="mt-3 truncate font-mono text-[10px] text-slate-600"
+        title={assessment.assessment_hash}
+      >
+        Assessment SHA-256 {assessment.assessment_hash}
+      </p>
+    </div>
   );
 }
 

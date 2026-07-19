@@ -306,6 +306,36 @@ export interface EvidenceInspection {
   inspected_at: string;
 }
 
+export interface RecoveryCandidate {
+  source_locator: string;
+  source_kind: "sqlite_database" | "sqlite_wal" | "sqlite_rollback_journal" | "unknown";
+  status: "candidate_regions_observed" | "no_candidate_regions" | "malformed" | "unsupported";
+  confidence: "medium" | "low";
+  page_size_bytes: number | null;
+  candidate_region_count: number;
+  source_size_bytes: number;
+  metadata: Record<string, unknown>;
+  limitations: string[];
+  candidate_hash: string;
+}
+
+export interface RecoveryAssessment {
+  id: string;
+  evidence_source_id: string;
+  working_copy_id: string;
+  inspection_id: string;
+  case_id: string;
+  assessed_by: string;
+  maturity: "experimental";
+  status: "candidate_regions_observed" | "no_candidate_regions" | "unsupported";
+  candidate_region_count: number;
+  candidates: RecoveryCandidate[];
+  limitations: string[];
+  assessment_hash: string;
+  tool_version: string;
+  assessed_at: string;
+}
+
 export interface EvidenceParserRun {
   id: string;
   evidence_source_id: string;
@@ -1326,6 +1356,27 @@ export function getEvidenceWorkingCopyInspection(
 ): Promise<EvidenceInspection> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/inspection`,
+  );
+}
+
+export function assessEvidenceRecoveryCandidates(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+): Promise<RecoveryAssessment> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/recovery-assessment`,
+    { method: "POST" },
+  );
+}
+
+export function getEvidenceRecoveryAssessment(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+): Promise<RecoveryAssessment> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/recovery-assessment`,
   );
 }
 
