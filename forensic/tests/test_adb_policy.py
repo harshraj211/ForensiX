@@ -76,7 +76,7 @@ def test_storage_policy_builds_only_fixed_content_free_commands() -> None:
     assert all(token not in exists.arguments for token in {"ls", "find", "pull", "sh", "-c"})
 
 
-def test_inventory_policy_is_fixed_bounded_and_has_no_shell_composition() -> None:
+def test_inventory_policy_is_fixed_bounded_and_uses_no_caller_controlled_shell_text() -> None:
     command = AdbCommandPolicy.inventory_storage_paths(
         "FX-DEMO-001", SharedStorageRoot.EMULATED_PRIMARY
     )
@@ -85,22 +85,18 @@ def test_inventory_policy_is_fixed_bounded_and_has_no_shell_composition() -> Non
         "-s",
         "FX-DEMO-001",
         "shell",
-        "find",
-        "/storage/emulated/0",
-        "-xdev",
-        "-maxdepth",
-        "6",
-        "-type",
-        "f",
-        "-exec",
-        "stat",
+        "sh",
         "-c",
-        "%n:%s:%Y",
-        "{}",
-        "+",
+        "find /storage/emulated/0 -xdev -maxdepth 6 -type f "
+        "-exec stat -c '%n:%s:%Y' {} + | head -n 250",
     )
     assert command.timeout_seconds == 30.0
-    assert all(token not in command.arguments for token in {"pull", "sh", "|", ";"})
+    assert command.arguments[5] == (
+        "find /storage/emulated/0 -xdev -maxdepth 6 -type f "
+        "-exec stat -c '%n:%s:%Y' {} + | head -n 250"
+    )
+    assert "FX-DEMO-001" not in command.arguments[5]
+    assert "pull" not in command.arguments[5]
 
 
 def test_pull_policy_uses_shell_free_inventory_path_and_absolute_destination(
@@ -182,8 +178,8 @@ async def test_system_inventory_parses_paths_without_running_path_derived_comman
         "Download/report.pdf",
     ]
     assert len(runner.calls) == 1
-    assert runner.calls[0][0][3] == "find"
-    assert runner.calls[0][0][-6:] == ("-exec", "stat", "-c", "%n:%s:%Y", "{}", "+")
+    assert runner.calls[0][0][3:5] == ("sh", "-c")
+    assert runner.calls[0][0][5].endswith("| head -n 250")
     assert inventory.entries[0].size_bytes == 128
     assert inventory.entries[0].modified_time_raw == "1784160000"
     assert inventory.entries[0].modified_at is not None

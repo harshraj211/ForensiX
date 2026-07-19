@@ -80,25 +80,23 @@ class AdbCommandPolicy:
     @staticmethod
     def inventory_storage_paths(serial: str, root: SharedStorageRoot) -> ApprovedAdbCommand:
         _validate_serial(serial)
+        # This is intentionally a closed, literal command.  `head` terminates
+        # the producer after the approved record cap, preventing a full-device
+        # traversal before the workstation can apply its own parser limits.
+        command = (
+            f"find {_STORAGE_PATHS[root]} -xdev -maxdepth {INVENTORY_MAX_DEPTH} "
+            "-type f -exec stat -c '%n:%s:%Y' {} + "
+            f"| head -n {INVENTORY_MAX_ITEMS}"
+        )
         return ApprovedAdbCommand(
             AdbOperation.INVENTORY_STORAGE_PATHS,
             (
                 "-s",
                 serial,
                 "shell",
-                "find",
-                _STORAGE_PATHS[root],
-                "-xdev",
-                "-maxdepth",
-                str(INVENTORY_MAX_DEPTH),
-                "-type",
-                "f",
-                "-exec",
-                "stat",
+                "sh",
                 "-c",
-                "%n:%s:%Y",
-                "{}",
-                "+",
+                command,
             ),
             30.0,
         )
