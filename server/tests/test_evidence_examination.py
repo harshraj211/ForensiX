@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import tarfile
 from collections.abc import Iterator
 from io import BytesIO
 from pathlib import Path
@@ -195,3 +196,47 @@ def test_incompatible_parser_selection_is_rejected(database: Database, tmp_path:
             working_copy.id,
             parser_ids=("android.telephony.sms",),
         )
+
+
+def test_native_parsers_safely_examine_sqlite_members_in_rooted_tar(
+    database: Database, tmp_path: Path
+) -> None:
+    principal, case_id = _principal_and_case(database)
+    contacts = _contacts_database(tmp_path / "rooted-contacts2.db")
+    archive_buffer = BytesIO()
+    member_name = (
+        "data/user_de/0/com.android.providers.contacts/databases/contacts2.db"
+    )
+    with tarfile.open(fileobj=archive_buffer, mode="w") as archive:
+        member = tarfile.TarInfo(member_name)
+        member.size = len(contacts)
+        archive.addfile(member, BytesIO(contacts))
+    source = EvidenceTwinService().import_stream(
+        database,
+        principal,
+        case_id,
+        BytesIO(archive_buffer.getvalue()),
+        source_name="android_providers.tar",
+    )
+    working_copy = EvidenceTwinService().create_working_copy(
+        database, principal, case_id, source.id
+    )
+
+    results = EvidenceExaminationService().run_native_parsers(
+        database, principal, case_id, source.id, working_copy.id
+    )
+    repeated = EvidenceExaminationService().run_native_parsers(
+        database, principal, case_id, source.id, working_copy.id
+    )
+
+    assert len(results) == 1
+    assert results[0].run.parser_id == "android.contacts_provider"
+    assert results[0].run.input_locator == member_name
+    assert len(results[0].run.input_sha256) == 64
+    assert results[0].artifacts[0].title == "Known Contact"
+    provenance = json.loads(results[0].artifacts[0].provenance_json)
+    assert provenance["input_locator"] == member_name
+    assert provenance["input_sha256"] == results[0].run.input_sha256
+    assert repeated[0].run.id == results[0].run.id
+    extraction_parent = database.data_dir / "work" / "archive-examination"
+    assert not extraction_parent.exists() or not any(extraction_parent.iterdir())

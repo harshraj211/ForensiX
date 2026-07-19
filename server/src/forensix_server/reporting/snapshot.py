@@ -150,6 +150,8 @@ class EvidenceParserRunSnapshot(FrozenModel):
     status: str
     artifact_count: int
     source_sha256: str
+    input_locator: str
+    input_sha256: str
     run_hash: str
     error_code: str | None
     execution_detail: dict[str, Any]

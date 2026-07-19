@@ -685,6 +685,8 @@ def _evidence_source_snapshot(
                 status=item.status,
                 artifact_count=item.artifact_count,
                 source_sha256=item.source_sha256,
+                input_locator=item.input_locator,
+                input_sha256=item.input_sha256,
                 run_hash=item.run_hash,
                 error_code=item.error_code,
                 execution_detail=_parser_execution_detail(parser_audits, item.id),

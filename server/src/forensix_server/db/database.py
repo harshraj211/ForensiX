@@ -57,7 +57,14 @@ class Database:
                 if "evidence_sources" in tables
                 else set()
             )
-            legacy_revision = _legacy_revision(tables, inventory_columns, evidence_source_columns)
+            parser_run_columns = (
+                {column["name"] for column in inspector.get_columns("evidence_parser_runs")}
+                if "evidence_parser_runs" in tables
+                else set()
+            )
+            legacy_revision = _legacy_revision(
+                tables, inventory_columns, evidence_source_columns, parser_run_columns
+            )
             command.stamp(config, legacy_revision)
         command.upgrade(config, "head")
 
@@ -107,10 +114,15 @@ def sqlite_pragmas(engine: Engine) -> dict[str, int | str]:
 
 
 def _legacy_revision(
-    tables: set[str], inventory_columns: set[str], evidence_source_columns: set[str]
+    tables: set[str],
+    inventory_columns: set[str],
+    evidence_source_columns: set[str],
+    parser_run_columns: set[str],
 ) -> str:
     """Identify the newest schema marker created before migration tracking was enabled."""
     if "evidence_sources" in tables:
+        if "input_locator" in parser_run_columns:
+            return "0027_parser_input_provenance"
         if "root_access_probes" in tables:
             return "0026_root_access_probes"
         if "evidence_source_timeline_events" in tables:

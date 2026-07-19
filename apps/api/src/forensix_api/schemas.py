@@ -578,6 +578,8 @@ class EvidenceParserRunResponse(BaseModel):
     status: Literal["completed", "failed"]
     artifact_count: int
     source_sha256: str
+    input_locator: str
+    input_sha256: str
     run_hash: str
     error_code: str | None
     error_message: str | None

@@ -273,6 +273,8 @@ export interface EvidenceParserRun {
   status: "completed" | "failed";
   artifact_count: number;
   source_sha256: string;
+  input_locator: string;
+  input_sha256: string;
   run_hash: string;
   error_code: string | null;
   error_message: string | null;

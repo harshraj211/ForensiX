@@ -29,6 +29,8 @@ class ParserContext:
     working_copy_id: str
     source_sha256: str
     source_label: str
+    input_locator: str = "working_copy"
+    input_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

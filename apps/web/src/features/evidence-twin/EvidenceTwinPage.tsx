@@ -473,13 +473,21 @@ function WorkingCopyPanel({
         </button>
         <button
           type="button"
-          disabled={runParsers.isPending || inspection?.detected_type !== "sqlite"}
+          disabled={
+            runParsers.isPending ||
+            !inspection ||
+            !new Set(["sqlite", "zip", "tar"]).has(inspection.detected_type)
+          }
           onClick={() => {
             runParsers.mutate();
           }}
           className="min-h-9 rounded-lg bg-cyan-300 px-3 text-xs font-semibold text-slate-950 disabled:opacity-40"
         >
-          {runParsers.isPending ? "Parsing…" : "Run compatible Android parsers"}
+          {runParsers.isPending
+            ? "Parsing…"
+            : inspection && new Set(["zip", "tar"]).has(inspection.detected_type)
+              ? "Safely extract and run Android parsers"
+              : "Run compatible Android parsers"}
         </button>
         <button
           type="button"

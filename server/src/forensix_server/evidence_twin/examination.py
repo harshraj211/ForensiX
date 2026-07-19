@@ -2,20 +2,26 @@
 
 import base64
 import json
+import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
+from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import select
 
 from forensix_forensic.android_artifacts import android_parser_registry
 from forensix_forensic.evidence_io import (
+    ArchivePolicy,
     EvidenceParser,
+    ExtractedArchiveMember,
     ParsedArtifact,
     ParserContext,
     ParserRegistry,
     ParserRegistryError,
+    SafeArchiveExtractor,
     SafeSQLiteReader,
 )
 from forensix_forensic.storage import EvidenceStore
@@ -66,10 +72,6 @@ class EvidenceExaminationService:
         inspection = EvidenceInspectionService().inspect_working_copy(
             database, principal, case_id, source_id, working_copy_id
         )
-        if inspection.detected_type != "sqlite":
-            raise EvidenceTwinError(
-                "Native Android provider parsers currently require a direct SQLite working copy."
-            )
         with database.session() as session:
             working_copy = session.get(EvidenceWorkingCopyRecord, working_copy_id)
             assert working_copy is not None
@@ -81,8 +83,24 @@ class EvidenceExaminationService:
             working_copy_id=working_copy_id,
             source_sha256=working_copy.expected_source_sha256,
             source_label=source.source_name,
+            input_locator="working_copy",
+            input_sha256=working_copy.expected_source_sha256,
         )
         registry = android_parser_registry()
+        if inspection.detected_type in {"zip", "tar"}:
+            return self._run_archive_parsers(
+                database,
+                principal,
+                inspection.id,
+                context,
+                path,
+                registry,
+                parser_ids,
+            )
+        if inspection.detected_type != "sqlite":
+            raise EvidenceTwinError(
+                "Native Android provider parsers require SQLite or a safely extractable archive."
+            )
         with SafeSQLiteReader(path) as reader:
             compatible = {
                 parser.metadata.parser_id: parser
@@ -100,6 +118,87 @@ class EvidenceExaminationService:
                 )
                 for parser in selected
             ]
+
+    def _run_archive_parsers(
+        self,
+        database: Database,
+        principal: Principal,
+        inspection_id: str,
+        base_context: ParserContext,
+        archive_path: Path,
+        registry: ParserRegistry,
+        parser_ids: tuple[str, ...] | None,
+    ) -> list[ParserExecutionResult]:
+        requested = self._validate_parser_ids(registry, parser_ids)
+        workspace = _new_archive_workspace(database.data_dir)
+        store = EvidenceStore(workspace)
+        matched: set[str] = set()
+        results: list[ParserExecutionResult] = []
+        try:
+            members = SafeArchiveExtractor(
+                ArchivePolicy(
+                    max_members=256,
+                    max_member_bytes=512 * 1024 * 1024,
+                    max_total_bytes=1024 * 1024 * 1024,
+                    max_path_depth=20,
+                )
+            ).extract(archive_path, store, "members")
+            candidates = _sqlite_archive_candidates(members)
+            if not candidates:
+                raise EvidenceTwinError(
+                    "No bounded SQLite database member was found in the archive."
+                )
+            scheduled: list[tuple[ExtractedArchiveMember, tuple[EvidenceParser, ...]]] = []
+            for member in candidates:
+                member_path = store.resolve(member.storage_key, require_file=True)
+                with SafeSQLiteReader(member_path) as reader:
+                    compatible = {
+                        parser.metadata.parser_id: parser
+                        for parser in registry.compatible(reader.table_names())
+                    }
+                    selected = tuple(
+                        parser
+                        for parser_id, parser in compatible.items()
+                        if requested is None or parser_id in requested
+                    )
+                    matched.update(parser.metadata.parser_id for parser in selected)
+                    if selected:
+                        scheduled.append((member, selected))
+            if requested is not None and matched != requested:
+                missing = ", ".join(sorted(requested - matched))
+                raise EvidenceTwinError(
+                    f"Selected parser(s) were not compatible with archive members: {missing}."
+                )
+            if not scheduled:
+                raise EvidenceTwinError(
+                    "The archive contained SQLite files but no compatible Android provider schema."
+                )
+            for member, selected in scheduled:
+                member_path = store.resolve(member.storage_key, require_file=True)
+                with SafeSQLiteReader(member_path) as reader:
+                    context = ParserContext(
+                        case_id=base_context.case_id,
+                        evidence_source_id=base_context.evidence_source_id,
+                        working_copy_id=base_context.working_copy_id,
+                        source_sha256=base_context.source_sha256,
+                        source_label=f"{base_context.source_label}:{member.original_name}",
+                        input_locator=member.original_name,
+                        input_sha256=member.sha256,
+                    )
+                    results.extend(
+                        self._execute_parser(
+                            database,
+                            principal,
+                            inspection_id,
+                            context,
+                            parser,
+                            reader,
+                        )
+                        for parser in selected
+                    )
+            return results
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
 
     def list_runs(
         self,
@@ -168,6 +267,21 @@ class EvidenceExaminationService:
             selected.append(compatible[parser_id])
         return tuple(selected)
 
+    @staticmethod
+    def _validate_parser_ids(
+        registry: ParserRegistry, parser_ids: tuple[str, ...] | None
+    ) -> set[str] | None:
+        if parser_ids is None:
+            return None
+        if len(parser_ids) != len(set(parser_ids)) or len(parser_ids) > 20:
+            raise EvidenceTwinError("Parser selection contains duplicates or exceeds policy.")
+        for parser_id in parser_ids:
+            try:
+                registry.get(parser_id)
+            except ParserRegistryError as error:
+                raise EvidenceTwinError(str(error)) from error
+        return set(parser_ids)
+
     def _execute_parser(
         self,
         database: Database,
@@ -177,7 +291,9 @@ class EvidenceExaminationService:
         parser: EvidenceParser,
         reader: SafeSQLiteReader,
     ) -> ParserExecutionResult:
-        existing = self._existing_result(database, context.working_copy_id, parser)
+        existing = self._existing_result(
+            database, context.working_copy_id, context.input_locator, parser
+        )
         if existing is not None:
             return existing
         started_at = datetime.now(UTC)
@@ -193,12 +309,16 @@ class EvidenceExaminationService:
 
     @staticmethod
     def _existing_result(
-        database: Database, working_copy_id: str, parser: EvidenceParser
+        database: Database,
+        working_copy_id: str,
+        input_locator: str,
+        parser: EvidenceParser,
     ) -> ParserExecutionResult | None:
         with database.session() as session:
             run = session.scalar(
                 select(EvidenceParserRunRecord).where(
                     EvidenceParserRunRecord.working_copy_id == working_copy_id,
+                    EvidenceParserRunRecord.input_locator == input_locator,
                     EvidenceParserRunRecord.parser_id == parser.metadata.parser_id,
                     EvidenceParserRunRecord.parser_version == parser.metadata.version,
                 )
@@ -236,6 +356,8 @@ class EvidenceExaminationService:
             "completed_at": completed_at.isoformat(),
             "parser_id": parser.metadata.parser_id,
             "parser_version": parser.metadata.version,
+            "input_locator": context.input_locator,
+            "input_sha256": context.input_sha256 or context.source_sha256,
             "source_sha256": context.source_sha256,
             "started_at": started_at.isoformat(),
             "status": "completed",
@@ -252,6 +374,8 @@ class EvidenceExaminationService:
             status="completed",
             artifact_count=len(parsed),
             source_sha256=context.source_sha256,
+            input_locator=_bounded(context.input_locator, 1024, "parser input locator"),
+            input_sha256=context.input_sha256 or context.source_sha256,
             run_hash=sha256(_canonical_json(run_payload).encode()).hexdigest(),
             error_code=None,
             error_message=None,
@@ -301,6 +425,8 @@ class EvidenceExaminationService:
                 detail={
                     "artifact_count": len(records),
                     "parser_id": parser.metadata.parser_id,
+                    "input_locator": context.input_locator,
+                    "input_sha256": context.input_sha256 or context.source_sha256,
                     "run_hash": run.run_hash,
                 },
                 created_at=completed_at,
@@ -337,6 +463,8 @@ class EvidenceExaminationService:
             "error_code": error_code,
             "parser_id": parser.metadata.parser_id,
             "parser_version": parser.metadata.version,
+            "input_locator": context.input_locator,
+            "input_sha256": context.input_sha256 or context.source_sha256,
             "source_sha256": context.source_sha256,
             "started_at": started_at.isoformat(),
             "status": "failed",
@@ -353,6 +481,8 @@ class EvidenceExaminationService:
             status="failed",
             artifact_count=0,
             source_sha256=context.source_sha256,
+            input_locator=_bounded(context.input_locator, 1024, "parser input locator"),
+            input_sha256=context.input_sha256 or context.source_sha256,
             run_hash=sha256(_canonical_json(payload).encode()).hexdigest(),
             error_code=str(error_code)[:64],
             error_message=str(error)[:1000],
@@ -410,6 +540,8 @@ class EvidenceExaminationService:
                 "parser_version": parser.metadata.version,
                 "source_label": context.source_label,
                 "source_sha256": context.source_sha256,
+                "input_locator": context.input_locator,
+                "input_sha256": context.input_sha256 or context.source_sha256,
                 "working_copy_id": context.working_copy_id,
             },
         }
@@ -436,3 +568,28 @@ def _bounded(value: str, limit: int, label: str) -> str:
 
 def _canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def _new_archive_workspace(data_dir: Path) -> Path:
+    parent = (data_dir / "work" / "archive-examination").resolve()
+    parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if parent.is_symlink() or not parent.is_dir():
+        raise EvidenceTwinError("The archive examination workspace is unsafe.")
+    workspace = (parent / str(uuid4())).resolve()
+    if workspace.parent != parent:
+        raise EvidenceTwinError("The archive examination workspace path is invalid.")
+    return workspace
+
+
+def _sqlite_archive_candidates(
+    members: list[ExtractedArchiveMember],
+) -> tuple[ExtractedArchiveMember, ...]:
+    candidates = tuple(
+        member
+        for member in members
+        if len(member.original_name) <= 1024
+        and Path(member.original_name).suffix.casefold() in {".db", ".sqlite", ".sqlite3"}
+    )
+    if len(candidates) > 32:
+        raise EvidenceTwinError("The archive exceeds the SQLite candidate-count limit.")
+    return candidates

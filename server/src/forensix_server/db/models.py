@@ -1318,6 +1318,7 @@ class EvidenceParserRunRecord(Base):
         CheckConstraint("artifact_count >= 0", name="ck_evidence_parser_runs_artifact_count"),
         UniqueConstraint(
             "working_copy_id",
+            "input_locator",
             "parser_id",
             "parser_version",
             name="uq_evidence_parser_runs_identity",
@@ -1355,6 +1356,8 @@ class EvidenceParserRunRecord(Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     artifact_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     source_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    input_locator: Mapped[str] = mapped_column(String(1024), nullable=False)
+    input_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     run_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
