@@ -1061,11 +1061,22 @@ describe("Evidence Twin workspace", () => {
       if (url === "/api/v1/cases/case-1/evidence-sources") {
         return Promise.resolve(jsonResponse([source]));
       }
+      if (url === "/api/v1/integrations/aleapp") {
+        return Promise.resolve(jsonResponse({
+          available: false,
+          hash_verified: false,
+          release_label: "not_configured",
+          program_path: "",
+          observed_sha256: null,
+          message: "ALEAPP is optional and not configured.",
+        }));
+      }
       if (url.endsWith("/working-copies")) return Promise.resolve(jsonResponse([workingCopy]));
       if (url.endsWith("/inspection")) return Promise.resolve(jsonResponse(inspection));
       if (url.endsWith("/verifications")) return Promise.resolve(jsonResponse([]));
       if (url.endsWith("/parser-runs")) return Promise.resolve(jsonResponse([]));
       if (url.endsWith("/artifacts")) return Promise.resolve(jsonResponse([]));
+      if (url.endsWith("/tool-outputs")) return Promise.resolve(jsonResponse([]));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -1083,6 +1094,8 @@ describe("Evidence Twin workspace", () => {
     expect(screen.getByRole("button", { name: "Create verified working copy" })).toBeEnabled();
     expect(await screen.findByText(/Detected/)).toHaveTextContent("sqlite");
     expect(screen.getByRole("button", { name: "Run compatible Android parsers" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Run pinned ALEAPP" })).toBeDisabled();
+    expect(screen.getByText(/ALEAPP is optional and not configured/i)).toBeInTheDocument();
     expect(screen.getByText(/not claimed to have been acquired by ForensiX/i)).toBeInTheDocument();
   });
 });

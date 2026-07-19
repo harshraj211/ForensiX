@@ -16,6 +16,7 @@ import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
 import {
   createEvidenceWorkingCopy,
+  getAleappDiagnostic,
   getCase,
   getEvidenceWorkingCopyInspection,
   importEvidenceSource,
@@ -24,13 +25,17 @@ import {
   listEvidenceSources,
   listEvidenceSourceArtifacts,
   listEvidenceSourceVerifications,
+  listEvidenceToolOutputs,
   listEvidenceWorkingCopies,
   runNativeEvidenceParsers,
+  runAleapp,
   verifyEvidenceWorkingCopy,
   verifyEvidenceSource,
   type EvidenceSource,
   type EvidenceSourceArtifact,
+  type EvidenceToolOutput,
   type EvidenceWorkingCopy,
+  type AleappDiagnostic,
 } from "../../lib/api";
 
 const twinKeys = {
@@ -45,6 +50,9 @@ const twinKeys = {
     ["evidence-twin", caseId, sourceId, "parser-runs"] as const,
   artifacts: (caseId: string, sourceId: string) =>
     ["evidence-twin", caseId, sourceId, "artifacts"] as const,
+  toolOutputs: (caseId: string, sourceId: string) =>
+    ["evidence-twin", caseId, sourceId, "tool-outputs"] as const,
+  aleapp: ["integrations", "aleapp"] as const,
 };
 
 export function EvidenceTwinPage() {
@@ -61,6 +69,10 @@ export function EvidenceTwinPage() {
     queryKey: twinKeys.sources(caseId),
     queryFn: () => listEvidenceSources(caseId),
     enabled: Boolean(caseId),
+  });
+  const aleappQuery = useQuery({
+    queryKey: twinKeys.aleapp,
+    queryFn: getAleappDiagnostic,
   });
   const importSource = useMutation({
     mutationFn: () => {
@@ -183,6 +195,15 @@ export function EvidenceTwinPage() {
             Read-only permissions reduce accidental modification. Hash verification provides the
             tamper-evident control; local files are not described as tamper-proof.
           </p>
+          <div className="mt-5 rounded-xl border border-white/8 bg-black/10 p-4 text-xs leading-5 text-slate-400">
+            <p className="font-semibold text-white">Optional ALEAPP integration</p>
+            <p className="mt-1">{aleappQuery.data?.message ?? "Checking local configuration…"}</p>
+            {aleappQuery.data?.hash_verified && (
+              <p className="mt-2 font-mono text-[10px] text-emerald-200">
+                {aleappQuery.data.release_label} · {aleappQuery.data.observed_sha256}
+              </p>
+            )}
+          </div>
         </div>
       </section>
 
@@ -204,7 +225,12 @@ export function EvidenceTwinPage() {
         )}
         <div className="mt-5 space-y-4">
           {sourcesQuery.data?.map((source) => (
-            <EvidenceSourceCard key={source.id} caseId={caseId} source={source} />
+            <EvidenceSourceCard
+              key={source.id}
+              caseId={caseId}
+              source={source}
+              aleapp={aleappQuery.data ?? null}
+            />
           ))}
         </div>
       </section>
@@ -212,7 +238,15 @@ export function EvidenceTwinPage() {
   );
 }
 
-function EvidenceSourceCard({ caseId, source }: { caseId: string; source: EvidenceSource }) {
+function EvidenceSourceCard({
+  caseId,
+  source,
+  aleapp,
+}: {
+  caseId: string;
+  source: EvidenceSource;
+  aleapp: AleappDiagnostic | null;
+}) {
   const queryClient = useQueryClient();
   const copiesQuery = useQuery({
     queryKey: twinKeys.copies(caseId, source.id),
@@ -232,6 +266,11 @@ function EvidenceSourceCard({ caseId, source }: { caseId: string; source: Eviden
   const artifactsQuery = useQuery({
     queryKey: twinKeys.artifacts(caseId, source.id),
     queryFn: () => listEvidenceSourceArtifacts(caseId, source.id),
+    enabled: source.status === "sealed",
+  });
+  const toolOutputsQuery = useQuery({
+    queryKey: twinKeys.toolOutputs(caseId, source.id),
+    queryFn: () => listEvidenceToolOutputs(caseId, source.id),
     enabled: source.status === "sealed",
   });
   const verify = useMutation({
@@ -322,10 +361,17 @@ function EvidenceSourceCard({ caseId, source }: { caseId: string; source: Eviden
             parserRunsQuery.data?.filter((run) => run.working_copy_id === workingCopy.id)
               .length ?? 0
           }
+          aleapp={aleapp}
+          toolOutputs={
+            toolOutputsQuery.data?.filter(
+              (output) => output.working_copy_id === workingCopy.id,
+            ) ?? []
+          }
         />
       ))}
       {parserRunsQuery.isError && <div className="mt-4"><CaseError error={parserRunsQuery.error} /></div>}
       {artifactsQuery.isError && <div className="mt-4"><CaseError error={artifactsQuery.error} /></div>}
+      {toolOutputsQuery.isError && <div className="mt-4"><CaseError error={toolOutputsQuery.error} /></div>}
     </article>
   );
 }
@@ -336,12 +382,16 @@ function WorkingCopyPanel({
   workingCopy,
   artifacts,
   parserRunCount,
+  aleapp,
+  toolOutputs,
 }: {
   caseId: string;
   sourceId: string;
   workingCopy: EvidenceWorkingCopy;
   artifacts: EvidenceSourceArtifact[];
   parserRunCount: number;
+  aleapp: AleappDiagnostic | null;
+  toolOutputs: EvidenceToolOutput[];
 }) {
   const queryClient = useQueryClient();
   const inspectionQuery = useQuery({
@@ -370,6 +420,14 @@ function WorkingCopyPanel({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: twinKeys.parserRuns(caseId, sourceId) });
       void queryClient.invalidateQueries({ queryKey: twinKeys.artifacts(caseId, sourceId) });
+      void queryClient.invalidateQueries({ queryKey: twinKeys.verifications(caseId, sourceId) });
+    },
+  });
+  const runAleappParser = useMutation({
+    mutationFn: () => runAleapp(caseId, sourceId, workingCopy.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: twinKeys.parserRuns(caseId, sourceId) });
+      void queryClient.invalidateQueries({ queryKey: twinKeys.toolOutputs(caseId, sourceId) });
       void queryClient.invalidateQueries({ queryKey: twinKeys.verifications(caseId, sourceId) });
     },
   });
@@ -423,6 +481,21 @@ function WorkingCopyPanel({
         >
           {runParsers.isPending ? "Parsing…" : "Run compatible Android parsers"}
         </button>
+        <button
+          type="button"
+          disabled={
+            runAleappParser.isPending ||
+            !aleapp?.hash_verified ||
+            !inspection ||
+            !new Set(["zip", "tar"]).has(inspection.detected_type)
+          }
+          onClick={() => {
+            runAleappParser.mutate();
+          }}
+          className="min-h-9 rounded-lg border border-violet-200/20 px-3 text-xs font-semibold text-violet-100 disabled:opacity-40"
+        >
+          {runAleappParser.isPending ? "Running ALEAPP…" : "Run pinned ALEAPP"}
+        </button>
       </div>
       {inspection && (
         <div className="mt-4 rounded-lg border border-white/8 bg-black/10 p-3 text-xs text-slate-400">
@@ -451,9 +524,25 @@ function WorkingCopyPanel({
           ))}
         </div>
       )}
+      {toolOutputs.length > 0 && (
+        <div className="mt-4 rounded-lg border border-violet-200/10 bg-violet-200/[0.025] p-3">
+          <p className="text-xs font-semibold text-violet-100">Sealed ALEAPP outputs</p>
+          {toolOutputs.map((output) => (
+            <div key={output.id} className="mt-2 text-[10px] text-slate-500">
+              <p className="text-slate-300">
+                {output.relative_path} · {formatBytes(output.size_bytes)}
+              </p>
+              <p className="truncate font-mono" title={output.sha256}>
+                SHA-256 {output.sha256}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
       {inspectCopy.isError && <div className="mt-4"><CaseError error={inspectCopy.error} /></div>}
       {verifyCopy.isError && <div className="mt-4"><CaseError error={verifyCopy.error} /></div>}
       {runParsers.isError && <div className="mt-4"><CaseError error={runParsers.error} /></div>}
+      {runAleappParser.isError && <div className="mt-4"><CaseError error={runAleappParser.error} /></div>}
     </section>
   );
 }

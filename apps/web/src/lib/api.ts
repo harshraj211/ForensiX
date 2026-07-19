@@ -271,6 +271,27 @@ export interface EvidenceSourceArtifact {
   created_at: string;
 }
 
+export interface AleappDiagnostic {
+  available: boolean;
+  hash_verified: boolean;
+  release_label: string;
+  program_path: string;
+  observed_sha256: string | null;
+  message: string;
+}
+
+export interface EvidenceToolOutput {
+  id: string;
+  parser_run_id: string;
+  evidence_source_id: string;
+  working_copy_id: string;
+  case_id: string;
+  relative_path: string;
+  size_bytes: number;
+  sha256: string;
+  created_at: string;
+}
+
 export interface CaseDevice {
   id: string;
   case_id: string;
@@ -1127,6 +1148,30 @@ export function listEvidenceSourceArtifacts(
 ): Promise<EvidenceSourceArtifact[]> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/artifacts`,
+  );
+}
+
+export function getAleappDiagnostic(): Promise<AleappDiagnostic> {
+  return apiRequest("/api/v1/integrations/aleapp");
+}
+
+export function runAleapp(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+): Promise<EvidenceParserRun> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/aleapp`,
+    { method: "POST" },
+  );
+}
+
+export function listEvidenceToolOutputs(
+  caseId: string,
+  sourceId: string,
+): Promise<EvidenceToolOutput[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/tool-outputs`,
   );
 }
 
