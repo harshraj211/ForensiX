@@ -3,8 +3,10 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from forensix_forensic.integrations import AleappConfiguration, AleappRunner
 
 
 class Settings(BaseSettings):
@@ -27,6 +29,11 @@ class Settings(BaseSettings):
     session_ttl_minutes: int = Field(default=480, ge=15, le=1440)
     login_max_failures: int = Field(default=5, ge=3, le=20)
     login_lockout_minutes: int = Field(default=15, ge=1, le=1440)
+    aleapp_program_path: Path | None = None
+    aleapp_expected_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    aleapp_release_label: str = Field(default="v2026.1.0", min_length=1, max_length=64)
+    aleapp_python_executable: Path | None = None
+    aleapp_timeout_seconds: int = Field(default=1800, ge=30, le=7200)
 
     @field_validator("allowed_origins")
     @classmethod
@@ -36,6 +43,12 @@ class Settings(BaseSettings):
         if any(origin == "*" for origin in origins):
             raise ValueError("Wildcard origins are not permitted")
         return origins
+
+    @model_validator(mode="after")
+    def validate_aleapp_pair(self) -> "Settings":
+        if (self.aleapp_program_path is None) != (self.aleapp_expected_sha256 is None):
+            raise ValueError("ALEAPP program path and expected SHA-256 must be configured together")
+        return self
 
     @property
     def resolved_data_dir(self) -> Path:
@@ -50,3 +63,16 @@ class Settings(BaseSettings):
     @property
     def secure_cookies(self) -> bool:
         return self.environment == "production"
+
+    def aleapp_runner(self) -> AleappRunner | None:
+        if self.aleapp_program_path is None or self.aleapp_expected_sha256 is None:
+            return None
+        return AleappRunner(
+            AleappConfiguration(
+                program_path=self.aleapp_program_path,
+                python_executable=self.aleapp_python_executable,
+                expected_sha256=self.aleapp_expected_sha256,
+                release_label=self.aleapp_release_label,
+                timeout_seconds=self.aleapp_timeout_seconds,
+            )
+        )

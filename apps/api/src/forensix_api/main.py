@@ -23,6 +23,7 @@ from forensix_api.routers import (
     devices,
     evidence_sources,
     health,
+    integrations,
     reports,
     timeline,
 )
@@ -88,6 +89,7 @@ def create_app(
     app.add_exception_handler(ApiSecurityError, security_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(CaseError, case_error_handler)  # type: ignore[arg-type]
     app.include_router(health.router)
+    app.include_router(integrations.router)
     app.include_router(auth.router)
     app.include_router(cases.router)
     app.include_router(custody.router)

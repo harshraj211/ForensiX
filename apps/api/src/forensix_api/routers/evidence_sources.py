@@ -5,7 +5,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 
-from forensix_api.dependencies import get_authenticated_session, get_database, require_csrf_session
+from forensix_api.dependencies import (
+    get_authenticated_session,
+    get_database,
+    get_settings,
+    require_csrf_session,
+)
 from forensix_api.schemas import (
     EvidenceInspectionResponse,
     EvidenceParserRunRequest,
@@ -13,9 +18,11 @@ from forensix_api.schemas import (
     EvidenceSourceArtifactResponse,
     EvidenceSourceResponse,
     EvidenceSourceVerificationResponse,
+    EvidenceToolOutputResponse,
     EvidenceWorkingCopyResponse,
 )
 from forensix_server.auth import AuthenticatedSession
+from forensix_server.config import Settings
 from forensix_server.db import (
     Database,
     EvidenceSourceArtifactRecord,
@@ -23,8 +30,10 @@ from forensix_server.db import (
     EvidenceSourceRecord,
 )
 from forensix_server.evidence_twin import (
+    AleappEvidenceService,
     EvidenceExaminationService,
     EvidenceInspectionService,
+    EvidenceTwinError,
     EvidenceTwinService,
     inspection_signature,
     inspection_warnings,
@@ -250,6 +259,47 @@ def list_evidence_source_artifacts(
     return [
         _artifact_response(item)
         for item in EvidenceExaminationService().list_artifacts(
+            database, authenticated.principal, case_id, source_id
+        )
+    ]
+
+
+@router.post(
+    "/{source_id}/working-copies/{working_copy_id}/aleapp",
+    response_model=EvidenceParserRunResponse,
+)
+def run_aleapp(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> EvidenceParserRunResponse:
+    runner = settings.aleapp_runner()
+    if runner is None:
+        raise EvidenceTwinError("ALEAPP is not configured on this workstation.")
+    result = AleappEvidenceService().run(
+        database,
+        authenticated.principal,
+        case_id,
+        source_id,
+        working_copy_id,
+        runner,
+    )
+    return EvidenceParserRunResponse.model_validate(result.run)
+
+
+@router.get("/{source_id}/tool-outputs", response_model=list[EvidenceToolOutputResponse])
+def list_evidence_tool_outputs(
+    case_id: str,
+    source_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[EvidenceToolOutputResponse]:
+    return [
+        EvidenceToolOutputResponse.model_validate(item)
+        for item in AleappEvidenceService().list_outputs(
             database, authenticated.principal, case_id, source_id
         )
     ]

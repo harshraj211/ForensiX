@@ -576,6 +576,29 @@ class EvidenceSourceArtifactResponse(BaseModel):
     created_at: datetime
 
 
+class AleappDiagnosticResponse(BaseModel):
+    available: bool
+    hash_verified: bool
+    release_label: str
+    program_path: str
+    observed_sha256: str | None
+    message: str
+
+
+class EvidenceToolOutputResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    parser_run_id: str
+    evidence_source_id: str
+    working_copy_id: str
+    case_id: str
+    relative_path: str
+    size_bytes: int
+    sha256: str
+    created_at: datetime
+
+
 class JobEventResponse(BaseModel):
     id: str
     job_id: str

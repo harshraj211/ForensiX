@@ -124,6 +124,22 @@ def test_health_endpoints(tmp_path: Path) -> None:
     assert live.headers["X-Request-ID"]
 
 
+def test_optional_aleapp_diagnostic_is_authenticated_and_disabled_by_default(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        unauthenticated = client.get("/api/v1/integrations/aleapp")
+        _authorize(client)
+        diagnostic = client.get("/api/v1/integrations/aleapp")
+
+    assert unauthenticated.status_code == 401
+    assert diagnostic.status_code == 200
+    assert diagnostic.json()["available"] is False
+    assert diagnostic.json()["hash_verified"] is False
+    assert diagnostic.json()["release_label"] == "not_configured"
+
+
 def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> None:
     settings = Settings(environment="development", data_dir=tmp_path, adb_mode="mock")
     app = create_app(settings, adb_client=MockAdbClient())
@@ -157,6 +173,7 @@ def test_development_startup_applies_workstation_migrations(tmp_path: Path) -> N
         "evidence_source_inspections",
         "evidence_parser_runs",
         "evidence_source_artifacts",
+        "evidence_tool_outputs",
         "evidence_working_copies",
         "jobs",
         "job_events",
