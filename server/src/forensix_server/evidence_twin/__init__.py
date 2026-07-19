@@ -6,6 +6,7 @@ from .domain import (
     EvidenceContainerFormat,
     EvidenceSourceType,
 )
+from .examination import EvidenceExaminationService, ParserExecutionResult
 from .inspection import (
     DETECTOR_VERSION,
     EvidenceInspectionService,
@@ -34,7 +35,9 @@ __all__ = [
     "EvidenceTwinStorageError",
     "DETECTOR_VERSION",
     "EvidenceInspectionService",
+    "EvidenceExaminationService",
     "InspectionDecision",
+    "ParserExecutionResult",
     "detect_evidence_container",
     "inspection_signature",
     "inspection_warnings",

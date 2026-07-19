@@ -1,0 +1,133 @@
+import sqlite3
+from collections.abc import Iterator
+from io import BytesIO
+from pathlib import Path
+
+import pytest
+from sqlalchemy import select
+
+from forensix_server.auth import Principal, RoleName
+from forensix_server.auth.domain import ROLE_PERMISSIONS
+from forensix_server.cases import CaseService
+from forensix_server.db import (
+    AuditLogRecord,
+    Database,
+    EvidenceParserRunRecord,
+    EvidenceSourceArtifactRecord,
+    UserRecord,
+)
+from forensix_server.evidence_twin import (
+    EvidenceExaminationService,
+    EvidenceTwinError,
+    EvidenceTwinService,
+)
+
+
+@pytest.fixture
+def database(tmp_path: Path) -> Iterator[Database]:
+    active = Database(f"sqlite:///{(tmp_path / 'examination.db').as_posix()}", tmp_path)
+    active.initialize()
+    yield active
+    active.dispose()
+
+
+def _principal_and_case(database: Database) -> tuple[Principal, str]:
+    with database.session() as session:
+        user = UserRecord(
+            username="examiner",
+            display_name="Evidence Examiner",
+            password_hash="$argon2id$test-placeholder",
+        )
+        session.add(user)
+        session.flush()
+        principal = Principal(
+            user_id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            roles=frozenset({RoleName.INVESTIGATOR}),
+            permissions=ROLE_PERMISSIONS[RoleName.INVESTIGATOR],
+        )
+        case_id = CaseService().create(session, principal, title="Parser case").id
+        return principal, case_id
+
+
+def _contacts_database(path: Path) -> bytes:
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE mimetypes (_id INTEGER PRIMARY KEY, mimetype TEXT);
+        CREATE TABLE raw_contacts (_id INTEGER PRIMARY KEY, deleted INTEGER);
+        CREATE TABLE data (
+            _id INTEGER PRIMARY KEY, raw_contact_id INTEGER, mimetype_id INTEGER,
+            data1 TEXT, data2 TEXT, data3 TEXT
+        );
+        INSERT INTO mimetypes VALUES (1, 'vnd.android.cursor.item/name');
+        INSERT INTO mimetypes VALUES (2, 'vnd.android.cursor.item/phone_v2');
+        INSERT INTO raw_contacts VALUES (10, 0);
+        INSERT INTO data VALUES (1, 10, 1, 'Known Contact', NULL, NULL);
+        INSERT INTO data VALUES (2, 10, 2, '+15551234567', '2', 'Mobile');
+        """
+    )
+    connection.commit()
+    connection.close()
+    return path.read_bytes()
+
+
+def test_native_parser_results_are_persisted_with_provenance(
+    database: Database, tmp_path: Path
+) -> None:
+    principal, case_id = _principal_and_case(database)
+    source = EvidenceTwinService().import_stream(
+        database,
+        principal,
+        case_id,
+        BytesIO(_contacts_database(tmp_path / "contacts2.db")),
+        source_name="contacts2.db",
+    )
+    working_copy = EvidenceTwinService().create_working_copy(
+        database, principal, case_id, source.id
+    )
+
+    results = EvidenceExaminationService().run_native_parsers(
+        database, principal, case_id, source.id, working_copy.id
+    )
+    repeated = EvidenceExaminationService().run_native_parsers(
+        database, principal, case_id, source.id, working_copy.id
+    )
+
+    assert len(results) == 1
+    assert results[0].run.parser_id == "android.contacts_provider"
+    assert results[0].run.status == "completed"
+    assert results[0].run.artifact_count == 1
+    assert results[0].artifacts[0].title == "Known Contact"
+    assert results[0].artifacts[0].source_locator == "raw_contacts:10"
+    assert repeated[0].run.id == results[0].run.id
+    with database.session() as session:
+        assert len(list(session.scalars(select(EvidenceParserRunRecord)))) == 1
+        assert len(list(session.scalars(select(EvidenceSourceArtifactRecord)))) == 1
+        audit_types = set(session.scalars(select(AuditLogRecord.event_type)))
+        assert "evidence_parser_completed" in audit_types
+
+
+def test_incompatible_parser_selection_is_rejected(database: Database, tmp_path: Path) -> None:
+    principal, case_id = _principal_and_case(database)
+    source = EvidenceTwinService().import_stream(
+        database,
+        principal,
+        case_id,
+        BytesIO(_contacts_database(tmp_path / "contacts2.db")),
+        source_name="contacts2.db",
+    )
+    working_copy = EvidenceTwinService().create_working_copy(
+        database, principal, case_id, source.id
+    )
+
+    with pytest.raises(EvidenceTwinError, match="not compatible"):
+        EvidenceExaminationService().run_native_parsers(
+            database,
+            principal,
+            case_id,
+            source.id,
+            working_copy.id,
+            parser_ids=("android.telephony.sms",),
+        )

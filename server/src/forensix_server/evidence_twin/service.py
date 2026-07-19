@@ -310,6 +310,36 @@ class EvidenceTwinService:
             )
         return stored_copy
 
+    def verify_working_copy(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        source_id: str,
+        working_copy_id: str,
+    ) -> EvidenceSourceVerificationRecord:
+        source = self.get_source(database, principal, case_id, source_id)
+        with database.session() as session:
+            working_copy = session.get(EvidenceWorkingCopyRecord, working_copy_id)
+            if (
+                working_copy is None
+                or working_copy.case_id != case_id
+                or working_copy.evidence_source_id != source_id
+            ):
+                raise EvidenceTwinNotFoundError(
+                    "The requested Evidence Twin working copy does not exist."
+                )
+            if working_copy.status != "ready":
+                raise EvidenceTwinError("Only a ready working copy can be verified.")
+        return self._verify_object(
+            database,
+            principal,
+            source,
+            working_copy=working_copy,
+            storage_key=working_copy.storage_key,
+            expected_sha256=working_copy.expected_source_sha256,
+        )
+
     @staticmethod
     def _validate_chunk_size(chunk_size_bytes: int) -> None:
         if not MIN_EVIDENCE_CHUNK_SIZE <= chunk_size_bytes <= MAX_EVIDENCE_CHUNK_SIZE:

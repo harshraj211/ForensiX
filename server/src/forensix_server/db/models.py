@@ -1219,6 +1219,128 @@ class EvidenceSourceInspectionRecord(Base):
     )
 
 
+class EvidenceParserRunRecord(Base):
+    """Immutable outcome of one versioned parser against one verified working copy."""
+
+    __tablename__ = "evidence_parser_runs"
+    __table_args__ = (
+        CheckConstraint("status IN ('completed', 'failed')", name="ck_evidence_parser_runs_status"),
+        CheckConstraint("artifact_count >= 0", name="ck_evidence_parser_runs_artifact_count"),
+        UniqueConstraint(
+            "working_copy_id",
+            "parser_id",
+            "parser_version",
+            name="uq_evidence_parser_runs_identity",
+        ),
+        UniqueConstraint("run_hash", name="uq_evidence_parser_runs_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    working_copy_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_working_copies.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    inspection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_source_inspections.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    executed_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    parser_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    parser_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    artifact_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    run_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class EvidenceSourceArtifactRecord(Base):
+    """Normalized artifact derived from an Evidence Twin working copy."""
+
+    __tablename__ = "evidence_source_artifacts"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('contact', 'communication', 'application', 'location', 'system', 'file')",
+            name="ck_evidence_source_artifacts_category",
+        ),
+        CheckConstraint(
+            "status IN ('active', 'deleted', 'recovered', 'partial', 'corrupted', 'unverified')",
+            name="ck_evidence_source_artifacts_status",
+        ),
+        CheckConstraint(
+            "confidence IN ('high', 'medium', 'low')",
+            name="ck_evidence_source_artifacts_confidence",
+        ),
+        UniqueConstraint("artifact_hash", name="uq_evidence_source_artifacts_hash"),
+        Index(
+            "ix_evidence_source_artifacts_case_event",
+            "case_id",
+            "event_time",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    parser_run_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_parser_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    working_copy_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_working_copies.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    category: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    subtype: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    summary: Mapped[str] = mapped_column(String(2000), nullable=False)
+    event_time: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    source_locator: Mapped[str] = mapped_column(String(1024), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    confidence: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    parser_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    parser_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
+    provenance_json: Mapped[str] = mapped_column(Text, nullable=False)
+    artifact_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
 class ReportRecord(Base):
     """Immutable report snapshot and generation result."""
 

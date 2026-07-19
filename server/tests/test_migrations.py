@@ -57,6 +57,8 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "evidence_source_chunks",
         "evidence_source_verifications",
         "evidence_source_inspections",
+        "evidence_parser_runs",
+        "evidence_source_artifacts",
         "evidence_working_copies",
         "jobs",
         "job_events",
@@ -100,6 +102,8 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     assert "evidence_source_chunks" not in downgraded_tables
     assert "evidence_source_verifications" not in downgraded_tables
     assert "evidence_source_inspections" not in downgraded_tables
+    assert "evidence_parser_runs" not in downgraded_tables
+    assert "evidence_source_artifacts" not in downgraded_tables
     assert "evidence_working_copies" not in downgraded_tables
     assert "device_capability_runs" not in downgraded_tables
     assert "jobs" not in downgraded_tables
@@ -161,7 +165,7 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "custody_events" in inspector.get_table_names()
     assert "audit_logs" in inspector.get_table_names()
     assert {"case_id", "plan_id", "checkpoint_json", "last_event_sequence"} <= job_columns
-    assert revision == "0022_evidence_twin_inspection"
+    assert revision == "0023_evidence_parser_results"
     database.dispose()
 
 
