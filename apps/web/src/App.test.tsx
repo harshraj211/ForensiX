@@ -15,7 +15,7 @@ const AUTH_USER = {
   permissions: ["devices:operate"],
 };
 
-function renderApp(initialEntry = "/devices") {
+function renderApp(initialEntry = "/devices", authUser = AUTH_USER) {
   const queryClient = new QueryClient({
     defaultOptions: {
       mutations: { retry: false },
@@ -23,7 +23,7 @@ function renderApp(initialEntry = "/devices") {
     },
   });
   queryClient.setQueryData(["auth", "bootstrap"], { bootstrap_required: false });
-  queryClient.setQueryData(["auth", "me"], AUTH_USER);
+  queryClient.setQueryData(["auth", "me"], authUser);
   rememberCsrfToken("csrf-test");
   return render(
     <QueryClientProvider client={queryClient}>
@@ -161,6 +161,87 @@ describe("case workspace", () => {
     expect(screen.getByRole("heading", { name: "Create case" })).toBeInTheDocument();
     expect(screen.getByLabelText("Case title")).toBeRequired();
     expect(screen.getByLabelText("Legal authority")).toBeInTheDocument();
+  });
+
+  it("creates and exposes an explicitly unanchored custody checkpoint", async () => {
+    const now = "2026-07-20T01:00:00Z";
+    let created = false;
+    const checkpoint = {
+      id: "checkpoint-1",
+      case_id: "case-1",
+      created_by: "user-1",
+      custody_record_count: 1,
+      custody_head_hash: "a".repeat(64),
+      audit_sequence: 7,
+      audit_head_hash: "b".repeat(64),
+      filename: "ForensiX_FX-2026-CHECK001_CustodyCheckpoint.json",
+      size_bytes: 2048,
+      sha256: "c".repeat(64),
+      schema_version: "1.0.0",
+      anchor_status: "not_externally_anchored",
+      created_at: now,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(jsonResponse({
+          id: "case-1",
+          case_number: "FX-2026-CHECK001",
+          title: "Custody checkpoint case",
+          description: null,
+          legal_authority: "Controlled validation",
+          status: "active",
+          created_by: "user-1",
+          created_at: now,
+          updated_at: now,
+          closed_at: null,
+          version: 1,
+        }));
+      }
+      if (url === "/api/v1/cases/case-1/devices") {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === "/api/v1/cases/case-1/custody") {
+        return Promise.resolve(jsonResponse([]));
+      }
+      if (url === "/api/v1/cases/case-1/custody/verify") {
+        return Promise.resolve(jsonResponse({
+          valid: true,
+          record_count: 0,
+          broken_sequence: null,
+          head_hash: null,
+        }));
+      }
+      if (url === "/api/v1/cases/case-1/custody/checkpoints") {
+        if (init?.method === "POST") {
+          created = true;
+          return Promise.resolve(jsonResponse(checkpoint, 201));
+        }
+        return Promise.resolve(jsonResponse(created ? [checkpoint] : []));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    renderApp("/cases/case-1", {
+      ...AUTH_USER,
+      permissions: ["custody:review", "audit:view"],
+    });
+
+    expect(await screen.findByText("External checkpoint package")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create sealed checkpoint" }));
+
+    expect(await screen.findByText("not externally anchored")).toBeInTheDocument();
+    expect(screen.getByText(/audit #7/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download JSON" })).toHaveAttribute(
+      "href",
+      "/api/v1/cases/case-1/custody/checkpoints/checkpoint-1/download",
+    );
   });
 });
 

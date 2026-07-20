@@ -175,6 +175,22 @@ export interface CustodyEvent {
   created_at: string;
 }
 
+export interface CustodyCheckpoint {
+  id: string;
+  case_id: string;
+  created_by: string;
+  custody_record_count: number;
+  custody_head_hash: string | null;
+  audit_sequence: number;
+  audit_head_hash: string | null;
+  filename: string;
+  size_bytes: number;
+  sha256: string;
+  schema_version: string;
+  anchor_status: "not_externally_anchored";
+  created_at: string;
+}
+
 export interface ChainVerification {
   valid: boolean;
   record_count: number;
@@ -838,6 +854,26 @@ export function listCustodyEvents(caseId: string): Promise<CustodyEvent[]> {
 
 export function verifyCustodyChain(caseId: string): Promise<ChainVerification> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/custody/verify`);
+}
+
+export function listCustodyCheckpoints(caseId: string): Promise<CustodyCheckpoint[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/custody/checkpoints`,
+  );
+}
+
+export function createCustodyCheckpoint(caseId: string): Promise<CustodyCheckpoint> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/custody/checkpoints`,
+    { method: "POST" },
+  );
+}
+
+export function custodyCheckpointDownloadUrl(
+  caseId: string,
+  checkpointId: string,
+): string {
+  return `/api/v1/cases/${encodeURIComponent(caseId)}/custody/checkpoints/${encodeURIComponent(checkpointId)}/download`;
 }
 
 export function listAuditLogs(): Promise<AuditLogEntry[]> {

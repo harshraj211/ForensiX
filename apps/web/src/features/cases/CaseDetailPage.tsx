@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, Link2, LoaderCircle, Plus, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, Link2, LoaderCircle, Plus, ShieldCheck, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
+  createCustodyCheckpoint,
+  custodyCheckpointDownloadUrl,
   getCase,
+  getCurrentUser,
+  listCustodyCheckpoints,
   listCustodyEvents,
   listCaseDevices,
   transitionCase,
@@ -11,6 +15,7 @@ import {
   type CaseDevice,
   type CaseStatus,
 } from "../../lib/api";
+import { authKeys } from "../auth/authKeys";
 import { CaseError, StatusBadge } from "./CasesPage";
 import { caseKeys } from "./caseKeys";
 
@@ -36,6 +41,24 @@ export function CaseDetailPage() {
     queryKey: caseKeys.custodyVerification(caseId),
     queryFn: () => verifyCustodyChain(caseId),
     enabled: Boolean(caseId),
+  });
+  const currentUser = useQuery({ queryKey: authKeys.me, queryFn: getCurrentUser });
+  const canExportCheckpoint = Boolean(
+    currentUser.data?.permissions.includes("custody:review") &&
+      currentUser.data.permissions.includes("audit:view"),
+  );
+  const checkpointsQuery = useQuery({
+    queryKey: caseKeys.custodyCheckpoints(caseId),
+    queryFn: () => listCustodyCheckpoints(caseId),
+    enabled: Boolean(caseId) && canExportCheckpoint,
+  });
+  const createCheckpoint = useMutation({
+    mutationFn: () => createCustodyCheckpoint(caseId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: caseKeys.custodyCheckpoints(caseId),
+      });
+    },
   });
   const transition = useMutation({
     mutationFn: (status: CaseStatus) => {
@@ -217,6 +240,75 @@ export function CaseDetailPage() {
             <p className="mt-2 text-sm leading-6 text-slate-500">
               Append-only evidence registration, integrity, transfer, and amendment history.
             </p>
+            {canExportCheckpoint && (
+              <div className="mt-4 rounded-xl border border-cyan-200/10 bg-cyan-200/[0.025] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-cyan-100">
+                      External checkpoint package
+                    </p>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      Seal the verified custody head and current audit head. The resulting hash is
+                      not externally anchored until your agency preserves, publishes, or signs it.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={
+                      createCheckpoint.isPending ||
+                      custodyVerificationQuery.data?.valid !== true
+                    }
+                    onClick={() => {
+                      createCheckpoint.mutate();
+                    }}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-cyan-200/20 px-3 text-xs font-semibold text-cyan-100 disabled:opacity-40"
+                  >
+                    {createCheckpoint.isPending ? (
+                      <LoaderCircle className="animate-spin" size={14} aria-hidden="true" />
+                    ) : (
+                      <ShieldCheck size={14} aria-hidden="true" />
+                    )}
+                    Create sealed checkpoint
+                  </button>
+                </div>
+                {checkpointsQuery.data?.map((checkpoint) => (
+                  <div
+                    key={checkpoint.id}
+                    className="mt-3 rounded-lg border border-white/8 bg-black/10 p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white">
+                          {checkpoint.custody_record_count} custody record(s) · audit #{checkpoint.audit_sequence}
+                        </p>
+                        <p
+                          className="mt-1 truncate font-mono text-[10px] text-slate-600"
+                          title={checkpoint.sha256}
+                        >
+                          SHA-256 {checkpoint.sha256}
+                        </p>
+                        <p className="mt-1 text-[10px] uppercase tracking-wide text-amber-200/70">
+                          not externally anchored
+                        </p>
+                      </div>
+                      <a
+                        href={custodyCheckpointDownloadUrl(caseId, checkpoint.id)}
+                        download={checkpoint.filename}
+                        className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-slate-300"
+                      >
+                        <ArrowDownToLine size={14} aria-hidden="true" /> Download JSON
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {createCheckpoint.isError && (
+              <div className="mt-4"><CaseError error={createCheckpoint.error} /></div>
+            )}
+            {checkpointsQuery.isError && (
+              <div className="mt-4"><CaseError error={checkpointsQuery.error} /></div>
+            )}
             {custodyQuery.isPending && <p role="status" className="mt-4 text-sm text-slate-500">Loading custody history...</p>}
             {custodyQuery.isError && <div className="mt-4"><CaseError error={custodyQuery.error} /></div>}
             {custodyQuery.data?.length === 0 && <p className="mt-4 text-sm text-slate-600">No evidence custody events yet.</p>}
