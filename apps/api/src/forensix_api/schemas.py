@@ -899,6 +899,46 @@ class CustodyCheckpointResponse(BaseModel):
     created_at: datetime
 
 
+class CustodyCheckpointAnchorCreateRequest(BaseModel):
+    anchor_type: Literal[
+        "external_timestamp",
+        "digital_signature",
+        "evidence_vault",
+        "case_management",
+        "other",
+    ]
+    anchor_provider: str = Field(min_length=1, max_length=255)
+    anchor_reference: str = Field(min_length=1, max_length=512)
+    anchored_at: datetime
+    checkpoint_sha256: str = Field(min_length=64, max_length=64)
+    receipt_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class CustodyCheckpointAnchorResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    checkpoint_id: str
+    case_id: str
+    recorded_by: str
+    anchor_type: Literal[
+        "external_timestamp",
+        "digital_signature",
+        "evidence_vault",
+        "case_management",
+        "other",
+    ]
+    anchor_provider: str
+    anchor_reference: str
+    anchored_at: datetime
+    checkpoint_sha256: str
+    receipt_sha256: str | None
+    notes: str | None
+    anchor_hash: str
+    created_at: datetime
+
+
 class ReportOutputResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -15,6 +15,7 @@ from forensix_forensic.adb import (
     AdbCommandError,
     MockAdbClient,
     MockAdbScenario,
+    PulledFileResult,
     SharedStorageRoot,
 )
 from forensix_server.auth import RoleName
@@ -55,14 +56,13 @@ class _PngEvidenceClient(MockAdbClient):
         root: SharedStorageRoot,
         relative_path: str,
         destination: Path,
-    ):
+    ) -> PulledFileResult:
         if relative_path != "DCIM/Camera/IMG_0001.jpg":
             return await super().pull_inventory_file(serial, root, relative_path, destination)
         buffer = io.BytesIO()
         Image.new("RGB", (32, 24), color=(12, 74, 96)).save(buffer, format="PNG")
         payload = buffer.getvalue()
         await asyncio.to_thread(destination.write_bytes, payload)
-        from forensix_forensic.adb import PulledFileResult
 
         return PulledFileResult(
             root_id=root.value,
@@ -1637,6 +1637,33 @@ def test_custody_history_is_chained_amended_and_audited(tmp_path: Path) -> None:
         audit_chain = client.get("/api/v1/audit-logs/verify")
         checkpoint = client.post(f"/api/v1/cases/{case['id']}/custody/checkpoints", headers=headers)
         checkpoints = client.get(f"/api/v1/cases/{case['id']}/custody/checkpoints")
+        anchor = client.post(
+            f"/api/v1/cases/{case['id']}/custody/checkpoints/{checkpoint.json()['id']}/anchors",
+            headers=headers,
+            json={
+                "anchor_type": "case_management",
+                "anchor_provider": "Controlled CMS",
+                "anchor_reference": "CMS-FX-ANCHOR-001",
+                "anchored_at": "2026-07-20T04:00:00Z",
+                "checkpoint_sha256": checkpoint.json()["sha256"],
+                "receipt_sha256": "d" * 64,
+                "notes": "Recorded from controlled external preservation workflow.",
+            },
+        )
+        anchors = client.get(
+            f"/api/v1/cases/{case['id']}/custody/checkpoints/{checkpoint.json()['id']}/anchors"
+        )
+        bad_anchor = client.post(
+            f"/api/v1/cases/{case['id']}/custody/checkpoints/{checkpoint.json()['id']}/anchors",
+            headers=headers,
+            json={
+                "anchor_type": "other",
+                "anchor_provider": "Mismatch",
+                "anchor_reference": "BAD",
+                "anchored_at": "2026-07-20T04:05:00Z",
+                "checkpoint_sha256": "0" * 64,
+            },
+        )
         downloaded = client.get(
             f"/api/v1/cases/{case['id']}/custody/checkpoints/{checkpoint.json()['id']}/download"
         )
@@ -1659,6 +1686,14 @@ def test_custody_history_is_chained_amended_and_audited(tmp_path: Path) -> None:
     assert checkpoint.json()["custody_head_hash"] == custody.json()[-1]["event_hash"]
     assert checkpoint.json()["anchor_status"] == "not_externally_anchored"
     assert [item["id"] for item in checkpoints.json()] == [checkpoint.json()["id"]]
+    assert anchor.status_code == 201
+    assert anchor.json()["anchor_provider"] == "Controlled CMS"
+    assert anchor.json()["checkpoint_sha256"] == checkpoint.json()["sha256"]
+    assert len(anchor.json()["anchor_hash"]) == 64
+    assert anchors.status_code == 200
+    assert [item["id"] for item in anchors.json()] == [anchor.json()["id"]]
+    assert bad_anchor.status_code == 409
+    assert bad_anchor.json()["error"]["code"] == "CUSTODY_CHECKPOINT_INTEGRITY_FAILED"
     assert downloaded.status_code == 200
     assert downloaded.headers["x-forensix-checkpoint-sha256"] == checkpoint.json()["sha256"]
     assert downloaded.headers["x-forensix-external-anchor"] == "not-anchored"

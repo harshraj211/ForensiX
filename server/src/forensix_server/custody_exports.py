@@ -1,9 +1,13 @@
 """Durable custody/audit checkpoint exports for independent external anchoring."""
 
+from __future__ import annotations
+
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -17,6 +21,7 @@ from forensix_server.cases import CaseAccessDeniedError, CaseInvalidStateError, 
 from forensix_server.custody import AuditService, CustodyService
 from forensix_server.db import (
     AuditLogRecord,
+    CustodyCheckpointAnchorRecord,
     CustodyCheckpointRecord,
     CustodyEventRecord,
     Database,
@@ -166,6 +171,113 @@ class CustodyCheckpointService:
                     .order_by(
                         CustodyCheckpointRecord.created_at.desc(),
                         CustodyCheckpointRecord.id.desc(),
+                    )
+                )
+            )
+
+    def create_anchor(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        checkpoint_id: str,
+        *,
+        anchor_type: str,
+        anchor_provider: str,
+        anchor_reference: str,
+        anchored_at: datetime,
+        checkpoint_sha256: str,
+        receipt_sha256: str | None = None,
+        notes: str | None = None,
+    ) -> CustodyCheckpointAnchorRecord:
+        self._require_export_permission(principal)
+        recorded_at = datetime.now(UTC)
+        with database.session() as session:
+            CaseService().get(session, principal, case_id)
+            record = session.get(CustodyCheckpointRecord, checkpoint_id)
+            if record is None or record.case_id != case_id:
+                raise CustodyCheckpointNotFoundError(
+                    "The requested custody checkpoint does not exist in this case."
+                )
+            if checkpoint_sha256 != record.sha256:
+                raise CustodyCheckpointIntegrityError(
+                    "The acknowledged checkpoint SHA-256 does not match the sealed checkpoint."
+                )
+            store = EvidenceStore(database.data_dir / "evidence")
+            if not store.verify(record.storage_key, record.sha256):
+                raise CustodyCheckpointIntegrityError(
+                    "The custody checkpoint no longer matches its recorded SHA-256."
+                )
+            canonical = {
+                "anchor_provider": anchor_provider,
+                "anchor_reference": anchor_reference,
+                "anchor_type": anchor_type,
+                "anchored_at": _iso(anchored_at),
+                "case_id": case_id,
+                "checkpoint_id": checkpoint_id,
+                "checkpoint_sha256": checkpoint_sha256,
+                "notes": notes,
+                "receipt_sha256": receipt_sha256,
+                "recorded_by": principal.user_id,
+                "schema_version": "1.0.0",
+            }
+            anchor = CustodyCheckpointAnchorRecord(
+                case_id=case_id,
+                checkpoint_id=checkpoint_id,
+                recorded_by=principal.user_id,
+                anchor_type=anchor_type,
+                anchor_provider=anchor_provider,
+                anchor_reference=anchor_reference,
+                anchored_at=anchored_at,
+                checkpoint_sha256=checkpoint_sha256,
+                receipt_sha256=receipt_sha256,
+                notes=notes,
+                anchor_hash=sha256(_canonical_bytes(canonical)).hexdigest(),
+                created_at=recorded_at,
+            )
+            session.add(anchor)
+            session.flush()
+            AuditService().append(
+                session,
+                case_id=case_id,
+                actor_id=principal.user_id,
+                event_type="custody_checkpoint.anchor_recorded",
+                object_type="custody_checkpoint",
+                object_id=checkpoint_id,
+                detail={
+                    "anchor_hash": anchor.anchor_hash,
+                    "anchor_provider": anchor.anchor_provider,
+                    "anchor_type": anchor.anchor_type,
+                    "checkpoint_sha256": anchor.checkpoint_sha256,
+                    "receipt_sha256": anchor.receipt_sha256,
+                },
+                created_at=recorded_at,
+            )
+            session.flush()
+            return anchor
+
+    def list_anchors(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        checkpoint_id: str,
+    ) -> Sequence[CustodyCheckpointAnchorRecord]:
+        self._require_export_permission(principal)
+        with database.session() as session:
+            CaseService().get(session, principal, case_id)
+            record = session.get(CustodyCheckpointRecord, checkpoint_id)
+            if record is None or record.case_id != case_id:
+                raise CustodyCheckpointNotFoundError(
+                    "The requested custody checkpoint does not exist in this case."
+                )
+            return list(
+                session.scalars(
+                    select(CustodyCheckpointAnchorRecord)
+                    .where(CustodyCheckpointAnchorRecord.checkpoint_id == checkpoint_id)
+                    .order_by(
+                        CustodyCheckpointAnchorRecord.created_at.desc(),
+                        CustodyCheckpointAnchorRecord.id.desc(),
                     )
                 )
             )

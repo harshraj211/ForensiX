@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from forensix_server.auth.domain import ROLE_PERMISSIONS
 from forensix_server.cases import CaseService
 from forensix_server.custody_exports import (
     CustodyCheckpointIntegrityError,
+    CustodyCheckpointNotFoundError,
     CustodyCheckpointService,
 )
 from forensix_server.db import Database, UserRecord
@@ -62,3 +64,44 @@ def test_checkpoint_is_sealed_and_refuses_tampered_download(database: Database) 
     content.path.write_bytes(b"tampered checkpoint")
     with pytest.raises(CustodyCheckpointIntegrityError, match="SHA-256"):
         service.content(database, principal, case_id, record.id)
+
+
+def test_checkpoint_anchor_receipt_requires_matching_hash(database: Database) -> None:
+    principal, case_id = _principal_and_case(database)
+    service = CustodyCheckpointService()
+    record = service.create(database, principal, case_id)
+
+    anchor = service.create_anchor(
+        database,
+        principal,
+        case_id,
+        record.id,
+        anchor_type="evidence_vault",
+        anchor_provider="Controlled evidence vault",
+        anchor_reference="VAULT-2026-0001",
+        anchored_at=datetime(2026, 7, 20, 4, 0, tzinfo=UTC),
+        checkpoint_sha256=record.sha256,
+        receipt_sha256="f" * 64,
+        notes="Preserved by controlled validation workflow.",
+    )
+    anchors = service.list_anchors(database, principal, case_id, record.id)
+
+    assert [item.id for item in anchors] == [anchor.id]
+    assert anchor.anchor_type == "evidence_vault"
+    assert anchor.checkpoint_sha256 == record.sha256
+    assert len(anchor.anchor_hash) == 64
+
+    with pytest.raises(CustodyCheckpointIntegrityError, match="acknowledged"):
+        service.create_anchor(
+            database,
+            principal,
+            case_id,
+            record.id,
+            anchor_type="other",
+            anchor_provider="Mismatch test",
+            anchor_reference="MISMATCH",
+            anchored_at=datetime(2026, 7, 20, 4, 5, tzinfo=UTC),
+            checkpoint_sha256="0" * 64,
+        )
+    with pytest.raises(CustodyCheckpointNotFoundError):
+        service.list_anchors(database, principal, case_id, "missing-checkpoint")

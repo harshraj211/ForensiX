@@ -14,6 +14,8 @@ from forensix_api.dependencies import (
 from forensix_api.schemas import (
     AuditLogResponse,
     ChainVerificationResponse,
+    CustodyCheckpointAnchorCreateRequest,
+    CustodyCheckpointAnchorResponse,
     CustodyCheckpointResponse,
     CustodyEventCreateRequest,
     CustodyEventResponse,
@@ -112,6 +114,53 @@ def create_custody_checkpoint(
 ) -> CustodyCheckpointResponse:
     return _checkpoint_response(
         CustodyCheckpointService().create(database, authenticated.principal, case_id)
+    )
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/custody/checkpoints/{checkpoint_id}/anchors",
+    response_model=list[CustodyCheckpointAnchorResponse],
+)
+def list_custody_checkpoint_anchors(
+    case_id: str,
+    checkpoint_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[CustodyCheckpointAnchorResponse]:
+    return [
+        CustodyCheckpointAnchorResponse.model_validate(item)
+        for item in CustodyCheckpointService().list_anchors(
+            database, authenticated.principal, case_id, checkpoint_id
+        )
+    ]
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/custody/checkpoints/{checkpoint_id}/anchors",
+    response_model=CustodyCheckpointAnchorResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_custody_checkpoint_anchor(
+    case_id: str,
+    checkpoint_id: str,
+    request: CustodyCheckpointAnchorCreateRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> CustodyCheckpointAnchorResponse:
+    return CustodyCheckpointAnchorResponse.model_validate(
+        CustodyCheckpointService().create_anchor(
+            database,
+            authenticated.principal,
+            case_id,
+            checkpoint_id,
+            anchor_type=request.anchor_type,
+            anchor_provider=request.anchor_provider,
+            anchor_reference=request.anchor_reference,
+            anchored_at=request.anchored_at,
+            checkpoint_sha256=request.checkpoint_sha256,
+            receipt_sha256=request.receipt_sha256,
+            notes=request.notes,
+        )
     )
 
 

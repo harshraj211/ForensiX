@@ -1705,6 +1705,48 @@ class CustodyCheckpointRecord(Base):
     )
 
 
+class CustodyCheckpointAnchorRecord(Base):
+    """Append-only operator record that a checkpoint hash was preserved externally."""
+
+    __tablename__ = "custody_checkpoint_anchors"
+    __table_args__ = (
+        CheckConstraint(
+            "anchor_type IN ('external_timestamp', 'digital_signature', "
+            "'evidence_vault', 'case_management', 'other')",
+            name="ck_custody_checkpoint_anchors_type",
+        ),
+        UniqueConstraint("anchor_hash", name="uq_custody_checkpoint_anchors_hash"),
+        Index(
+            "ix_custody_checkpoint_anchors_checkpoint_created",
+            "checkpoint_id",
+            "created_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    checkpoint_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("custody_checkpoints.id", ondelete="RESTRICT"), nullable=False
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    recorded_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    anchor_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    anchor_provider: Mapped[str] = mapped_column(String(255), nullable=False)
+    anchor_reference: Mapped[str] = mapped_column(String(512), nullable=False)
+    anchored_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    checkpoint_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    receipt_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    anchor_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
 class CustodyEventRecord(Base):
     """Append-only, per-case hash-chained custody history."""
 
