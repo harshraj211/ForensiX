@@ -85,9 +85,7 @@ def list_root_access_probes(
     return [RootAccessProbeResponse.model_validate(item) for item in records]
 
 
-@capture_router.post(
-    "", response_model=EvidenceSourceResponse, status_code=status.HTTP_201_CREATED
-)
+@capture_router.post("", response_model=EvidenceSourceResponse, status_code=status.HTTP_201_CREATED)
 async def capture_rooted_provider_bundle(
     case_id: str,
     device_id: str,

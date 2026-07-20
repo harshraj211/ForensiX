@@ -19,9 +19,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.add_column(
         "evidence_parser_runs",
-        sa.Column(
-            "input_locator", sa.String(1024), nullable=False, server_default="working_copy"
-        ),
+        sa.Column("input_locator", sa.String(1024), nullable=False, server_default="working_copy"),
     )
     op.add_column(
         "evidence_parser_runs",

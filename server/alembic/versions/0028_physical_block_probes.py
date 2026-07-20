@@ -40,9 +40,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["case_id"], ["cases.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["device_id"], ["case_devices.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(
-            ["root_probe_id"], ["root_access_probes.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["root_probe_id"], ["root_access_probes.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["probed_by"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("probe_hash", name="uq_physical_block_probes_hash"),

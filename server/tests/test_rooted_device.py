@@ -152,9 +152,7 @@ async def test_rooted_provider_capture_is_sealed_case_evidence(database: Databas
         )
         custody = list(
             session.scalars(
-                select(CustodyEventRecord).where(
-                    CustodyEventRecord.evidence_source_id == source.id
-                )
+                select(CustodyEventRecord).where(CustodyEventRecord.evidence_source_id == source.id)
             )
         )
     assert len(audits) == 1

@@ -332,26 +332,20 @@ class RootedDeviceService:
         non_resumable_acknowledged: bool,
     ) -> EvidenceSourceRecord:
         _require_physical_enabled(settings)
-        if not all(
-            (acquisition_acknowledged, encryption_acknowledged, non_resumable_acknowledged)
-        ):
+        if not all((acquisition_acknowledged, encryption_acknowledged, non_resumable_acknowledged)):
             raise RootedDeviceError(
                 "All experimental physical-acquisition risks must be acknowledged."
             )
         with database.session() as session:
             probe = session.get(PhysicalBlockProbeRecord, physical_probe_id)
             if probe is None or probe.case_id != case_id or probe.device_id != device_id:
-                raise RootedDeviceError(
-                    "A physical block probe for this case device is required."
-                )
+                raise RootedDeviceError("A physical block probe for this case device is required.")
             profile = PhysicalBlockProfile(probe.profile)
             size_bytes = probe.size_bytes
             root_probe_id = probe.root_probe_id
             device_path = probe.device_path
             encryption_state = probe.encryption_state
-        self._validate_root_proof(
-            database, principal, case_id, device_id, serial, root_probe_id
-        )
+        self._validate_root_proof(database, principal, case_id, device_id, serial, root_probe_id)
         if size_bytes > settings.max_physical_acquisition_bytes:
             raise RootedDeviceError(
                 "The userdata block exceeds the configured experimental acquisition limit."

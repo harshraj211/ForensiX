@@ -20,9 +20,7 @@ def upgrade() -> None:
     with op.batch_alter_table("evidence_sources", recreate="always") as batch:
         batch.add_column(sa.Column("chunks_storage_key", sa.String(1024), nullable=True))
         batch.add_column(sa.Column("chunks_sha256", sa.String(64), nullable=True))
-        batch.create_unique_constraint(
-            "uq_evidence_sources_chunks_key", ["chunks_storage_key"]
-        )
+        batch.create_unique_constraint("uq_evidence_sources_chunks_key", ["chunks_storage_key"])
         batch.create_index("ix_evidence_sources_chunks_sha256", ["chunks_sha256"])
 
 

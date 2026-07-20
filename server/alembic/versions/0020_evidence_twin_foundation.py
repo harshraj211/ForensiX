@@ -58,8 +58,7 @@ def upgrade() -> None:
             name="ck_evidence_sources_status",
         ),
         sa.CheckConstraint(
-            "container_format IN ('raw', 'img', 'dd', 'tar', 'zip', "
-            "'directory_bundle', 'unknown')",
+            "container_format IN ('raw', 'img', 'dd', 'tar', 'zip', 'directory_bundle', 'unknown')",
             name="ck_evidence_sources_format",
         ),
         sa.CheckConstraint(
@@ -123,9 +122,7 @@ def upgrade() -> None:
         "evidence_source_chunks",
         ["evidence_source_id"],
     )
-    op.create_index(
-        "ix_evidence_source_chunks_sha256", "evidence_source_chunks", ["sha256"]
-    )
+    op.create_index("ix_evidence_source_chunks_sha256", "evidence_source_chunks", ["sha256"])
 
     op.create_table(
         "evidence_working_copies",
@@ -165,9 +162,7 @@ def upgrade() -> None:
         "status",
         "verified_at",
     ):
-        op.create_index(
-            f"ix_evidence_working_copies_{column}", "evidence_working_copies", [column]
-        )
+        op.create_index(f"ix_evidence_working_copies_{column}", "evidence_working_copies", [column])
     op.create_index(
         "ix_evidence_working_copies_source_created",
         "evidence_working_copies",
@@ -212,9 +207,7 @@ def upgrade() -> None:
             ["working_copy_id"], ["evidence_working_copies.id"], ondelete="RESTRICT"
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "verification_hash", name="uq_evidence_source_verifications_hash"
-        ),
+        sa.UniqueConstraint("verification_hash", name="uq_evidence_source_verifications_hash"),
     )
     for column in (
         "case_id",
