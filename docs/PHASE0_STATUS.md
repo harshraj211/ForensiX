@@ -1,6 +1,6 @@
 # Phase 0 Implementation Status
 
-**Updated:** 17 July 2026
+**Updated:** 20 July 2026
 **Branch:** `agent/phase0-foundation`
 
 ## Completed slices
@@ -30,6 +30,8 @@
 | Validated source timestamps | fixed bounded `find -exec stat`, source size/original epoch/UTC preservation, medium-confidence modification event, size-conflict disclosure, inventory/artifact/report/UI propagation | command-policy/parser edge tests, reversible migration, manifest/provenance/timeline/API known-answer tests; physical-device matrix pending |
 | Evidence integrity re-verification | independent file/manifest re-hashing, append-only result history, mismatch/missing detection, preserved expected hashes, API and UI controls | known-answer, tampering, missing-object, API, and UI tests |
 | Custody and audit chains | automatic evidence/integrity custody events, manual transfers, amendments, per-case custody hashes, global audit hashes, verification APIs, case UI | service tampering tests, migration/API authorization, append-only route tests, UI checks |
+| Sealed custody checkpoints | verified custody/audit-head JSON export, stored package SHA-256, protected download verification, explicit not-externally-anchored status, case UI controls | service/API tamper and authorization tests plus frontend lint/type/test/build |
+| Experimental recovery readiness | metadata-only SQLite/WAL/rollback-journal candidate assessment on verified Evidence Twin working copies, sealed assessment records, no deleted-row claim | forensic service, migration, API, and UI tests |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
 | Expanded artifact capability matrix | explicit supported/blocked/elevated-access decisions for contacts, communications, browser, calendar, notification, wireless/location, and seven private messaging/social sources | deterministic assessor tests; UI renders every decision without promising unavailable data |
 
@@ -62,6 +64,8 @@
 - Explicit mismatch and missing-object outcomes that never silently replace acquisition hashes.
 - Automatic evidence registration and integrity custody events plus manual transfers and correction-by-amendment; no custody update/delete API exists.
 - Per-case custody and global audit SHA-256 chains with canonical serialization, genesis linkage, sequence verification, and protected audit access.
+- Sealed custody/audit checkpoint exports that verify both chains before creation and re-check package hashes before download.
+- Explicit `not_externally_anchored` checkpoint status until the exported JSON and SHA-256 are preserved by an external agency-controlled process.
 - Reconstructable progress history with monotonic sequence numbers and persisted restart interruption events.
 - Explicit preview requests that re-hash the sealed source, run a fixed isolated worker, and persist an audited available/rejected/failed outcome without changing the artifact.
 - Only a sealed, independently hashed PNG derivative can reach the browser; original evidence, SVG, PDF, archives, Office documents, executables, audio, and video are never previewed.
@@ -71,9 +75,9 @@
 
 ## Not implemented yet
 
-- External audit anchoring, digital signatures, and write-once custody exports
+- External audit anchoring, digital signatures, and write-once evidence-vault integration
 - Bulk acquisition and physical-device validation of byte-zero restart behavior
-- Production packaging, signing, and forensic validation
+- Production installer signing, notarization, and forensic validation
 
 These omissions are visible project status, not silent product claims. Real-device testing remains a controlled Phase 0 activity.
 
@@ -81,6 +85,6 @@ These omissions are visible project status, not silent product claims. Real-devi
 
 1. Install Android Platform Tools and validate inventory plus selected pulls against controlled physical devices and hostile filename fixtures.
 2. Validate disconnect/restart recovery against physical devices on Windows, Linux, and macOS.
-3. Add external audit anchoring and signed/write-once custody exports before evidentiary claims.
+3. Add external audit anchoring and signed/write-once evidence-vault integration before evidentiary claims.
 4. Validate source modification-time collection against the controlled Android/OEM matrix and document variance.
 5. Add report approval, redaction, external signing, and reproducibility validation for production release.
