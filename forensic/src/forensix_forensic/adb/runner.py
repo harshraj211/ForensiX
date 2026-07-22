@@ -211,7 +211,7 @@ class SubprocessAdbRunner:
     async def _read_limited(self, stream: asyncio.StreamReader) -> bytes:
         chunks: list[bytes] = []
         size = 0
-        while chunk := await stream.read(65_536):
+        while chunk := await stream.read(min(65_536, self._output_limit_bytes - size + 1)):
             size += len(chunk)
             if size > self._output_limit_bytes:
                 raise AdbOutputLimitError(self._output_limit_bytes)

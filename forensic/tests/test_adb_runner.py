@@ -24,7 +24,10 @@ async def test_runner_limits_output() -> None:
     runner = SubprocessAdbRunner(Path(sys.executable), output_limit_bytes=32)
 
     with pytest.raises(AdbOutputLimitError):
-        await runner.run(("-c", "print('x' * 1000)"))
+        await runner.run(
+            ("-u", "-c", "import sys; sys.stdout.write('x' * 1000); sys.stdout.flush()"),
+            timeout_seconds=30,
+        )
 
 
 @pytest.mark.asyncio
