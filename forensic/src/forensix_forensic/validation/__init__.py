@@ -11,9 +11,11 @@ from .matrix import (
 from .models import (
     SealedValidationReport,
     ValidationCheck,
+    ValidationConnectionType,
     ValidationEnvironment,
     ValidationOutcome,
     ValidationReport,
+    ValidationRunContext,
     ValidationStatus,
 )
 from .runner import run_adb_validation, verify_validation_report
@@ -25,9 +27,11 @@ __all__ = [
     "PhysicalMatrixPolicy",
     "PhysicalMatrixReport",
     "ValidationCheck",
+    "ValidationConnectionType",
     "ValidationEnvironment",
     "ValidationOutcome",
     "ValidationReport",
+    "ValidationRunContext",
     "ValidationStatus",
     "run_adb_validation",
     "build_physical_matrix",

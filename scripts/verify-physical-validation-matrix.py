@@ -22,6 +22,7 @@ def _arguments() -> argparse.Namespace:
         help="Required platform.system() value; defaults to Windows, Linux, and Darwin.",
     )
     parser.add_argument("--require-android-release", required=True, action="append")
+    parser.add_argument("--release-commit", required=True)
     parser.add_argument("--minimum-manufacturers", type=int, default=2)
     parser.add_argument("--output", required=True, type=Path)
     return parser.parse_args()
@@ -45,6 +46,7 @@ def main() -> int:
     policy = PhysicalMatrixPolicy(
         required_hosts=tuple(arguments.require_host or ("Windows", "Linux", "Darwin")),
         required_android_releases=tuple(arguments.require_android_release),
+        release_commit=arguments.release_commit,
         minimum_manufacturer_families=arguments.minimum_manufacturers,
     )
     sealed = build_physical_matrix(records, policy)

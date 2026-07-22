@@ -28,6 +28,7 @@ from .models import (
     ValidationEnvironment,
     ValidationOutcome,
     ValidationReport,
+    ValidationRunContext,
     ValidationStatus,
 )
 
@@ -45,6 +46,7 @@ async def run_adb_validation(
     validate_known_file: bool = False,
     validate_transport_cycle: bool = False,
     checkpoint: ValidationCheckpoint | None = None,
+    run_context: ValidationRunContext | None = None,
 ) -> SealedValidationReport:
     """Run bounded ADB checks and an optional fixed-profile known-file acquisition."""
     if mode not in {"mock", "system"}:
@@ -53,6 +55,11 @@ async def run_adb_validation(
         raise ValueError("Transport-cycle validation requires known-file validation.")
     if validate_transport_cycle and checkpoint is None:
         raise ValueError("Transport-cycle validation requires an operator checkpoint callback.")
+    if mode == "system" and validate_known_file and run_context is None:
+        raise ValueError(
+            "Physical known-file validation requires sealed operator, authority, connection, "
+            "and release context."
+        )
     started_at = datetime.now(UTC)
     checks: list[ValidationCheck] = []
     adb_version: str | None = None
@@ -280,6 +287,7 @@ async def run_adb_validation(
             machine=platform.machine() or "unknown",
             python_version=platform.python_version(),
         ),
+        run_context=run_context,
         adb_version=adb_version,
         adb_executable_sha256=adb_executable_sha256,
         device_serial_sha256=serial_hash,
@@ -303,6 +311,7 @@ async def run_adb_validation(
                 "A passing transport cycle proves detection and reacquisition only for the "
                 "observed controlled run; it does not guarantee recovery from every interruption."
             ),
+            "Physical run context is examiner-supplied and is not independently authenticated.",
         ),
     )
     return SealedValidationReport(report=report, canonical_sha256=_report_digest(report))
@@ -334,6 +343,8 @@ def _outcome(checks: list[ValidationCheck]) -> ValidationOutcome:
 
 def _report_digest(report: ValidationReport) -> str:
     payload = report.model_dump(mode="json")
+    if report.schema_version == "forensix-validation/1.0":
+        payload.pop("run_context", None)
     return hashlib.sha256(_canonical_json(payload)).hexdigest()
 
 

@@ -35,7 +35,7 @@
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
 | Expanded artifact capability matrix | explicit supported/blocked/elevated-access decisions for contacts, communications, browser, calendar, notification, wireless/location, and seven private messaging/social sources | deterministic assessor tests; UI renders every decision without promising unavailable data |
 | Evidence Twin known-answer validation | isolated sealed run covering source/chunk/manifest hashes, working-copy verification, SQLite inspection, contacts/SMS/MMS/calls, normalization/timeline, custody/audit, and report integrity | privacy-preserving sealed report, tamper-detection test, CLI execution, full regression suite |
-| Physical validation tooling | fixed deterministic fixture, two-pass known-file pull/hash, examiner-driven disconnect/reauthorization/reacquisition, sealed release-matrix coverage gate | mock workflow, missing/corrupt fixture, tampered/mislabeled/duplicate matrix tests; controlled-device execution pending |
+| Physical validation tooling | fixed deterministic fixture, two-pass known-file pull/hash, examiner-driven disconnect/reauthorization/reacquisition, sealed examiner/authority/connection/release context, sealed release-matrix coverage gate | mock workflow, missing/corrupt fixture, legacy seal, tampered/mislabeled/mixed/duplicate matrix tests; controlled-device execution pending |
 
 ## Supported development behavior
 

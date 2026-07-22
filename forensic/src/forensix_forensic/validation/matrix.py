@@ -20,6 +20,7 @@ class PhysicalMatrixPolicy(BaseModel):
 
     required_hosts: tuple[str, ...] = Field(min_length=1)
     required_android_releases: tuple[str, ...] = Field(min_length=1)
+    release_commit: str | None = Field(default=None, pattern=r"^[a-fA-F0-9]{7,64}$")
     minimum_manufacturer_families: int = Field(default=2, ge=1, le=100)
     require_non_rooted: bool = True
     require_rooted: bool = True
@@ -34,11 +35,12 @@ class PhysicalMatrixCoverage(BaseModel):
     accepted_system_records: int = Field(ge=0)
     invalid_records: int = Field(ge=0)
     rejected_non_system_records: int = Field(ge=0)
-    rejected_unverifiable_system_records: int = Field(ge=0)
+    rejected_unverifiable_system_records: int = Field(default=0, ge=0)
     duplicate_records: int = Field(ge=0)
     hosts: tuple[str, ...]
     android_releases: tuple[str, ...]
     manufacturer_families: tuple[str, ...]
+    release_commits: tuple[str, ...] = ()
     non_rooted_records: int = Field(ge=0)
     rooted_records: int = Field(ge=0)
     known_file_passes: int = Field(ge=0)
@@ -48,7 +50,10 @@ class PhysicalMatrixCoverage(BaseModel):
 class PhysicalMatrixReport(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    schema_version: str = "forensix-physical-matrix/1.0"
+    schema_version: str = Field(
+        default="forensix-physical-matrix/1.1",
+        pattern=r"^forensix-physical-matrix/1\.[01]$",
+    )
     generated_at: datetime
     outcome: ValidationOutcome
     policy: PhysicalMatrixPolicy
@@ -70,6 +75,8 @@ def build_physical_matrix(
     policy: PhysicalMatrixPolicy,
 ) -> SealedPhysicalMatrixReport:
     """Verify, deduplicate, and evaluate physical validation records against policy."""
+    if policy.release_commit is None:
+        raise ValueError("New physical matrices require one declared release commit.")
     accepted: list[SealedValidationReport] = []
     seen: set[str] = set()
     invalid_records = 0
@@ -95,6 +102,14 @@ def build_physical_matrix(
     hosts = _values(accepted, lambda item: item.report.environment.operating_system)
     releases = _values(accepted, lambda item: item.report.android_release)
     manufacturers = _check_values(accepted, "device_properties", "manufacturer")
+    release_commits = _values(
+        accepted,
+        lambda item: (
+            item.report.run_context.release_commit.casefold()
+            if item.report.run_context is not None
+            else None
+        ),
+    )
     known_file_passes = _passing_check_count(accepted, "known_file_acquisition")
     transport_cycle_passes = _passing_check_count(
         accepted, "transport_disconnect_reconnect"
@@ -129,6 +144,12 @@ def build_physical_matrix(
             "Manufacturer-family coverage is below the declared minimum of "
             f"{policy.minimum_manufacturer_families}."
         )
+    expected_release_commit = policy.release_commit.casefold()
+    if release_commits != (expected_release_commit,):
+        gaps.append(
+            "Accepted records must all bind to declared release commit "
+            f"{expected_release_commit}."
+        )
     if policy.require_non_rooted and non_rooted_records == 0:
         gaps.append("No sealed non-rooted physical validation record was accepted.")
     if policy.require_rooted and rooted_records == 0:
@@ -159,6 +180,7 @@ def build_physical_matrix(
             hosts=hosts,
             android_releases=releases,
             manufacturer_families=manufacturers,
+            release_commits=release_commits,
             non_rooted_records=non_rooted_records,
             rooted_records=rooted_records,
             known_file_passes=known_file_passes,
@@ -242,12 +264,23 @@ def _has_physical_identity_evidence(sealed: SealedValidationReport) -> bool:
         and report.build_fingerprint_sha256
         and report.android_release
         and report.android_sdk
+        and report.run_context is not None
+        and report.run_context.device_role == "controlled_test_device"
     )
 
 
 def _digest(report: PhysicalMatrixReport) -> str:
+    model = report.model_dump(mode="json")
+    if report.schema_version == "forensix-physical-matrix/1.0":
+        policy = model.get("policy")
+        coverage = model.get("coverage")
+        if isinstance(policy, dict):
+            policy.pop("release_commit", None)
+        if isinstance(coverage, dict):
+            coverage.pop("rejected_unverifiable_system_records", None)
+            coverage.pop("release_commits", None)
     payload = json.dumps(
-        report.model_dump(mode="json"),
+        model,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,

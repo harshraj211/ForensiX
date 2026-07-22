@@ -53,10 +53,15 @@ Manually copy that unchanged file to the controlled phone as
 may modify shared storage, then run:
 
 ```powershell
+$releaseCommit = (git rev-parse HEAD).Trim()
 .\.venv\Scripts\python.exe .\scripts\run-forensic-validation.py `
   --mode system `
   --adb-path "C:\Android\platform-tools\adb.exe" `
   --serial "SERIAL_FROM_ADB_DEVICES" `
+  --operator-id "examiner-01" `
+  --authority-reference "CONTROLLED-VALIDATION-001" `
+  --connection-type wired_usb `
+  --release-commit $releaseCommit `
   --validate-known-file `
   --validate-transport-cycle `
   --output .\validation-results\windows-android-device.json
@@ -80,6 +85,11 @@ devices or unattended automation.
 Omit both validation flags when collecting metadata-only diagnostics. Such a run does not prove
 file acquisition or interruption behavior and cannot satisfy the physical acquisition release gate.
 
+System-mode content validation refuses to start unless all four context fields are supplied. The
+sealed report binds the controlled-device role, non-secret operator identifier, authority reference,
+connection type, and exact hexadecimal release commit. These values remain examiner-supplied and
+must be reviewed against laboratory records.
+
 ## Validation matrix and release gate
 
 For each supported release, retain sealed results for:
@@ -101,6 +111,7 @@ After collecting one sealed system-mode JSON record per controlled matrix run, b
 gate. Declare every supported Android release explicitly:
 
 ```powershell
+$releaseCommit = (git rev-parse HEAD).Trim()
 .\.venv\Scripts\python.exe .\scripts\verify-physical-validation-matrix.py `
   --input .\validation-results\windows-infinix-android12-nonrooted.json `
   --input .\validation-results\windows-test-rooted.json `
@@ -108,6 +119,7 @@ gate. Declare every supported Android release explicitly:
   --input .\validation-results\macos-oem2-android14.json `
   --require-android-release 12 `
   --require-android-release 14 `
+  --release-commit $releaseCommit `
   --minimum-manufacturers 2 `
   --output .\validation-results\physical-matrix.json
 ```
@@ -116,7 +128,8 @@ By default the verifier requires Windows, Linux, and Darwin records, every decla
 release, two manufacturer families, both rooted and non-rooted coverage, and successful known-file
 and disconnect/reconnect checks in every accepted record. It verifies every source seal, rejects
 mock records and system-labeled records without a hashed ADB executable plus hashed device/build
-identity, deduplicates identical reports, lists coverage gaps, and seals the matrix result. A
+identity, requires every accepted run to name the one declared release commit, deduplicates
+identical reports, lists coverage gaps, and seals the matrix result. A
 passing aggregate is still supporting evidence that requires independent review; it is not proof of
 hardware write blocking or admissibility.
 

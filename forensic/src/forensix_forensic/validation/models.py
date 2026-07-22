@@ -20,6 +20,12 @@ class ValidationOutcome(StrEnum):
     FAILED = "failed"
 
 
+class ValidationConnectionType(StrEnum):
+    WIRED_USB = "wired_usb"
+    WIRELESS_ADB = "wireless_adb"
+    OTHER_CONTROLLED = "other_controlled"
+
+
 class ValidationCheck(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -38,12 +44,26 @@ class ValidationEnvironment(BaseModel):
     python_version: str = Field(min_length=1, max_length=64)
 
 
+class ValidationRunContext(BaseModel):
+    """Examiner-supplied context for a controlled physical-device validation run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    device_role: str = Field(default="controlled_test_device", pattern=r"^controlled_test_device$")
+    operator_id: str = Field(min_length=2, max_length=128, pattern=r"^[A-Za-z0-9_.:@-]+$")
+    authority_reference: str = Field(min_length=3, max_length=256)
+    connection_type: ValidationConnectionType
+    release_commit: str = Field(pattern=r"^[a-fA-F0-9]{7,64}$")
+
+
 class ValidationReport(BaseModel):
     """A redacted result. Raw device serials and inventory paths are never persisted."""
 
     model_config = ConfigDict(frozen=True)
 
-    schema_version: str = "forensix-validation/1.0"
+    schema_version: str = Field(
+        default="forensix-validation/1.1", pattern=r"^forensix-validation/1\.[01]$"
+    )
     run_id: str = Field(min_length=36, max_length=36)
     started_at: datetime
     completed_at: datetime
@@ -51,6 +71,7 @@ class ValidationReport(BaseModel):
     mode: str = Field(pattern=r"^(mock|system)$")
     outcome: ValidationOutcome
     environment: ValidationEnvironment
+    run_context: ValidationRunContext | None = None
     adb_version: str | None = Field(default=None, max_length=64)
     adb_executable_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     device_serial_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")

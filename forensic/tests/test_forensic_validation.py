@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 
@@ -14,7 +15,9 @@ from forensix_forensic.adb import (
 )
 from forensix_forensic.validation import (
     SealedValidationReport,
+    ValidationConnectionType,
     ValidationOutcome,
+    ValidationRunContext,
     run_adb_validation,
     verify_validation_report,
 )
@@ -162,6 +165,48 @@ async def test_transport_cycle_requires_known_file_and_checkpoint() -> None:
             mode="mock",
             validate_transport_cycle=True,
         )
+
+
+@pytest.mark.asyncio
+async def test_system_known_file_validation_requires_sealed_run_context() -> None:
+    with pytest.raises(ValueError, match="requires sealed operator"):
+        await run_adb_validation(
+            MockAdbClient(include_validation_fixture=True),
+            mode="system",
+            validate_known_file=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_context_is_sealed_and_version_one_reports_remain_verifiable() -> None:
+    context = ValidationRunContext(
+        operator_id="examiner-01",
+        authority_reference="CONTROLLED-VALIDATION-001",
+        connection_type=ValidationConnectionType.WIRED_USB,
+        release_commit="abcdef1",
+    )
+    sealed = await run_adb_validation(MockAdbClient(), mode="mock", run_context=context)
+
+    assert sealed.report.schema_version == "forensix-validation/1.1"
+    assert sealed.report.run_context == context
+    assert verify_validation_report(sealed)
+
+    legacy_report = sealed.report.model_copy(
+        update={"schema_version": "forensix-validation/1.0", "run_context": None}
+    )
+    legacy_payload = legacy_report.model_dump(mode="json")
+    legacy_payload.pop("run_context")
+    legacy_hash = hashlib.sha256(
+        json.dumps(
+            legacy_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode()
+    ).hexdigest()
+    legacy = SealedValidationReport(report=legacy_report, canonical_sha256=legacy_hash)
+
+    assert verify_validation_report(legacy)
     with pytest.raises(ValueError, match="requires an operator checkpoint"):
         await run_adb_validation(
             MockAdbClient(include_validation_fixture=True),

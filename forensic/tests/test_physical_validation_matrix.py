@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 from pathlib import Path
 
@@ -9,7 +10,9 @@ from forensix_forensic.validation import (
     PhysicalMatrixPolicy,
     SealedPhysicalMatrixReport,
     SealedValidationReport,
+    ValidationConnectionType,
     ValidationOutcome,
+    ValidationRunContext,
     build_physical_matrix,
     run_adb_validation,
     verify_physical_matrix,
@@ -27,7 +30,7 @@ class PhysicalHarnessClient(MockAdbClient):
 
 
 async def _physical_record(
-    scenario: MockAdbScenario, adb_path: Path
+    scenario: MockAdbScenario, adb_path: Path, release_commit: str = "abcdef1"
 ) -> SealedValidationReport:
     client = PhysicalHarnessClient(scenario, adb_path)
 
@@ -42,6 +45,16 @@ async def _physical_record(
         validate_known_file=True,
         validate_transport_cycle=True,
         checkpoint=checkpoint,
+        run_context=_context(release_commit),
+    )
+
+
+def _context(release_commit: str = "abcdef1") -> ValidationRunContext:
+    return ValidationRunContext(
+        operator_id="examiner-01",
+        authority_reference="CONTROLLED-VALIDATION-001",
+        connection_type=ValidationConnectionType.WIRED_USB,
+        release_commit=release_commit,
     )
 
 
@@ -54,6 +67,7 @@ async def test_complete_unique_system_matrix_passes_and_is_sealed(tmp_path: Path
     policy = PhysicalMatrixPolicy(
         required_hosts=(ordinary.report.environment.operating_system,),
         required_android_releases=(ordinary.report.android_release or "14",),
+        release_commit="abcdef1",
         minimum_manufacturer_families=1,
     )
 
@@ -66,6 +80,7 @@ async def test_complete_unique_system_matrix_passes_and_is_sealed(tmp_path: Path
     assert sealed.report.coverage.rooted_records == 1
     assert sealed.report.coverage.known_file_passes == 2
     assert sealed.report.coverage.transport_cycle_passes == 2
+    assert sealed.report.coverage.release_commits == ("abcdef1",)
     assert verify_physical_matrix(sealed)
 
 
@@ -77,6 +92,7 @@ async def test_missing_declared_coverage_is_incomplete(tmp_path: Path) -> None:
     policy = PhysicalMatrixPolicy(
         required_hosts=("UnobservedOS",),
         required_android_releases=("999",),
+        release_commit="abcdef1",
         minimum_manufacturer_families=2,
     )
 
@@ -96,6 +112,7 @@ async def test_mock_or_tampered_input_fails_matrix_gate() -> None:
     policy = PhysicalMatrixPolicy(
         required_hosts=(mock.report.environment.operating_system,),
         required_android_releases=(mock.report.android_release or "14",),
+        release_commit="abcdef1",
         minimum_manufacturer_families=1,
     )
 
@@ -112,10 +129,12 @@ async def test_system_label_without_hashed_adb_is_rejected() -> None:
         MockAdbClient(include_validation_fixture=True),
         mode="system",
         validate_known_file=True,
+        run_context=_context(),
     )
     policy = PhysicalMatrixPolicy(
         required_hosts=(mislabeled.report.environment.operating_system,),
         required_android_releases=(mislabeled.report.android_release or "14",),
+        release_commit="abcdef1",
         minimum_manufacturer_families=1,
         require_rooted=False,
         require_transport_cycle=False,
@@ -136,6 +155,7 @@ async def test_modified_matrix_fails_its_canonical_seal(tmp_path: Path) -> None:
     policy = PhysicalMatrixPolicy(
         required_hosts=(ordinary.report.environment.operating_system,),
         required_android_releases=(ordinary.report.android_release or "14",),
+        release_commit="abcdef1",
         minimum_manufacturer_families=1,
         require_rooted=False,
     )
@@ -145,3 +165,62 @@ async def test_modified_matrix_fails_its_canonical_seal(tmp_path: Path) -> None:
     modified = SealedPhysicalMatrixReport.model_validate(payload)
 
     assert not verify_physical_matrix(modified)
+
+
+@pytest.mark.asyncio
+async def test_mixed_release_commits_cannot_pass_matrix(tmp_path: Path) -> None:
+    adb_path = tmp_path / "adb"
+    await asyncio.to_thread(adb_path.write_bytes, b"controlled test executable")
+    expected = await _physical_record(MockAdbScenario.AUTHORIZED, adb_path)
+    other = await _physical_record(MockAdbScenario.ROOTED, adb_path, "deadbee")
+    policy = PhysicalMatrixPolicy(
+        required_hosts=(expected.report.environment.operating_system,),
+        required_android_releases=(expected.report.android_release or "14",),
+        release_commit="abcdef1",
+        minimum_manufacturer_families=1,
+    )
+
+    sealed = build_physical_matrix((expected, other), policy)
+
+    assert sealed.report.outcome is ValidationOutcome.INCOMPLETE
+    assert sealed.report.coverage.release_commits == ("abcdef1", "deadbee")
+    assert any("declared release commit" in gap for gap in sealed.report.gaps)
+
+
+@pytest.mark.asyncio
+async def test_version_one_matrix_seal_remains_verifiable(tmp_path: Path) -> None:
+    adb_path = tmp_path / "adb"
+    await asyncio.to_thread(adb_path.write_bytes, b"controlled test executable")
+    ordinary = await _physical_record(MockAdbScenario.AUTHORIZED, adb_path)
+    policy = PhysicalMatrixPolicy(
+        required_hosts=(ordinary.report.environment.operating_system,),
+        required_android_releases=(ordinary.report.android_release or "14",),
+        release_commit="abcdef1",
+        minimum_manufacturer_families=1,
+        require_rooted=False,
+    )
+    current = build_physical_matrix((ordinary,), policy)
+    legacy_report = current.report.model_copy(
+        update={
+            "schema_version": "forensix-physical-matrix/1.0",
+            "policy": current.report.policy.model_copy(update={"release_commit": None}),
+            "coverage": current.report.coverage.model_copy(
+                update={"rejected_unverifiable_system_records": 0, "release_commits": ()}
+            ),
+        }
+    )
+    legacy_payload = legacy_report.model_dump(mode="json")
+    legacy_payload["policy"].pop("release_commit")
+    legacy_payload["coverage"].pop("rejected_unverifiable_system_records")
+    legacy_payload["coverage"].pop("release_commits")
+    legacy_hash = hashlib.sha256(
+        json.dumps(
+            legacy_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode()
+    ).hexdigest()
+    legacy = SealedPhysicalMatrixReport(report=legacy_report, canonical_sha256=legacy_hash)
+
+    assert verify_physical_matrix(legacy)

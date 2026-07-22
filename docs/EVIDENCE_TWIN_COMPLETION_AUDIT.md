@@ -29,15 +29,16 @@ data recovery, or evidentiary admissibility.
 
 ## Verification evidence
 
-- Repository-wide Python gate after the validation implementation: 313 passed, 2 environment-only
+- Repository-wide Python gate after the validation implementation: 317 passed, 2 environment-only
   symlink skips; Ruff and strict mypy passed across 109 source files.
 - Frontend gate: 16 tests, ESLint, strict TypeScript, and production Vite build passed.
 - Evidence Twin known-answer runner validates source/chunk/manifest hashing, working-copy integrity,
   signature detection, contacts/SMS/MMS/calls, normalized timeline, custody/audit chains, and sealed
   PDF/JSON/CSV output without retaining fixture PII.
 - The physical matrix gate requires sealed system-mode records with a hashed ADB executable,
-  hashed device serial/build identity, every declared host/Android release, at least two manufacturer
-  families, rooted and non-rooted runs, and passing known-file plus transport-cycle checks.
+  hashed device serial/build identity, examiner/authority/connection context, one exact release
+  commit, every declared host/Android release, at least two manufacturer families, rooted and
+  non-rooted runs, and passing known-file plus transport-cycle checks.
 
 ## Outstanding external proof
 
