@@ -12,12 +12,24 @@ from forensix_api.schemas import (
     DeviceCapabilityAssessmentResponse,
     DeviceDetectionResponse,
     DeviceTransportResponse,
+    ProviderCollectionRequest,
+    ProviderCollectionResponse,
 )
-from forensix_forensic.adb import AdbClient
+from forensix_forensic.adb import (
+    AdbClient,
+    ContentProviderAccessStatus,
+    ContentProviderProfile,
+)
 from forensix_forensic.capabilities import DeviceCapabilityAssessor
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.case_devices import CaseDeviceService
-from forensix_server.db import Database, DeviceCapabilityRun, DeviceDetectionRun
+from forensix_server.cases import CaseInvalidStateError
+from forensix_server.db import (
+    CaseEventRecord,
+    Database,
+    DeviceCapabilityRun,
+    DeviceDetectionRun,
+)
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
@@ -136,4 +148,64 @@ async def assess_device(
         case_id=request.case_id,
         case_device_id=case_device_id,
         **snapshot.model_dump(),
+    )
+
+
+@router.post(
+    "/providers/collect",
+    response_model=ProviderCollectionResponse,
+    responses={409: {"model": ApiErrorResponse}},
+)
+async def collect_provider_records(
+    request: ProviderCollectionRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+    database: Annotated[Database, Depends(get_database)],
+) -> ProviderCollectionResponse:
+    profile = ContentProviderProfile(request.profile)
+    with database.session() as session:
+        device = CaseDeviceService().get_device(
+            session,
+            authenticated.principal,
+            request.case_id,
+            request.case_device_id,
+        )
+        CaseDeviceService().ensure_operable(
+            session, authenticated.principal, request.case_id
+        )
+        if sha256(request.serial.encode("utf-8")).hexdigest() != device.serial_hash:
+            raise CaseInvalidStateError(
+                "The connected Android serial does not match the case-linked device."
+            )
+
+    probe = await adb_client.probe_content_provider(request.serial, profile)
+    if probe.status is not ContentProviderAccessStatus.AVAILABLE:
+        raise CaseInvalidStateError(
+            f"Android did not permit {profile.value} provider access: {probe.reason_code}."
+        )
+    result = await adb_client.query_content_provider(request.serial, profile)
+    with database.session() as session:
+        session.add(
+            CaseEventRecord(
+                case_id=request.case_id,
+                actor_id=authenticated.principal.user_id,
+                event_type="provider_records_collected",
+                safe_detail=(
+                    f"device_id={request.case_device_id};profile={profile.value};"
+                    f"record_count={len(result.records)};truncated={result.truncated}"
+                ),
+            )
+        )
+    return ProviderCollectionResponse(
+        case_id=request.case_id,
+        case_device_id=request.case_device_id,
+        profile=request.profile,
+        records=[record.values for record in result.records],
+        discovered_count=result.discovered_count,
+        truncated=result.truncated,
+        max_records=result.max_records,
+        limitation=(
+            "This is a live logical provider preview. It is audit-recorded but is not yet a "
+            "sealed evidence source; export or rooted acquisition is required for offline parsing."
+        ),
     )

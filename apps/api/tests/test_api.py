@@ -31,6 +31,7 @@ from forensix_server.db import (
     CaseDeviceAssessmentRecord,
     CaseDeviceDetectionRecord,
     CaseDeviceRecord,
+    CaseEventRecord,
     CaseMemberRecord,
     DeviceCapabilityRun,
     JobEventRecord,
@@ -615,6 +616,75 @@ def test_authorized_device_capability_assessment(tmp_path: Path) -> None:
     assert persisted.serial_hash != "FX-DEMO-001"
     assert len(persisted.serial_hash) == 64
     assert "FX-DEMO-001" not in persisted.snapshot_json
+
+
+def test_case_bound_provider_collection_returns_real_mock_records_and_audits(
+    tmp_path: Path,
+) -> None:
+    app = create_app(
+        _settings(tmp_path),
+        adb_client=MockAdbClient(MockAdbScenario.PROVIDERS_ACCESSIBLE),
+    )
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Provider API case"}
+        ).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+        response = client.post(
+            "/api/v1/devices/providers/collect",
+            headers=headers,
+            json={
+                "case_id": case["id"],
+                "case_device_id": assessment["case_device_id"],
+                "serial": "FX-DEMO-001",
+                "profile": "sms",
+                "limitations_acknowledged": True,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["records"][0]["body"] == "Controlled SMS fixture"
+    with app.state.database.session() as session:
+        event = session.scalars(
+            select(CaseEventRecord).where(
+                CaseEventRecord.event_type == "provider_records_collected"
+            )
+        ).one()
+    assert "profile=sms" in event.safe_detail
+    assert "FX-DEMO-001" not in event.safe_detail
+
+
+def test_provider_collection_refuses_android_permission_denial(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Denied provider case"}
+        ).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+        response = client.post(
+            "/api/v1/devices/providers/collect",
+            headers=headers,
+            json={
+                "case_id": case["id"],
+                "case_device_id": assessment["case_device_id"],
+                "serial": "FX-DEMO-001",
+                "profile": "contacts",
+                "limitations_acknowledged": True,
+            },
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "CASE_INVALID_STATE"
 
 
 def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path: Path) -> None:

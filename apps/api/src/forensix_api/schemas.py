@@ -82,6 +82,25 @@ class DeviceAssessmentRequest(BaseModel):
     case_id: str | None = Field(default=None, min_length=36, max_length=36)
 
 
+class ProviderCollectionRequest(BaseModel):
+    case_id: str = Field(min_length=36, max_length=36)
+    case_device_id: str = Field(min_length=36, max_length=36)
+    serial: str = Field(min_length=1, max_length=255)
+    profile: Literal["contacts", "sms", "call_log"]
+    limitations_acknowledged: Literal[True]
+
+
+class ProviderCollectionResponse(BaseModel):
+    case_id: str
+    case_device_id: str
+    profile: Literal["contacts", "sms", "call_log"]
+    records: list[dict[str, str | None]]
+    discovered_count: int = Field(ge=0)
+    truncated: bool
+    max_records: int = Field(ge=1)
+    limitation: str
+
+
 class RootAccessProbeRequest(BaseModel):
     serial: str = Field(min_length=1, max_length=255)
     side_effects_acknowledged: Literal[True]
