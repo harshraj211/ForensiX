@@ -4,6 +4,8 @@ from forensix_forensic.adb import (
     AdbClient,
     AdbDeviceNotAuthorizedError,
     AdbDeviceNotFoundError,
+    ContentProviderAccessStatus,
+    ContentProviderProfile,
     DeviceState,
 )
 
@@ -25,6 +27,10 @@ class DeviceCapabilityAssessor:
         properties = await self._adb_client.get_properties(serial)
         packages = await self._adb_client.list_packages(serial)
         storage_roots = await self._adb_client.probe_shared_storage(serial)
+        provider_probes = {
+            profile: await self._adb_client.probe_content_provider(serial, profile)
+            for profile in ContentProviderProfile
+        }
         sdk_level = _parse_sdk_level(properties.get("ro.build.version.sdk"))
         accessible_roots = tuple(root for root in storage_roots if root.readable)
         shared_file_decision = (
@@ -75,9 +81,9 @@ class DeviceCapabilityAssessor:
             "download_files": shared_file_decision,
             "media_files": shared_file_decision,
             "document_files": shared_file_decision,
-            "contacts": _elevated_only("READ_CONTACTS_REQUIRED"),
-            "sms_mms": _elevated_only("READ_SMS_REQUIRED"),
-            "call_logs": _elevated_only("READ_CALL_LOG_REQUIRED"),
+            "contacts": _provider_decision(provider_probes[ContentProviderProfile.CONTACTS]),
+            "sms_mms": _provider_decision(provider_probes[ContentProviderProfile.SMS]),
+            "call_logs": _provider_decision(provider_probes[ContentProviderProfile.CALL_LOG]),
             "calendar": _elevated_only("READ_CALENDAR_REQUIRED"),
             "notifications": _elevated_only("NOTIFICATION_LISTENER_ACCESS_REQUIRED"),
             "wifi_records": _elevated_only("PRIVILEGED_WIFI_ACCESS_REQUIRED"),
@@ -162,6 +168,24 @@ def _elevated_only(reason_code: str) -> CapabilityDecision:
             "Ordinary non-rooted ADB shell access does not hold the Android permission "
             "required for this provider."
         ),
+    )
+
+
+def _provider_decision(probe: object) -> CapabilityDecision:
+    from forensix_forensic.adb import ContentProviderAccessProbe
+
+    if not isinstance(probe, ContentProviderAccessProbe):
+        raise TypeError("Expected a content-provider probe")
+    if probe.status is ContentProviderAccessStatus.AVAILABLE:
+        return _supported(probe.reason_code, probe.explanation)
+    if probe.status is ContentProviderAccessStatus.DENIED:
+        return _unsupported(probe.reason_code, probe.explanation)
+    if probe.status is ContentProviderAccessStatus.MISSING:
+        return _unsupported(probe.reason_code, probe.explanation)
+    return CapabilityDecision(
+        status=CapabilityStatus.UNKNOWN,
+        reason_code=probe.reason_code,
+        explanation=probe.explanation,
     )
 
 

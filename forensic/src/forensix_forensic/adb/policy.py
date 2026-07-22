@@ -18,6 +18,7 @@ class AdbOperation(StrEnum):
     CAPTURE_ROOTED_BUNDLE = "capture_rooted_bundle"
     PROBE_PHYSICAL_BLOCK = "probe_physical_block"
     CAPTURE_PHYSICAL_BLOCK = "capture_physical_block"
+    PROBE_CONTENT_PROVIDER = "probe_content_provider"
 
 
 class SharedStorageRoot(StrEnum):
@@ -32,6 +33,12 @@ class RootedCollectionProfile(StrEnum):
 
 class PhysicalBlockProfile(StrEnum):
     USERDATA_BY_NAME = "userdata_by_name"
+
+
+class ContentProviderProfile(StrEnum):
+    CONTACTS = "contacts"
+    SMS = "sms"
+    CALL_LOG = "call_log"
 
 
 _STORAGE_PATHS: dict[SharedStorageRoot, str] = {
@@ -71,6 +78,12 @@ _PHYSICAL_BLOCK_PATHS: dict[PhysicalBlockProfile, str] = {
     PhysicalBlockProfile.USERDATA_BY_NAME: "/dev/block/by-name/userdata"
 }
 
+_CONTENT_PROVIDER_URIS: dict[ContentProviderProfile, str] = {
+    ContentProviderProfile.CONTACTS: "content://com.android.contacts/contacts",
+    ContentProviderProfile.SMS: "content://sms",
+    ContentProviderProfile.CALL_LOG: "content://call_log/calls",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class ApprovedAdbCommand:
@@ -106,6 +119,30 @@ class AdbCommandPolicy:
             AdbOperation.LIST_PACKAGES,
             ("-s", serial, "shell", "cmd", "package", "list", "packages"),
             12.0,
+        )
+
+    @staticmethod
+    def probe_content_provider(
+        serial: str, profile: ContentProviderProfile
+    ) -> ApprovedAdbCommand:
+        """Check provider permission without returning a user record."""
+        _validate_serial(serial)
+        return ApprovedAdbCommand(
+            AdbOperation.PROBE_CONTENT_PROVIDER,
+            (
+                "-s",
+                serial,
+                "shell",
+                "content",
+                "query",
+                "--uri",
+                _CONTENT_PROVIDER_URIS[profile],
+                "--projection",
+                "_id",
+                "--where",
+                "0=1",
+            ),
+            10.0,
         )
 
     @staticmethod

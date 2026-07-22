@@ -10,6 +10,8 @@ from pathlib import Path
 from .errors import AdbCommandError, AdbTimeoutError
 from .models import (
     AdbServerInfo,
+    ContentProviderAccessProbe,
+    ContentProviderAccessStatus,
     DeviceState,
     DeviceTransport,
     PhysicalBlockCaptureResult,
@@ -27,6 +29,7 @@ from .policy import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_ITEMS,
     AdbCommandPolicy,
+    ContentProviderProfile,
     PhysicalBlockProfile,
     RootedCollectionProfile,
     SharedStorageRoot,
@@ -47,6 +50,7 @@ class MockAdbScenario(StrEnum):
     TIMEOUT = "timeout"
     STORAGE_BLOCKED = "storage_blocked"
     ROOTED = "rooted"
+    PROVIDERS_ACCESSIBLE = "providers_accessible"
 
 
 class MockAdbClient:
@@ -84,6 +88,7 @@ class MockAdbClient:
             MockAdbScenario.OFFLINE: DeviceState.OFFLINE,
             MockAdbScenario.STORAGE_BLOCKED: DeviceState.AUTHORIZED,
             MockAdbScenario.ROOTED: DeviceState.AUTHORIZED,
+            MockAdbScenario.PROVIDERS_ACCESSIBLE: DeviceState.AUTHORIZED,
         }[self.scenario]
         return (self._transport("FX-DEMO-001", state),)
 
@@ -104,6 +109,31 @@ class MockAdbClient:
             "android",
             "com.android.settings",
             "org.forensix.synthetic.fixture",
+        )
+
+    async def probe_content_provider(
+        self, serial: str, profile: ContentProviderProfile
+    ) -> ContentProviderAccessProbe:
+        await self._require_authorized(serial)
+        available = self.scenario is MockAdbScenario.PROVIDERS_ACCESSIBLE
+        return ContentProviderAccessProbe(
+            profile=profile.value,
+            status=(
+                ContentProviderAccessStatus.AVAILABLE
+                if available
+                else ContentProviderAccessStatus.DENIED
+            ),
+            reason_code=(
+                "CONTENT_PROVIDER_QUERY_ALLOWED"
+                if available
+                else "CONTENT_PROVIDER_PERMISSION_DENIED"
+            ),
+            explanation=(
+                "Synthetic provider access is available."
+                if available
+                else "Synthetic Android permission denial."
+            ),
+            exit_code=0 if available else 1,
         )
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe:

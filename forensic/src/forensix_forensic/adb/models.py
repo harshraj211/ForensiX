@@ -49,6 +49,25 @@ class RootAccessStatus(StrEnum):
     INDETERMINATE = "indeterminate"
 
 
+class ContentProviderAccessStatus(StrEnum):
+    AVAILABLE = "available"
+    DENIED = "denied"
+    MISSING = "missing"
+    INDETERMINATE = "indeterminate"
+
+
+class ContentProviderAccessProbe(BaseModel):
+    """Content-free result of querying a fixed provider with an impossible predicate."""
+
+    model_config = ConfigDict(frozen=True)
+
+    profile: str = Field(min_length=1, max_length=64)
+    status: ContentProviderAccessStatus
+    reason_code: str = Field(min_length=1, max_length=64)
+    explanation: str = Field(min_length=1, max_length=500)
+    exit_code: int
+
+
 class RootAccessProbe(BaseModel):
     """Bounded result of the explicitly authorized fixed `su -c id` operation."""
 

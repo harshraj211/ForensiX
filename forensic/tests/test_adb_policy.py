@@ -9,6 +9,8 @@ from forensix_forensic.adb import (
     AdbCommandError,
     AdbCommandPolicy,
     AdbCommandResult,
+    ContentProviderAccessStatus,
+    ContentProviderProfile,
     PhysicalBlockProfile,
     RootAccessStatus,
     RootedCollectionProfile,
@@ -103,6 +105,45 @@ def test_root_probe_policy_is_fixed_and_serial_scoped() -> None:
         "id",
     )
     assert command.timeout_seconds == 8.0
+
+
+def test_provider_probe_policy_is_content_free_and_profile_bounded() -> None:
+    command = AdbCommandPolicy.probe_content_provider(
+        "FX-DEMO-001", ContentProviderProfile.CONTACTS
+    )
+
+    assert command.arguments == (
+        "-s",
+        "FX-DEMO-001",
+        "shell",
+        "content",
+        "query",
+        "--uri",
+        "content://com.android.contacts/contacts",
+        "--projection",
+        "_id",
+        "--where",
+        "0=1",
+    )
+    assert command.timeout_seconds == 10.0
+
+
+@pytest.mark.asyncio
+async def test_system_provider_probe_distinguishes_access_from_permission_denial() -> None:
+    available_runner = RecordingRunner([_result(0, stdout="No result found.")])
+    denied_runner = RecordingRunner(
+        [_result(1, stderr="java.lang.SecurityException: Permission Denial")]
+    )
+
+    available = await SystemAdbClient(
+        cast(SubprocessAdbRunner, available_runner)
+    ).probe_content_provider("FX-DEMO-001", ContentProviderProfile.SMS)
+    denied = await SystemAdbClient(
+        cast(SubprocessAdbRunner, denied_runner)
+    ).probe_content_provider("FX-DEMO-001", ContentProviderProfile.SMS)
+
+    assert available.status is ContentProviderAccessStatus.AVAILABLE
+    assert denied.status is ContentProviderAccessStatus.DENIED
 
 
 def test_rooted_bundle_policy_uses_only_fixed_provider_paths() -> None:

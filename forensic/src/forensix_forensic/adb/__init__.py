@@ -16,6 +16,8 @@ from .errors import (
 from .mock import MockAdbClient, MockAdbScenario
 from .models import (
     AdbServerInfo,
+    ContentProviderAccessProbe,
+    ContentProviderAccessStatus,
     DeviceState,
     DeviceTransport,
     PhysicalBlockCaptureResult,
@@ -38,6 +40,7 @@ from .policy import (
     AdbCommandPolicy,
     AdbOperation,
     ApprovedAdbCommand,
+    ContentProviderProfile,
     PhysicalBlockProfile,
     RootedCollectionProfile,
     SharedStorageRoot,
@@ -79,6 +82,9 @@ __all__ = [
     "AdbTimeoutError",
     "DeviceState",
     "DeviceTransport",
+    "ContentProviderAccessProbe",
+    "ContentProviderAccessStatus",
+    "ContentProviderProfile",
     "PhysicalBlockCaptureResult",
     "PhysicalBlockProbe",
     "PulledFileResult",

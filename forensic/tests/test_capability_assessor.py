@@ -70,3 +70,14 @@ async def test_storage_probe_can_explicitly_block_shared_storage() -> None:
     assert snapshot.capabilities["media_files"].status is CapabilityStatus.BLOCKED
     assert snapshot.capabilities["document_files"].status is CapabilityStatus.BLOCKED
     assert not any(root.readable for root in snapshot.storage_roots)
+
+
+@pytest.mark.asyncio
+async def test_assessor_enables_live_providers_only_after_successful_probe() -> None:
+    snapshot = await DeviceCapabilityAssessor(
+        MockAdbClient(MockAdbScenario.PROVIDERS_ACCESSIBLE)
+    ).assess("FX-DEMO-001")
+
+    for capability in ("contacts", "sms_mms", "call_logs"):
+        assert snapshot.capabilities[capability].status is CapabilityStatus.SUPPORTED
+        assert snapshot.capabilities[capability].reason_code == "CONTENT_PROVIDER_QUERY_ALLOWED"

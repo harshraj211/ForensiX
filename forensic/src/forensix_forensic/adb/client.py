@@ -8,6 +8,8 @@ from typing import Protocol
 from .errors import AdbCommandError
 from .models import (
     AdbServerInfo,
+    ContentProviderAccessProbe,
+    ContentProviderAccessStatus,
     DeviceTransport,
     PhysicalBlockCaptureResult,
     PhysicalBlockProbe,
@@ -34,6 +36,7 @@ from .policy import (
     MAX_ROOTED_BUNDLE_BYTES,
     AdbCommandPolicy,
     ApprovedAdbCommand,
+    ContentProviderProfile,
     PhysicalBlockProfile,
     RootedCollectionProfile,
     SharedStorageRoot,
@@ -49,6 +52,10 @@ class AdbClient(Protocol):
     async def get_properties(self, serial: str) -> dict[str, str]: ...
 
     async def list_packages(self, serial: str) -> tuple[str, ...]: ...
+
+    async def probe_content_provider(
+        self, serial: str, profile: ContentProviderProfile
+    ) -> ContentProviderAccessProbe: ...
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe: ...
 
@@ -118,6 +125,39 @@ class SystemAdbClient:
         if result.exit_code != 0:
             raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
         return parse_package_list(result.stdout)
+
+    async def probe_content_provider(
+        self, serial: str, profile: ContentProviderProfile
+    ) -> ContentProviderAccessProbe:
+        result = await self._run(AdbCommandPolicy.probe_content_provider(serial, profile))
+        combined = " ".join((result.stdout, result.stderr)).lower()
+        if result.exit_code == 0 and not _provider_denied(combined):
+            status = ContentProviderAccessStatus.AVAILABLE
+            reason_code = "CONTENT_PROVIDER_QUERY_ALLOWED"
+            explanation = (
+                "The provider accepted a content-free query from this ADB shell transport."
+            )
+        elif _provider_denied(combined):
+            status = ContentProviderAccessStatus.DENIED
+            reason_code = "CONTENT_PROVIDER_PERMISSION_DENIED"
+            explanation = "Android denied this ADB shell transport access to the provider."
+        elif any(
+            marker in combined for marker in ("unknown uri", "no content provider", "not found")
+        ):
+            status = ContentProviderAccessStatus.MISSING
+            reason_code = "CONTENT_PROVIDER_NOT_FOUND"
+            explanation = "The provider URI is not available on this Android build."
+        else:
+            status = ContentProviderAccessStatus.INDETERMINATE
+            reason_code = "CONTENT_PROVIDER_PROBE_FAILED"
+            explanation = "The provider probe failed without a recognized permission decision."
+        return ContentProviderAccessProbe(
+            profile=profile.value,
+            status=status,
+            reason_code=reason_code,
+            explanation=explanation,
+            exit_code=result.exit_code,
+        )
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe:
         result = await self._run(AdbCommandPolicy.probe_root_access(serial))
@@ -297,6 +337,19 @@ class SystemAdbClient:
 def _safe_summary(stderr: str) -> str:
     compact = " ".join(stderr.split())
     return compact[:240] or "No error details were provided."
+
+
+def _provider_denied(output: str) -> bool:
+    return any(
+        marker in output
+        for marker in (
+            "securityexception",
+            "permission denial",
+            "permission denied",
+            "requires android.permission",
+            "not allowed to read",
+        )
+    )
 
 
 def _regular_file_size(path: Path) -> int | None:
