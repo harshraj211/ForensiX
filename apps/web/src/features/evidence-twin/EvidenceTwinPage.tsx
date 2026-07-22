@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   CopyCheck,
   DatabaseBackup,
+  Download,
+  ExternalLink,
   FileUp,
   LoaderCircle,
   ShieldCheck,
@@ -20,6 +22,7 @@ import {
   getAleappDiagnostic,
   getApplicationArtifactSupport,
   getCase,
+  getEvidenceSourceContentUrl,
   getEvidenceWorkingCopyInspection,
   importEvidenceSource,
   inspectEvidenceWorkingCopy,
@@ -369,6 +372,27 @@ function EvidenceSourceCard({
         <HashClaim label="Manifest SHA-256" value={source.manifest_sha256} />
       </div>
       <div className="mt-5 flex flex-wrap items-center gap-3">
+        {source.source_name.toLowerCase().endsWith(".png") && source.status === "sealed" && (
+          <>
+            <a
+              href={getEvidenceSourceContentUrl(caseId, source.id)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-cyan-200/20 px-3 text-xs font-semibold text-cyan-100"
+            >
+              <ExternalLink size={14} />
+              View screenshot
+            </a>
+            <a
+              href={getEvidenceSourceContentUrl(caseId, source.id, true)}
+              download={source.source_name}
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-cyan-300 px-3 text-xs font-semibold text-slate-950"
+            >
+              <Download size={14} />
+              Download PNG
+            </a>
+          </>
+        )}
         <button
           type="button"
           disabled={source.status !== "sealed" || verify.isPending}

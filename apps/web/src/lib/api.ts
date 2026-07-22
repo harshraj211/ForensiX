@@ -1489,6 +1489,15 @@ export function listEvidenceSources(caseId: string): Promise<EvidenceSource[]> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources`);
 }
 
+export function getEvidenceSourceContentUrl(
+  caseId: string,
+  sourceId: string,
+  download = false,
+): string {
+  const base = `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/content`;
+  return download ? `${base}?download=true` : base;
+}
+
 export function importEvidenceSource(
   caseId: string,
   source: File,

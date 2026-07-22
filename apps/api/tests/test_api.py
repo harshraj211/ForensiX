@@ -709,12 +709,27 @@ def test_case_bound_screenshot_is_sealed_as_logical_evidence(tmp_path: Path) -> 
             headers=headers,
         )
 
+        source = response.json()
+        view = client.get(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{source['id']}/content"
+        )
+        download = client.get(
+            f"/api/v1/cases/{case['id']}/evidence-sources/{source['id']}/content?download=true"
+        )
+
     assert response.status_code == 201
     assert response.json()["source_type"] == "logical_adb"
     assert response.json()["acquisition_level"] == "selective"
     assert response.json()["status"] == "sealed"
     assert response.json()["source_name"] == "android-screen.png"
     assert len(response.json()["sha256"]) == 64
+    assert view.status_code == 200
+    assert view.headers["content-type"] == "image/png"
+    assert view.headers["content-disposition"].startswith("inline;")
+    assert view.headers["x-forensix-evidence-sha256"] == source["sha256"]
+    assert view.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert download.status_code == 200
+    assert download.headers["content-disposition"].startswith("attachment;")
 
 
 def test_scrcpy_diagnostic_reports_missing_configuration(tmp_path: Path) -> None:

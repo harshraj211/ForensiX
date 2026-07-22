@@ -4,6 +4,7 @@ import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi.responses import FileResponse
 
 from forensix_api.dependencies import (
     get_authenticated_session,
@@ -22,6 +23,7 @@ from forensix_api.schemas import (
     EvidenceWorkingCopyResponse,
     RecoveryAssessmentResponse,
 )
+from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.config import Settings
 from forensix_server.db import (
@@ -37,6 +39,7 @@ from forensix_server.evidence_twin import (
     EvidenceInspectionService,
     EvidenceRecoveryAssessmentService,
     EvidenceTwinError,
+    EvidenceTwinIntegrityError,
     EvidenceTwinService,
     inspection_signature,
     inspection_warnings,
@@ -94,6 +97,48 @@ def get_evidence_source(
 ) -> EvidenceSourceResponse:
     return source_response(
         EvidenceTwinService().get_source(database, authenticated.principal, case_id, source_id)
+    )
+
+
+@router.get("/{source_id}/content", response_class=FileResponse)
+def get_evidence_source_content(
+    case_id: str,
+    source_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+    download: bool = False,
+) -> FileResponse:
+    """View or download a PNG screenshot without modifying the sealed master."""
+    source = EvidenceTwinService().get_source(
+        database, authenticated.principal, case_id, source_id
+    )
+    if (
+        source.status != "sealed"
+        or not source.sealed_storage_key
+        or not source.sha256
+        or not source.source_name.casefold().endswith(".png")
+    ):
+        raise EvidenceTwinError("Only a sealed PNG evidence source can be viewed directly.")
+    path = EvidenceStore(database.data_dir / "evidence").resolve(
+        source.sealed_storage_key, require_file=True
+    )
+    with path.open("rb") as stream:
+        if stream.read(8) != b"\x89PNG\r\n\x1a\n":
+            raise EvidenceTwinIntegrityError(
+                "The evidence source does not contain the expected PNG signature."
+            )
+    return FileResponse(
+        path,
+        media_type="image/png",
+        filename=source.source_name,
+        content_disposition_type="attachment" if download else "inline",
+        headers={
+            "Cache-Control": "no-store, private",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "X-Content-Type-Options": "nosniff",
+            "X-ForensiX-Evidence-SHA256": source.sha256,
+        },
     )
 
 
