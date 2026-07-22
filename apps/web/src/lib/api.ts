@@ -65,6 +65,19 @@ export interface DeviceCapabilityAssessment {
   assessor_version: string;
 }
 
+export type ProviderProfile = "contacts" | "sms" | "call_log";
+
+export interface ProviderCollection {
+  case_id: string;
+  case_device_id: string;
+  profile: ProviderProfile;
+  records: Record<string, string | null>[];
+  discovered_count: number;
+  truncated: boolean;
+  max_records: number;
+  limitation: string;
+}
+
 export interface RootAccessProbe {
   id: string;
   case_id: string;
@@ -1021,6 +1034,24 @@ export async function assessDevice(
   return apiRequest("/api/v1/devices/assess", {
     method: "POST",
     body: JSON.stringify({ serial, ...(caseId ? { case_id: caseId } : {}) }),
+  });
+}
+
+export function collectProviderRecords(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+  profile: ProviderProfile,
+): Promise<ProviderCollection> {
+  return apiRequest("/api/v1/devices/providers/collect", {
+    method: "POST",
+    body: JSON.stringify({
+      case_id: caseId,
+      case_device_id: deviceId,
+      serial,
+      profile,
+      limitations_acknowledged: true,
+    }),
   });
 }
 

@@ -25,6 +25,7 @@ import {
   assessDevice,
   capturePhysicalBlock,
   captureRootedBundle,
+  collectProviderRecords,
   detectDevices,
   getCase,
   getAdbDiagnostic,
@@ -38,6 +39,7 @@ import {
   type DeviceCapabilityAssessment,
   type DeviceState,
   type DeviceTransport,
+  type ProviderProfile,
 } from "../../lib/api";
 
 const stateCopy: Record<
@@ -480,6 +482,20 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
   const [physicalAcquisitionAcknowledged, setPhysicalAcquisitionAcknowledged] = useState(false);
   const [encryptionAcknowledged, setEncryptionAcknowledged] = useState(false);
   const [nonResumableAcknowledged, setNonResumableAcknowledged] = useState(false);
+  const [providerAcknowledged, setProviderAcknowledged] = useState(false);
+  const providerCollection = useMutation({
+    mutationFn: (profile: ProviderProfile) => {
+      if (!assessment.case_id || !assessment.case_device_id) {
+        throw new Error("A case-linked assessment is required for provider collection.");
+      }
+      return collectProviderRecords(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+        profile,
+      );
+    },
+  });
   const rootProbe = useMutation({
     mutationFn: () => {
       if (!assessment.case_id || !assessment.case_device_id) {
@@ -583,6 +599,88 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
           <CapabilityRow key={capability} capability={capability} decision={decision} />
         ))}
       </div>
+      {assessment.case_id && assessment.case_device_id && (
+        <div className="mt-5 rounded-lg border border-cyan-200/12 bg-cyan-200/[0.025] p-4">
+          <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
+            Permitted live provider preview
+          </h3>
+          <p className="mt-2 text-xs leading-5 text-slate-400">
+            These buttons appear only for providers that this exact Android transport allowed.
+            Results are real live rows, capped at 500, and the operation is recorded in the case
+            audit history.
+          </p>
+          <label className="mt-3 flex items-start gap-2 text-xs leading-5 text-amber-100/80">
+            <input
+              type="checkbox"
+              checked={providerAcknowledged}
+              onChange={(event) => {
+                setProviderAcknowledged(event.target.checked);
+              }}
+              className="mt-1"
+            />
+            I understand this is a logical live preview, not a sealed filesystem acquisition.
+          </label>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {(
+              [
+                ["contacts", "contacts", "Collect contacts"],
+                ["sms_mms", "sms", "Collect SMS"],
+                ["call_logs", "call_log", "Collect call logs"],
+              ] as const
+            ).map(([capability, profile, label]) => {
+              const supported = assessment.capabilities[capability]?.status === "supported";
+              return (
+                <button
+                  key={profile}
+                  type="button"
+                  disabled={!supported || !providerAcknowledged || providerCollection.isPending}
+                  onClick={() => {
+                    providerCollection.mutate(profile);
+                  }}
+                  className="rounded-lg border border-cyan-200/15 bg-cyan-200/5 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-200/10 disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  {providerCollection.isPending && providerCollection.variables === profile
+                    ? "Collecting…"
+                    : label}
+                </button>
+              );
+            })}
+          </div>
+          {providerCollection.error && (
+            <p className="mt-3 text-xs text-rose-300">
+              {providerCollection.error instanceof ApiError
+                ? providerCollection.error.message
+                : "Provider collection failed."}
+            </p>
+          )}
+          {providerCollection.data && (
+            <div className="mt-4 rounded-md border border-emerald-200/12 bg-emerald-200/[0.035] p-3">
+              <p className="text-xs font-semibold text-emerald-200">
+                {providerCollection.data.records.length} {providerCollection.data.profile} record(s)
+                collected
+              </p>
+              <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                {providerCollection.data.limitation}
+              </p>
+              <div className="mt-3 max-h-56 space-y-2 overflow-auto">
+                {providerCollection.data.records.map((record, index) => (
+                  <dl
+                    key={`${providerCollection.data.profile}-${String(record._id ?? index)}`}
+                    className="grid gap-1 rounded border border-white/7 bg-black/15 p-2 text-[11px]"
+                  >
+                    {Object.entries(record).map(([key, value]) => (
+                      <div key={key} className="grid grid-cols-[8rem_1fr] gap-2">
+                        <dt className="font-mono text-slate-500">{key}</dt>
+                        <dd className="break-all text-slate-300">{value ?? "NULL"}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div className="mt-5 rounded-lg border border-white/8 bg-black/10 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
