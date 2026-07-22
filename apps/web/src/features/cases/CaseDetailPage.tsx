@@ -10,15 +10,18 @@ import {
   getCase,
   getCurrentUser,
   listCustodyCheckpointAnchors,
+  listCustodyCheckpointSignatures,
   listCustodyCheckpoints,
   listCustodyEvents,
   listCaseDevices,
   transitionCase,
   verifyCustodyChain,
+  verifyCustodyCheckpointSignature,
   type CaseDevice,
   type CaseStatus,
   type CustodyCheckpoint,
   type CustodyCheckpointAnchor,
+  type CustodyCheckpointSignature,
 } from "../../lib/api";
 import { authKeys } from "../auth/authKeys";
 import { CaseError, StatusBadge } from "./CasesPage";
@@ -305,6 +308,7 @@ export function CaseDetailPage() {
                       </a>
                     </div>
                     <CheckpointAnchorPanel caseId={caseId} checkpoint={checkpoint} />
+                    <CheckpointSignaturePanel caseId={caseId} checkpoint={checkpoint} />
                   </div>
                 ))}
               </div>
@@ -578,4 +582,195 @@ function CheckpointAnchorPanel({
       )}
     </div>
   );
+}
+
+function CheckpointSignaturePanel({
+  caseId,
+  checkpoint,
+}: {
+  caseId: string;
+  checkpoint: CustodyCheckpoint;
+}) {
+  const queryClient = useQueryClient();
+  const [algorithm, setAlgorithm] =
+    useState<CustodyCheckpointSignature["signature_algorithm"]>(
+      "rsa_pkcs1v15_sha256",
+    );
+  const [signedAt, setSignedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [certificatePem, setCertificatePem] = useState("");
+  const [certificateName, setCertificateName] = useState("");
+  const [signatureBase64, setSignatureBase64] = useState("");
+  const [signatureName, setSignatureName] = useState("");
+  const [fileError, setFileError] = useState<string | null>(null);
+  const signaturesQuery = useQuery({
+    queryKey: caseKeys.custodyCheckpointSignatures(caseId, checkpoint.id),
+    queryFn: () => listCustodyCheckpointSignatures(caseId, checkpoint.id),
+  });
+  const verifySignature = useMutation({
+    mutationFn: () =>
+      verifyCustodyCheckpointSignature(caseId, checkpoint.id, {
+        signature_algorithm: algorithm,
+        certificate_pem: certificatePem,
+        signature_base64: signatureBase64,
+        signed_at: new Date(signedAt).toISOString(),
+        checkpoint_sha256: checkpoint.sha256,
+      }),
+    onSuccess: () => {
+      setCertificatePem("");
+      setCertificateName("");
+      setSignatureBase64("");
+      setSignatureName("");
+      void queryClient.invalidateQueries({
+        queryKey: caseKeys.custodyCheckpointSignatures(caseId, checkpoint.id),
+      });
+    },
+  });
+  const canSubmit =
+    certificatePem.length > 0 &&
+    signatureBase64.length > 0 &&
+    signedAt.length > 0 &&
+    fileError === null;
+
+  async function loadCertificate(file: File | undefined): Promise<void> {
+    setFileError(null);
+    if (!file) return;
+    if (file.size > 16 * 1024) {
+      setFileError("The certificate file exceeds the 16 KiB limit.");
+      return;
+    }
+    setCertificatePem(await file.text());
+    setCertificateName(file.name);
+  }
+
+  async function loadSignature(file: File | undefined): Promise<void> {
+    setFileError(null);
+    if (!file) return;
+    if (file.size > 4 * 1024) {
+      setFileError("The detached signature exceeds the 4 KiB limit.");
+      return;
+    }
+    setSignatureBase64(bytesToBase64(new Uint8Array(await file.arrayBuffer())));
+    setSignatureName(file.name);
+  }
+
+  return (
+    <div className="mt-3 border-t border-white/8 pt-3">
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-cyan-100">
+        <ShieldCheck size={14} aria-hidden="true" /> Verify detached signature
+      </div>
+      <p className="mt-1 text-[11px] leading-5 text-slate-500">
+        Verify a public X.509 certificate and detached signature against this sealed checkpoint.
+        Private keys must never be uploaded. This does not validate certificate-chain trust or
+        revocation.
+      </p>
+      <form
+        className="mt-3 grid gap-2 sm:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit) verifySignature.mutate();
+        }}
+      >
+        <label className="text-[11px] text-slate-400">
+          Signature algorithm
+          <select
+            value={algorithm}
+            onChange={(event) => {
+              setAlgorithm(
+                event.currentTarget.value as CustodyCheckpointSignature["signature_algorithm"],
+              );
+            }}
+            className="mt-1 min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-xs text-white"
+          >
+            <option value="rsa_pkcs1v15_sha256">RSA PKCS#1 v1.5 / SHA-256</option>
+            <option value="rsa_pss_sha256">RSA-PSS / SHA-256</option>
+            <option value="ecdsa_sha256">ECDSA / SHA-256</option>
+          </select>
+        </label>
+        <label className="text-[11px] text-slate-400">
+          Declared signing time
+          <input
+            type="datetime-local"
+            value={signedAt}
+            onChange={(event) => {
+              setSignedAt(event.currentTarget.value);
+            }}
+            className="mt-1 min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-xs text-white"
+          />
+        </label>
+        <label className="text-[11px] text-slate-400">
+          Public certificate (PEM)
+          <input
+            type="file"
+            accept=".pem,.crt,.cer,application/x-pem-file"
+            onChange={(event) => {
+              void loadCertificate(event.currentTarget.files?.[0]);
+            }}
+            className="mt-1 block min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-2 py-1.5 text-xs text-slate-300"
+          />
+          {certificateName && <span className="mt-1 block text-emerald-300">{certificateName}</span>}
+        </label>
+        <label className="text-[11px] text-slate-400">
+          Detached signature
+          <input
+            type="file"
+            onChange={(event) => {
+              void loadSignature(event.currentTarget.files?.[0]);
+            }}
+            className="mt-1 block min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-2 py-1.5 text-xs text-slate-300"
+          />
+          {signatureName && <span className="mt-1 block text-emerald-300">{signatureName}</span>}
+        </label>
+        <div className="sm:col-span-2">
+          <button
+            type="submit"
+            disabled={!canSubmit || verifySignature.isPending}
+            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-emerald-200/20 px-3 text-xs font-semibold text-emerald-100 disabled:opacity-40"
+          >
+            {verifySignature.isPending ? (
+              <LoaderCircle className="animate-spin" size={14} aria-hidden="true" />
+            ) : (
+              <ShieldCheck size={14} aria-hidden="true" />
+            )}
+            Verify signature
+          </button>
+        </div>
+      </form>
+      {fileError && <p className="mt-2 text-xs text-rose-300">{fileError}</p>}
+      {verifySignature.isError && (
+        <div className="mt-3"><CaseError error={verifySignature.error} /></div>
+      )}
+      {signaturesQuery.isError && (
+        <div className="mt-3"><CaseError error={signaturesQuery.error} /></div>
+      )}
+      {signaturesQuery.data && signaturesQuery.data.length > 0 && (
+        <ol className="mt-3 space-y-2">
+          {signaturesQuery.data.map((signature) => (
+            <li
+              key={signature.id}
+              className="rounded-lg border border-emerald-200/15 bg-emerald-200/[0.035] p-3"
+            >
+              <p className="text-xs font-semibold text-emerald-100">
+                Signature verified - {signature.signer_subject}
+              </p>
+              <p className="mt-1 text-[10px] uppercase tracking-wide text-emerald-200/70">
+                {signature.signature_algorithm.replaceAll("_", " ")} - signed {new Date(signature.signed_at).toLocaleString()}
+              </p>
+              <p className="mt-1 truncate font-mono text-[10px] text-slate-600" title={signature.certificate_sha256}>
+                Certificate SHA-256 {signature.certificate_sha256}
+              </p>
+              <p className="mt-1 truncate font-mono text-[10px] text-slate-600" title={signature.verification_hash}>
+                Verification SHA-256 {signature.verification_hash}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }

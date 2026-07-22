@@ -939,6 +939,47 @@ class CustodyCheckpointAnchorResponse(BaseModel):
     created_at: datetime
 
 
+class CustodyCheckpointSignatureVerifyRequest(BaseModel):
+    signature_algorithm: Literal[
+        "rsa_pkcs1v15_sha256",
+        "rsa_pss_sha256",
+        "ecdsa_sha256",
+    ]
+    certificate_pem: str = Field(min_length=1, max_length=16384)
+    signature_base64: str = Field(min_length=1, max_length=8192)
+    signed_at: datetime
+    checkpoint_sha256: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern=r"^[0-9a-fA-F]{64}$",
+    )
+
+
+class CustodyCheckpointSignatureResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    checkpoint_id: str
+    case_id: str
+    verified_by: str
+    signature_algorithm: Literal[
+        "rsa_pkcs1v15_sha256",
+        "rsa_pss_sha256",
+        "ecdsa_sha256",
+    ]
+    signer_subject: str
+    signer_issuer: str
+    certificate_serial: str
+    certificate_sha256: str
+    signature_sha256: str
+    signed_at: datetime
+    certificate_not_before: datetime
+    certificate_not_after: datetime
+    checkpoint_sha256: str
+    verification_hash: str
+    created_at: datetime
+
+
 class ReportOutputResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

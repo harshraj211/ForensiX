@@ -1,9 +1,14 @@
 import json
+from base64 import b64encode
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa, utils
+from cryptography.x509.oid import NameOID
 
 from forensix_server.auth import Principal, RoleName
 from forensix_server.auth.domain import ROLE_PERMISSIONS
@@ -105,3 +110,82 @@ def test_checkpoint_anchor_receipt_requires_matching_hash(database: Database) ->
         )
     with pytest.raises(CustodyCheckpointNotFoundError):
         service.list_anchors(database, principal, case_id, "missing-checkpoint")
+
+
+def test_checkpoint_detached_signature_is_verified_and_persisted(database: Database) -> None:
+    principal, case_id = _principal_and_case(database)
+    service = CustodyCheckpointService()
+    record = service.create(database, principal, case_id)
+    signed_at = datetime(2026, 7, 22, 2, 0, tzinfo=UTC)
+    private_key, certificate_pem = _signer_certificate(signed_at)
+    signature = private_key.sign(
+        bytes.fromhex(record.sha256),
+        padding.PKCS1v15(),
+        utils.Prehashed(hashes.SHA256()),
+    )
+
+    verification = service.verify_signature(
+        database,
+        principal,
+        case_id,
+        record.id,
+        signature_algorithm="rsa_pkcs1v15_sha256",
+        certificate_pem=certificate_pem,
+        signature_base64=b64encode(signature).decode("ascii"),
+        signed_at=signed_at,
+        checkpoint_sha256=record.sha256,
+    )
+    signatures = service.list_signatures(database, principal, case_id, record.id)
+
+    assert [item.id for item in signatures] == [verification.id]
+    assert verification.signer_subject == "CN=ForensiX Controlled Signer"
+    assert verification.checkpoint_sha256 == record.sha256
+    assert len(verification.certificate_sha256) == 64
+    assert len(verification.signature_sha256) == 64
+    assert len(verification.verification_hash) == 64
+
+    invalid_signature = bytearray(signature)
+    invalid_signature[-1] ^= 1
+    with pytest.raises(CustodyCheckpointIntegrityError, match="does not verify"):
+        service.verify_signature(
+            database,
+            principal,
+            case_id,
+            record.id,
+            signature_algorithm="rsa_pkcs1v15_sha256",
+            certificate_pem=certificate_pem,
+            signature_base64=b64encode(invalid_signature).decode("ascii"),
+            signed_at=signed_at,
+            checkpoint_sha256=record.sha256,
+        )
+
+
+def _signer_certificate(signed_at: datetime) -> tuple[rsa.RSAPrivateKey, str]:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ForensiX Controlled Signer")])
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(private_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(signed_at - timedelta(days=1))
+        .not_valid_after(signed_at + timedelta(days=30))
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=True,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=None,
+                decipher_only=None,
+            ),
+            critical=True,
+        )
+        .sign(private_key, hashes.SHA256())
+    )
+    certificate_pem = certificate.public_bytes(serialization.Encoding.PEM).decode("ascii")
+    return private_key, certificate_pem

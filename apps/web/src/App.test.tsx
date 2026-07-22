@@ -167,6 +167,7 @@ describe("case workspace", () => {
     const now = "2026-07-20T01:00:00Z";
     let created = false;
     let recordedAnchor = false;
+    let verifiedSignature = false;
     const checkpoint = {
       id: "checkpoint-1",
       case_id: "case-1",
@@ -195,6 +196,24 @@ describe("case workspace", () => {
       receipt_sha256: null,
       notes: "Controlled validation receipt",
       anchor_hash: "d".repeat(64),
+      created_at: now,
+    };
+    const signature = {
+      id: "signature-1",
+      checkpoint_id: checkpoint.id,
+      case_id: checkpoint.case_id,
+      verified_by: "user-1",
+      signature_algorithm: "rsa_pkcs1v15_sha256",
+      signer_subject: "CN=ForensiX Controlled Signer",
+      signer_issuer: "CN=ForensiX Controlled CA",
+      certificate_serial: "1234abcd",
+      certificate_sha256: "e".repeat(64),
+      signature_sha256: "f".repeat(64),
+      signed_at: now,
+      certificate_not_before: "2026-07-19T01:00:00Z",
+      certificate_not_after: "2027-07-20T01:00:00Z",
+      checkpoint_sha256: checkpoint.sha256,
+      verification_hash: "1".repeat(64),
       created_at: now,
     };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -250,6 +269,19 @@ describe("case workspace", () => {
         }
         return Promise.resolve(jsonResponse(recordedAnchor ? [anchor] : []));
       }
+      if (
+        url ===
+        "/api/v1/cases/case-1/custody/checkpoints/checkpoint-1/signatures"
+      ) {
+        return Promise.resolve(jsonResponse(verifiedSignature ? [signature] : []));
+      }
+      if (
+        url ===
+        "/api/v1/cases/case-1/custody/checkpoints/checkpoint-1/signatures/verify"
+      ) {
+        verifiedSignature = true;
+        return Promise.resolve(jsonResponse(signature, 201));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -285,7 +317,28 @@ describe("case workspace", () => {
       "/api/v1/cases/case-1/custody/checkpoints/checkpoint-1/anchors",
       expect.objectContaining({ method: "POST" }),
     );
-  });
+
+    await user.upload(
+      screen.getByLabelText("Public certificate (PEM)"),
+      new File(["-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"], "signer.pem"),
+    );
+    await user.upload(
+      screen.getByLabelText("Detached signature"),
+      new File([new Uint8Array([1, 2, 3, 4])], "checkpoint.sig"),
+    );
+    await user.click(screen.getByRole("button", { name: "Verify signature" }));
+
+    expect(
+      await screen.findByText(`Signature verified - ${signature.signer_subject}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`Verification SHA-256 ${signature.verification_hash}`),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/cases/case-1/custody/checkpoints/checkpoint-1/signatures/verify",
+      expect.objectContaining({ method: "POST" }),
+    );
+  }, 10_000);
 });
 
 describe("audit review", () => {

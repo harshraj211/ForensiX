@@ -17,6 +17,8 @@ from forensix_api.schemas import (
     CustodyCheckpointAnchorCreateRequest,
     CustodyCheckpointAnchorResponse,
     CustodyCheckpointResponse,
+    CustodyCheckpointSignatureResponse,
+    CustodyCheckpointSignatureVerifyRequest,
     CustodyEventCreateRequest,
     CustodyEventResponse,
 )
@@ -160,6 +162,51 @@ def create_custody_checkpoint_anchor(
             checkpoint_sha256=request.checkpoint_sha256,
             receipt_sha256=request.receipt_sha256,
             notes=request.notes,
+        )
+    )
+
+
+@router.get(
+    "/api/v1/cases/{case_id}/custody/checkpoints/{checkpoint_id}/signatures",
+    response_model=list[CustodyCheckpointSignatureResponse],
+)
+def list_custody_checkpoint_signatures(
+    case_id: str,
+    checkpoint_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[CustodyCheckpointSignatureResponse]:
+    return [
+        CustodyCheckpointSignatureResponse.model_validate(item)
+        for item in CustodyCheckpointService().list_signatures(
+            database, authenticated.principal, case_id, checkpoint_id
+        )
+    ]
+
+
+@router.post(
+    "/api/v1/cases/{case_id}/custody/checkpoints/{checkpoint_id}/signatures/verify",
+    response_model=CustodyCheckpointSignatureResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def verify_custody_checkpoint_signature(
+    case_id: str,
+    checkpoint_id: str,
+    request: CustodyCheckpointSignatureVerifyRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> CustodyCheckpointSignatureResponse:
+    return CustodyCheckpointSignatureResponse.model_validate(
+        CustodyCheckpointService().verify_signature(
+            database,
+            authenticated.principal,
+            case_id,
+            checkpoint_id,
+            signature_algorithm=request.signature_algorithm,
+            certificate_pem=request.certificate_pem,
+            signature_base64=request.signature_base64,
+            signed_at=request.signed_at,
+            checkpoint_sha256=request.checkpoint_sha256,
         )
     )
 

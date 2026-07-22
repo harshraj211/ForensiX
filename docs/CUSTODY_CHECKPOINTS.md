@@ -51,3 +51,26 @@ digital signature, external timestamp, and other.
 This record does not contact, validate, or control the named external provider. It proves only what
 was recorded in ForensiX. Independent verification must compare the checkpoint and receipt with the
 agency-controlled external system.
+
+## Detached signature verification
+
+ForensiX can verify a detached signature over the sealed checkpoint using a supplied public X.509
+certificate. Supported algorithms are RSA PKCS#1 v1.5 with SHA-256, RSA-PSS with SHA-256, and
+ECDSA with SHA-256. The operator supplies a public certificate, detached signature, declared
+signing time, and the checkpoint SHA-256. Private keys must never be supplied.
+
+Before accepting the verification, ForensiX:
+
+1. Re-verifies the checkpoint file against its stored SHA-256.
+2. Requires the acknowledged checkpoint SHA-256 to match.
+3. Parses the bounded PEM X.509 certificate.
+4. Checks that the certificate was valid at the declared signing time.
+5. Enforces digital-signature key usage when that certificate extension is present.
+6. Verifies the signature using the selected algorithm and certificate public key.
+7. Stores an append-only receipt containing certificate, signature, checkpoint, and verification
+   fingerprints and appends an audit-chain event.
+
+This verifies the cryptographic relationship between the supplied certificate, signature, and
+checkpoint. It does not build or validate a certificate chain, query revocation services, prove the
+real-world identity of the certificate subject, or provide a trusted timestamp. Those controls must
+come from the agency PKI or an approved external validation process.

@@ -1747,6 +1747,57 @@ class CustodyCheckpointAnchorRecord(Base):
     )
 
 
+class CustodyCheckpointSignatureRecord(Base):
+    """Append-only verification of a detached signature over a sealed checkpoint."""
+
+    __tablename__ = "custody_checkpoint_signatures"
+    __table_args__ = (
+        CheckConstraint(
+            "signature_algorithm IN ('rsa_pkcs1v15_sha256', 'rsa_pss_sha256', "
+            "'ecdsa_sha256')",
+            name="ck_custody_checkpoint_signatures_algorithm",
+        ),
+        UniqueConstraint(
+            "verification_hash", name="uq_custody_checkpoint_signatures_verification_hash"
+        ),
+        Index(
+            "ix_custody_checkpoint_signatures_checkpoint_created",
+            "checkpoint_id",
+            "created_at",
+            "id",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    checkpoint_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("custody_checkpoints.id", ondelete="RESTRICT"), nullable=False
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    verified_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    signature_algorithm: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    signer_subject: Mapped[str] = mapped_column(String(2000), nullable=False)
+    signer_issuer: Mapped[str] = mapped_column(String(2000), nullable=False)
+    certificate_serial: Mapped[str] = mapped_column(String(128), nullable=False)
+    certificate_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    certificate_pem: Mapped[str] = mapped_column(Text, nullable=False)
+    signature_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    signature_base64: Mapped[str] = mapped_column(Text, nullable=False)
+    signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    certificate_not_before: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    certificate_not_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    checkpoint_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    verification_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
 class CustodyEventRecord(Base):
     """Append-only, per-case hash-chained custody history."""
 

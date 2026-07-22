@@ -2,10 +2,16 @@ import asyncio
 import io
 import json
 import sqlite3
+from base64 import b64encode
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import NoReturn
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding, rsa, utils
+from cryptography.x509.oid import NameOID
 from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import delete, inspect, select
@@ -1664,6 +1670,29 @@ def test_custody_history_is_chained_amended_and_audited(tmp_path: Path) -> None:
                 "checkpoint_sha256": "0" * 64,
             },
         )
+        signed_at = datetime(2026, 7, 22, 2, 0, tzinfo=UTC)
+        signing_key, certificate_pem = _checkpoint_signer(signed_at)
+        detached_signature = signing_key.sign(
+            bytes.fromhex(checkpoint.json()["sha256"]),
+            padding.PKCS1v15(),
+            utils.Prehashed(hashes.SHA256()),
+        )
+        signature = client.post(
+            f"/api/v1/cases/{case['id']}/custody/checkpoints/"
+            f"{checkpoint.json()['id']}/signatures/verify",
+            headers=headers,
+            json={
+                "signature_algorithm": "rsa_pkcs1v15_sha256",
+                "certificate_pem": certificate_pem,
+                "signature_base64": b64encode(detached_signature).decode("ascii"),
+                "signed_at": signed_at.isoformat(),
+                "checkpoint_sha256": checkpoint.json()["sha256"],
+            },
+        )
+        signatures = client.get(
+            f"/api/v1/cases/{case['id']}/custody/checkpoints/"
+            f"{checkpoint.json()['id']}/signatures"
+        )
         downloaded = client.get(
             f"/api/v1/cases/{case['id']}/custody/checkpoints/{checkpoint.json()['id']}/download"
         )
@@ -1694,6 +1723,11 @@ def test_custody_history_is_chained_amended_and_audited(tmp_path: Path) -> None:
     assert [item["id"] for item in anchors.json()] == [anchor.json()["id"]]
     assert bad_anchor.status_code == 409
     assert bad_anchor.json()["error"]["code"] == "CUSTODY_CHECKPOINT_INTEGRITY_FAILED"
+    assert signature.status_code == 201
+    assert signature.json()["signer_subject"] == "CN=ForensiX API Test Signer"
+    assert signature.json()["checkpoint_sha256"] == checkpoint.json()["sha256"]
+    assert len(signature.json()["verification_hash"]) == 64
+    assert [item["id"] for item in signatures.json()] == [signature.json()["id"]]
     assert downloaded.status_code == 200
     assert downloaded.headers["x-forensix-checkpoint-sha256"] == checkpoint.json()["sha256"]
     assert downloaded.headers["x-forensix-external-anchor"] == "not-anchored"
@@ -1703,6 +1737,36 @@ def test_custody_history_is_chained_amended_and_audited(tmp_path: Path) -> None:
     assert exported["audit_checkpoint"]["verified_before_export"] is True
     assert exported["anchor_status"] == "not_externally_anchored"
     assert "has not been externally timestamped or signed" in exported["limitations"][0]
+
+
+def _checkpoint_signer(signed_at: datetime) -> tuple[rsa.RSAPrivateKey, str]:
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "ForensiX API Test Signer")])
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(private_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(signed_at - timedelta(days=1))
+        .not_valid_after(signed_at + timedelta(days=30))
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True,
+                content_commitment=True,
+                key_encipherment=False,
+                data_encipherment=False,
+                key_agreement=False,
+                key_cert_sign=False,
+                crl_sign=False,
+                encipher_only=None,
+                decipher_only=None,
+            ),
+            critical=True,
+        )
+        .sign(private_key, hashes.SHA256())
+    )
+    return private_key, certificate.public_bytes(serialization.Encoding.PEM).decode("ascii")
 
 
 def test_custody_history_exposes_no_update_or_delete_operation(tmp_path: Path) -> None:

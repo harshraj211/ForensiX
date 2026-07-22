@@ -1,6 +1,6 @@
 # Phase 0 Implementation Status
 
-**Updated:** 20 July 2026
+**Updated:** 22 July 2026
 **Branch:** `agent/phase0-foundation`
 
 ## Completed slices
@@ -30,7 +30,7 @@
 | Validated source timestamps | fixed bounded `find -exec stat`, source size/original epoch/UTC preservation, medium-confidence modification event, size-conflict disclosure, inventory/artifact/report/UI propagation | command-policy/parser edge tests, reversible migration, manifest/provenance/timeline/API known-answer tests; physical-device matrix pending |
 | Evidence integrity re-verification | independent file/manifest re-hashing, append-only result history, mismatch/missing detection, preserved expected hashes, API and UI controls | known-answer, tampering, missing-object, API, and UI tests |
 | Custody and audit chains | automatic evidence/integrity custody events, manual transfers, amendments, per-case custody hashes, global audit hashes, verification APIs, case UI | service tampering tests, migration/API authorization, append-only route tests, UI checks |
-| Sealed custody checkpoints | verified custody/audit-head JSON export, stored package SHA-256, protected download verification, explicit not-externally-anchored status, append-only external-anchor receipts, case UI controls | service/API tamper and authorization tests plus frontend lint/type/test/build |
+| Sealed custody checkpoints | verified custody/audit-head JSON export, stored package SHA-256, protected download verification, append-only external-anchor receipts, RSA/ECDSA detached-signature verification receipts, case UI controls | service/API crypto/tamper/authorization tests plus frontend lint/type/test/build |
 | Experimental recovery readiness | metadata-only SQLite/WAL/rollback-journal candidate assessment on verified Evidence Twin working copies, sealed assessment records, no deleted-row claim | forensic service, migration, API, and UI tests |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
 | Expanded artifact capability matrix | explicit supported/blocked/elevated-access decisions for contacts, communications, browser, calendar, notification, wireless/location, and seven private messaging/social sources | deterministic assessor tests; UI renders every decision without promising unavailable data |
@@ -67,6 +67,7 @@
 - Sealed custody/audit checkpoint exports that verify both chains before creation and re-check package hashes before download.
 - Explicit `not_externally_anchored` checkpoint status until the exported JSON and SHA-256 are preserved by an external agency-controlled process.
 - Append-only anchor receipts bind a verified checkpoint SHA-256 to operator-recorded external provider/reference metadata and an optional receipt hash; they do not perform or independently verify the external action.
+- Detached RSA/ECDSA verification re-hashes the checkpoint, validates certificate time/key usage, and records certificate/signature fingerprints without accepting private keys; PKI chain trust, revocation, signer identity, and trusted timestamps remain external.
 - Reconstructable progress history with monotonic sequence numbers and persisted restart interruption events.
 - Explicit preview requests that re-hash the sealed source, run a fixed isolated worker, and persist an audited available/rejected/failed outcome without changing the artifact.
 - Only a sealed, independently hashed PNG derivative can reach the browser; original evidence, SVG, PDF, archives, Office documents, executables, audio, and video are never previewed.
@@ -76,7 +77,7 @@
 
 ## Not implemented yet
 
-- Automated external anchoring, digital-signature verification, and write-once evidence-vault integration
+- Automated external anchoring, PKI chain/revocation validation, and write-once evidence-vault integration
 - Bulk acquisition and physical-device validation of byte-zero restart behavior
 - Production installer signing, notarization, and forensic validation
 

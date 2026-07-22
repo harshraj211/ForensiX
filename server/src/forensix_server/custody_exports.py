@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+from base64 import b64decode
+from binascii import Error as Base64Error
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -12,6 +14,10 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from cryptography import x509
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa, utils
 from sqlalchemy import select
 
 from forensix_forensic.storage import EvidenceStore
@@ -23,11 +29,14 @@ from forensix_server.db import (
     AuditLogRecord,
     CustodyCheckpointAnchorRecord,
     CustodyCheckpointRecord,
+    CustodyCheckpointSignatureRecord,
     CustodyEventRecord,
     Database,
 )
 
 CHECKPOINT_SCHEMA_VERSION = "1.0.0"
+MAX_CERTIFICATE_PEM_BYTES = 16 * 1024
+MAX_SIGNATURE_BYTES = 4 * 1024
 
 
 class CustodyCheckpointError(CaseInvalidStateError):
@@ -282,6 +291,158 @@ class CustodyCheckpointService:
                 )
             )
 
+    def verify_signature(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        checkpoint_id: str,
+        *,
+        signature_algorithm: str,
+        certificate_pem: str,
+        signature_base64: str,
+        signed_at: datetime,
+        checkpoint_sha256: str,
+    ) -> CustodyCheckpointSignatureRecord:
+        self._require_export_permission(principal)
+        verified_at = datetime.now(UTC)
+        normalized_signed_at = _utc(signed_at)
+        certificate_bytes = certificate_pem.encode("utf-8")
+        if not certificate_bytes or len(certificate_bytes) > MAX_CERTIFICATE_PEM_BYTES:
+            raise CustodyCheckpointError("The signer certificate exceeds the 16 KiB limit.")
+        try:
+            signature = b64decode(signature_base64, validate=True)
+        except (Base64Error, ValueError) as error:
+            raise CustodyCheckpointError("The detached signature is not valid base64.") from error
+        if not signature or len(signature) > MAX_SIGNATURE_BYTES:
+            raise CustodyCheckpointError("The detached signature exceeds the 4 KiB limit.")
+        try:
+            certificate = x509.load_pem_x509_certificate(certificate_bytes)
+        except ValueError as error:
+            raise CustodyCheckpointError(
+                "The signer certificate is not valid PEM X.509."
+            ) from error
+        if not (
+            certificate.not_valid_before_utc <= normalized_signed_at
+            <= certificate.not_valid_after_utc
+        ):
+            raise CustodyCheckpointError(
+                "The signer certificate was not valid at the declared signing time."
+            )
+        try:
+            key_usage = certificate.extensions.get_extension_for_class(x509.KeyUsage).value
+        except x509.ExtensionNotFound:
+            key_usage = None
+        if key_usage is not None and not key_usage.digital_signature:
+            raise CustodyCheckpointError(
+                "The signer certificate does not permit digital signatures."
+            )
+
+        with database.session() as session:
+            CaseService().get(session, principal, case_id)
+            record = session.get(CustodyCheckpointRecord, checkpoint_id)
+            if record is None or record.case_id != case_id:
+                raise CustodyCheckpointNotFoundError(
+                    "The requested custody checkpoint does not exist in this case."
+                )
+            if checkpoint_sha256 != record.sha256:
+                raise CustodyCheckpointIntegrityError(
+                    "The signed checkpoint SHA-256 does not match the sealed checkpoint."
+                )
+            store = EvidenceStore(database.data_dir / "evidence")
+            if not store.verify(record.storage_key, record.sha256):
+                raise CustodyCheckpointIntegrityError(
+                    "The custody checkpoint no longer matches its recorded SHA-256."
+                )
+            _verify_detached_signature(
+                certificate,
+                signature,
+                bytes.fromhex(record.sha256),
+                signature_algorithm,
+            )
+            certificate_sha256 = certificate.fingerprint(hashes.SHA256()).hex()
+            signature_sha256 = sha256(signature).hexdigest()
+            canonical = {
+                "case_id": case_id,
+                "certificate_serial": format(certificate.serial_number, "x"),
+                "certificate_sha256": certificate_sha256,
+                "checkpoint_id": checkpoint_id,
+                "checkpoint_sha256": record.sha256,
+                "schema_version": "1.0.0",
+                "signature_algorithm": signature_algorithm,
+                "signature_sha256": signature_sha256,
+                "signed_at": _iso(normalized_signed_at),
+                "signer_issuer": certificate.issuer.rfc4514_string(),
+                "signer_subject": certificate.subject.rfc4514_string(),
+                "verified_at": _iso(verified_at),
+                "verified_by": principal.user_id,
+            }
+            verification = CustodyCheckpointSignatureRecord(
+                checkpoint_id=checkpoint_id,
+                case_id=case_id,
+                verified_by=principal.user_id,
+                signature_algorithm=signature_algorithm,
+                signer_subject=canonical["signer_subject"],
+                signer_issuer=canonical["signer_issuer"],
+                certificate_serial=canonical["certificate_serial"],
+                certificate_sha256=certificate_sha256,
+                certificate_pem=certificate_pem,
+                signature_sha256=signature_sha256,
+                signature_base64=signature_base64,
+                signed_at=normalized_signed_at,
+                certificate_not_before=certificate.not_valid_before_utc,
+                certificate_not_after=certificate.not_valid_after_utc,
+                checkpoint_sha256=record.sha256,
+                verification_hash=sha256(_canonical_bytes(canonical)).hexdigest(),
+                created_at=verified_at,
+            )
+            session.add(verification)
+            session.flush()
+            AuditService().append(
+                session,
+                case_id=case_id,
+                actor_id=principal.user_id,
+                event_type="custody_checkpoint.signature_verified",
+                object_type="custody_checkpoint",
+                object_id=checkpoint_id,
+                detail={
+                    "certificate_sha256": certificate_sha256,
+                    "checkpoint_sha256": record.sha256,
+                    "signature_algorithm": signature_algorithm,
+                    "signature_sha256": signature_sha256,
+                    "verification_hash": verification.verification_hash,
+                },
+                created_at=verified_at,
+            )
+            session.flush()
+            return verification
+
+    def list_signatures(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        checkpoint_id: str,
+    ) -> Sequence[CustodyCheckpointSignatureRecord]:
+        self._require_export_permission(principal)
+        with database.session() as session:
+            CaseService().get(session, principal, case_id)
+            record = session.get(CustodyCheckpointRecord, checkpoint_id)
+            if record is None or record.case_id != case_id:
+                raise CustodyCheckpointNotFoundError(
+                    "The requested custody checkpoint does not exist in this case."
+                )
+            return list(
+                session.scalars(
+                    select(CustodyCheckpointSignatureRecord)
+                    .where(CustodyCheckpointSignatureRecord.checkpoint_id == checkpoint_id)
+                    .order_by(
+                        CustodyCheckpointSignatureRecord.created_at.desc(),
+                        CustodyCheckpointSignatureRecord.id.desc(),
+                    )
+                )
+            )
+
     def content(
         self,
         database: Database,
@@ -369,5 +530,55 @@ def _canonical_bytes(value: object) -> bytes:
 
 
 def _iso(value: datetime) -> str:
-    current = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-    return current.isoformat()
+    return _utc(value).isoformat()
+
+
+def _utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _verify_detached_signature(
+    certificate: x509.Certificate,
+    signature: bytes,
+    checkpoint_digest: bytes,
+    signature_algorithm: str,
+) -> None:
+    public_key = certificate.public_key()
+    try:
+        if signature_algorithm == "rsa_pkcs1v15_sha256" and isinstance(
+            public_key, rsa.RSAPublicKey
+        ):
+            public_key.verify(
+                signature,
+                checkpoint_digest,
+                padding.PKCS1v15(),
+                utils.Prehashed(hashes.SHA256()),
+            )
+        elif signature_algorithm == "rsa_pss_sha256" and isinstance(
+            public_key, rsa.RSAPublicKey
+        ):
+            public_key.verify(
+                signature,
+                checkpoint_digest,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.DIGEST_LENGTH,
+                ),
+                utils.Prehashed(hashes.SHA256()),
+            )
+        elif signature_algorithm == "ecdsa_sha256" and isinstance(
+            public_key, ec.EllipticCurvePublicKey
+        ):
+            public_key.verify(
+                signature,
+                checkpoint_digest,
+                ec.ECDSA(utils.Prehashed(hashes.SHA256())),
+            )
+        else:
+            raise CustodyCheckpointError(
+                "The selected signature algorithm does not match the certificate public key."
+            )
+    except InvalidSignature as error:
+        raise CustodyCheckpointIntegrityError(
+            "The detached signature does not verify against the sealed checkpoint."
+        ) from error

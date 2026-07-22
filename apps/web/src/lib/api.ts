@@ -212,6 +212,28 @@ export interface CustodyCheckpointAnchor {
   created_at: string;
 }
 
+export interface CustodyCheckpointSignature {
+  id: string;
+  checkpoint_id: string;
+  case_id: string;
+  verified_by: string;
+  signature_algorithm:
+    | "rsa_pkcs1v15_sha256"
+    | "rsa_pss_sha256"
+    | "ecdsa_sha256";
+  signer_subject: string;
+  signer_issuer: string;
+  certificate_serial: string;
+  certificate_sha256: string;
+  signature_sha256: string;
+  signed_at: string;
+  certificate_not_before: string;
+  certificate_not_after: string;
+  checkpoint_sha256: string;
+  verification_hash: string;
+  created_at: string;
+}
+
 export interface ChainVerification {
   valid: boolean;
   record_count: number;
@@ -921,6 +943,32 @@ export function createCustodyCheckpointAnchor(
 ): Promise<CustodyCheckpointAnchor> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/custody/checkpoints/${encodeURIComponent(checkpointId)}/anchors`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export function listCustodyCheckpointSignatures(
+  caseId: string,
+  checkpointId: string,
+): Promise<CustodyCheckpointSignature[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/custody/checkpoints/${encodeURIComponent(checkpointId)}/signatures`,
+  );
+}
+
+export function verifyCustodyCheckpointSignature(
+  caseId: string,
+  checkpointId: string,
+  input: {
+    signature_algorithm: CustodyCheckpointSignature["signature_algorithm"];
+    certificate_pem: string;
+    signature_base64: string;
+    signed_at: string;
+    checkpoint_sha256: string;
+  },
+): Promise<CustodyCheckpointSignature> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/custody/checkpoints/${encodeURIComponent(checkpointId)}/signatures/verify`,
     { method: "POST", body: JSON.stringify(input) },
   );
 }
