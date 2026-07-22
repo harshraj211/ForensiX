@@ -1,7 +1,9 @@
 # Evidence Twin roadmap completion audit
 
-**Audited:** 22 July 2026  
-**Scope:** the implemented Evidence Twin roadmap on `agent/phase0-foundation`  
+**Audited:** 22 July 2026
+
+**Scope:** the implemented Evidence Twin roadmap on `agent/phase0-foundation`
+
 **Claim boundary:** software implementation and controlled known-answer verification; not a claim
 of universal Android access, physical-device matrix completion, hardware write blocking, deleted
 data recovery, or evidentiary admissibility.
