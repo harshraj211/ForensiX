@@ -34,6 +34,7 @@
 | Experimental recovery readiness | metadata-only SQLite/WAL/rollback-journal candidate assessment on verified Evidence Twin working copies, sealed assessment records, no deleted-row claim | forensic service, migration, API, and UI tests |
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
 | Expanded artifact capability matrix | explicit supported/blocked/elevated-access decisions for contacts, communications, browser, calendar, notification, wireless/location, and seven private messaging/social sources | deterministic assessor tests; UI renders every decision without promising unavailable data |
+| Evidence Twin known-answer validation | isolated sealed run covering source/chunk/manifest hashes, working-copy verification, SQLite inspection, contacts/SMS/MMS/calls, normalization/timeline, custody/audit, and report integrity | privacy-preserving sealed report, tamper-detection test, CLI execution, full regression suite |
 
 ## Supported development behavior
 

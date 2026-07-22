@@ -18,6 +18,26 @@ property coverage, package count, root capability, shared-storage readiness, and
 repeatability. Raw device serials, build fingerprints, package names, and inventory paths are not
 stored. Stable identifiers and paths are represented only by SHA-256 values.
 
+## Run the Evidence Twin known-answer workflow
+
+The Evidence Twin validation creates an isolated temporary case and a synthetic Android provider
+SQLite database. It exercises the actual source import, fixed-size chunk ledger, whole-source and
+manifest hashing, independent working copy, signature-based inspection, contacts/SMS/MMS/call-log
+parsers, normalized timeline, custody/audit chains, and preliminary report outputs.
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\run-evidence-twin-validation.py `
+  --output .\validation-results\evidence-twin-known-answer.json
+```
+
+The output is a versioned JSON report with its own canonical SHA-256. It records only hashes,
+counts, pass/fail decisions, environment metadata, and limitations. Synthetic names, phone numbers,
+and message bodies are deliberately excluded from the validation report.
+
+A passing result proves that this build reproduced the controlled software expectations on the
+recorded host. It does not validate real-device acquisition, encrypted databases, alternate Android
+schemas, every OEM/application version, certificate trust, or evidentiary admissibility.
+
 ## Run against a controlled physical device
 
 Use only a test device for which you have authority. Unlock it, authorize this workstation, stop

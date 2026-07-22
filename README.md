@@ -53,6 +53,7 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Append-only external-anchor receipts for checkpoint hashes, with provider/reference metadata, optional receipt SHA-256, canonical anchor hashing, protected APIs, and case UI; ForensiX records the receipt but does not perform the external anchoring
 - Detached RSA/ECDSA checkpoint-signature verification against supplied X.509 certificates, including certificate validity/key-usage checks, sealed-checkpoint re-hashing, immutable verification fingerprints, audit events, and case UI; certificate-chain trust and revocation validation remain external responsibilities
 - Deterministic mock ADB scenarios and safe API error envelopes
+- Sealed end-to-end Evidence Twin known-answer validation covering import/chunk/manifest hashes, verified working copies, SQLite detection, contacts/SMS/MMS/calls, normalized timeline, custody/audit chains, and report-output integrity without retaining fixture PII
 - Device-readiness UI with forensic limitations and operator guidance
 - Experimental, metadata-only SQLite/WAL/rollback-journal recovery-readiness assessment on verified Evidence Twin copies, with sealed results and no claim that candidate pages are deleted or recovered records
 - CI for frontend lint/type/test/build and backend Ruff/mypy/Pytest
