@@ -34,4 +34,20 @@ notarization process.
 3. Create a sealed checkpoint package.
 4. Download the JSON package.
 5. Preserve the JSON file and displayed SHA-256 hash through the agency-controlled process.
+6. Record the external provider, external reference, anchored time, and optional receipt SHA-256
+   in the checkpoint's **Anchor receipts** panel.
 
+## Anchor receipts
+
+An anchor receipt is an append-only ForensiX record describing an external preservation action.
+The operator must provide the exact checkpoint SHA-256. The backend re-verifies the sealed
+checkpoint file and rejects a mismatched hash before recording the receipt.
+
+Each receipt has a canonical `anchor_hash` covering its checkpoint, provider, reference, time,
+optional receipt hash, notes, actor, and creation time. Recording the receipt also appends a
+tamper-evident audit event. The supported classifications are case management, evidence vault,
+digital signature, external timestamp, and other.
+
+This record does not contact, validate, or control the named external provider. It proves only what
+was recorded in ForensiX. Independent verification must compare the checkpoint and receipt with the
+agency-controlled external system.

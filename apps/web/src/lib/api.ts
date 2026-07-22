@@ -191,6 +191,27 @@ export interface CustodyCheckpoint {
   created_at: string;
 }
 
+export interface CustodyCheckpointAnchor {
+  id: string;
+  checkpoint_id: string;
+  case_id: string;
+  recorded_by: string;
+  anchor_type:
+    | "external_timestamp"
+    | "digital_signature"
+    | "evidence_vault"
+    | "case_management"
+    | "other";
+  anchor_provider: string;
+  anchor_reference: string;
+  anchored_at: string;
+  checkpoint_sha256: string;
+  receipt_sha256: string | null;
+  notes: string | null;
+  anchor_hash: string;
+  created_at: string;
+}
+
 export interface ChainVerification {
   valid: boolean;
   record_count: number;
@@ -874,6 +895,34 @@ export function custodyCheckpointDownloadUrl(
   checkpointId: string,
 ): string {
   return `/api/v1/cases/${encodeURIComponent(caseId)}/custody/checkpoints/${encodeURIComponent(checkpointId)}/download`;
+}
+
+export function listCustodyCheckpointAnchors(
+  caseId: string,
+  checkpointId: string,
+): Promise<CustodyCheckpointAnchor[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/custody/checkpoints/${encodeURIComponent(checkpointId)}/anchors`,
+  );
+}
+
+export function createCustodyCheckpointAnchor(
+  caseId: string,
+  checkpointId: string,
+  input: {
+    anchor_type: CustodyCheckpointAnchor["anchor_type"];
+    anchor_provider: string;
+    anchor_reference: string;
+    anchored_at: string;
+    checkpoint_sha256: string;
+    receipt_sha256?: string | null;
+    notes?: string | null;
+  },
+): Promise<CustodyCheckpointAnchor> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/custody/checkpoints/${encodeURIComponent(checkpointId)}/anchors`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
 }
 
 export function listAuditLogs(): Promise<AuditLogEntry[]> {

@@ -163,9 +163,10 @@ describe("case workspace", () => {
     expect(screen.getByLabelText("Legal authority")).toBeInTheDocument();
   });
 
-  it("creates and exposes an explicitly unanchored custody checkpoint", async () => {
+  it("creates a custody checkpoint and records an external anchor receipt", async () => {
     const now = "2026-07-20T01:00:00Z";
     let created = false;
+    let recordedAnchor = false;
     const checkpoint = {
       id: "checkpoint-1",
       case_id: "case-1",
@@ -179,6 +180,21 @@ describe("case workspace", () => {
       sha256: "c".repeat(64),
       schema_version: "1.0.0",
       anchor_status: "not_externally_anchored",
+      created_at: now,
+    };
+    const anchor = {
+      id: "anchor-1",
+      checkpoint_id: checkpoint.id,
+      case_id: checkpoint.case_id,
+      recorded_by: "user-1",
+      anchor_type: "evidence_vault",
+      anchor_provider: "ForensiX Validation Vault",
+      anchor_reference: "VAULT-2026-001",
+      anchored_at: now,
+      checkpoint_sha256: checkpoint.sha256,
+      receipt_sha256: null,
+      notes: "Controlled validation receipt",
+      anchor_hash: "d".repeat(64),
       created_at: now,
     };
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -224,6 +240,16 @@ describe("case workspace", () => {
         }
         return Promise.resolve(jsonResponse(created ? [checkpoint] : []));
       }
+      if (
+        url ===
+        "/api/v1/cases/case-1/custody/checkpoints/checkpoint-1/anchors"
+      ) {
+        if (init?.method === "POST") {
+          recordedAnchor = true;
+          return Promise.resolve(jsonResponse(anchor, 201));
+        }
+        return Promise.resolve(jsonResponse(recordedAnchor ? [anchor] : []));
+      }
       throw new Error(`Unexpected request: ${url}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -241,6 +267,23 @@ describe("case workspace", () => {
     expect(screen.getByRole("link", { name: "Download JSON" })).toHaveAttribute(
       "href",
       "/api/v1/cases/case-1/custody/checkpoints/checkpoint-1/download",
+    );
+
+    await user.selectOptions(screen.getByLabelText("Anchor type"), "evidence_vault");
+    await user.type(screen.getByLabelText("Provider"), anchor.anchor_provider);
+    await user.type(screen.getByLabelText("Reference"), anchor.anchor_reference);
+    await user.type(screen.getByLabelText("Notes"), anchor.notes);
+    await user.click(screen.getByRole("button", { name: "Record external anchor" }));
+
+    expect(
+      await screen.findByText(
+        `${anchor.anchor_provider} - ${anchor.anchor_reference}`,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(`Anchor SHA-256 ${anchor.anchor_hash}`)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/cases/case-1/custody/checkpoints/checkpoint-1/anchors",
+      expect.objectContaining({ method: "POST" }),
     );
   });
 });

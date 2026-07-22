@@ -50,6 +50,7 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Append-only chain-of-custody history with automatic evidence registration/integrity events, manual transfers, correction-by-amendment, per-case SHA-256 chaining, and chain verification
 - Global tamper-evident audit chain for custody actions with canonical serialization, genesis hash, sequence/link verification, protected audit APIs, and no claim that local SQLite is tamper-proof
 - Sealed custody/audit checkpoint JSON exports that verify the current custody chain and audit chain, hash the package before download, and label the result as not externally anchored
+- Append-only external-anchor receipts for checkpoint hashes, with provider/reference metadata, optional receipt SHA-256, canonical anchor hashing, protected APIs, and case UI; ForensiX records the receipt but does not perform the external anchoring
 - Deterministic mock ADB scenarios and safe API error envelopes
 - Device-readiness UI with forensic limitations and operator guidance
 - Experimental, metadata-only SQLite/WAL/rollback-journal recovery-readiness assessment on verified Evidence Twin copies, with sealed results and no claim that candidate pages are deleted or recovered records
@@ -123,7 +124,9 @@ carve deleted rows or prove deletion. See [deleted-data research](docs/DELETED_D
 
 Supervisors and administrators can export sealed custody/audit checkpoint packages from a case
 after chain verification succeeds. The package hash must be preserved, signed, or published through
-an agency-controlled process before it becomes externally anchored. See
+an agency-controlled process before it becomes externally anchored. After that external action,
+the case screen can record its provider, reference, time, and optional receipt SHA-256 as an
+append-only anchor receipt. See
 [custody checkpoints](docs/CUSTODY_CHECKPOINTS.md).
 
 Unsigned portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, and GitHub build

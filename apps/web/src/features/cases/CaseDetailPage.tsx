@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, Link2, LoaderCircle, Plus, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, Link2, LoaderCircle, Plus, ShieldCheck, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
   createCustodyCheckpoint,
+  createCustodyCheckpointAnchor,
   custodyCheckpointDownloadUrl,
   getCase,
   getCurrentUser,
+  listCustodyCheckpointAnchors,
   listCustodyCheckpoints,
   listCustodyEvents,
   listCaseDevices,
@@ -14,6 +17,8 @@ import {
   verifyCustodyChain,
   type CaseDevice,
   type CaseStatus,
+  type CustodyCheckpoint,
+  type CustodyCheckpointAnchor,
 } from "../../lib/api";
 import { authKeys } from "../auth/authKeys";
 import { CaseError, StatusBadge } from "./CasesPage";
@@ -299,6 +304,7 @@ export function CaseDetailPage() {
                         <ArrowDownToLine size={14} aria-hidden="true" /> Download JSON
                       </a>
                     </div>
+                    <CheckpointAnchorPanel caseId={caseId} checkpoint={checkpoint} />
                   </div>
                 ))}
               </div>
@@ -392,6 +398,184 @@ function Detail({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-600">{label}</dt>
       <dd className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-300">{value}</dd>
+    </div>
+  );
+}
+
+function CheckpointAnchorPanel({
+  caseId,
+  checkpoint,
+}: {
+  caseId: string;
+  checkpoint: CustodyCheckpoint;
+}) {
+  const queryClient = useQueryClient();
+  const [anchorType, setAnchorType] =
+    useState<CustodyCheckpointAnchor["anchor_type"]>("case_management");
+  const [provider, setProvider] = useState("");
+  const [reference, setReference] = useState("");
+  const [anchoredAt, setAnchoredAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [receiptSha256, setReceiptSha256] = useState("");
+  const [notes, setNotes] = useState("");
+  const anchorsQuery = useQuery({
+    queryKey: caseKeys.custodyCheckpointAnchors(caseId, checkpoint.id),
+    queryFn: () => listCustodyCheckpointAnchors(caseId, checkpoint.id),
+  });
+  const createAnchor = useMutation({
+    mutationFn: () =>
+      createCustodyCheckpointAnchor(caseId, checkpoint.id, {
+        anchor_type: anchorType,
+        anchor_provider: provider,
+        anchor_reference: reference,
+        anchored_at: new Date(anchoredAt).toISOString(),
+        checkpoint_sha256: checkpoint.sha256,
+        receipt_sha256: receiptSha256.trim() || null,
+        notes: notes.trim() || null,
+      }),
+    onSuccess: () => {
+      setProvider("");
+      setReference("");
+      setReceiptSha256("");
+      setNotes("");
+      void queryClient.invalidateQueries({
+        queryKey: caseKeys.custodyCheckpointAnchors(caseId, checkpoint.id),
+      });
+    },
+  });
+  const canSubmit =
+    provider.trim().length > 0 &&
+    reference.trim().length > 0 &&
+    anchoredAt.length > 0 &&
+    (receiptSha256.trim().length === 0 || /^[a-fA-F0-9]{64}$/.test(receiptSha256.trim()));
+
+  return (
+    <div className="mt-3 border-t border-white/8 pt-3">
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-cyan-100">
+        <FileCheck2 size={14} aria-hidden="true" /> Anchor receipts
+      </div>
+      <p className="mt-1 text-[11px] leading-5 text-slate-500">
+        Record where this checkpoint hash was preserved outside ForensiX.
+      </p>
+      <form
+        className="mt-3 grid gap-2 sm:grid-cols-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit) createAnchor.mutate();
+        }}
+      >
+        <label className="text-[11px] text-slate-400">
+          Anchor type
+          <select
+            value={anchorType}
+            onChange={(event) => {
+              setAnchorType(
+                event.currentTarget.value as CustodyCheckpointAnchor["anchor_type"],
+              );
+            }}
+            className="mt-1 min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-xs text-white"
+          >
+            <option value="case_management">Case management</option>
+            <option value="evidence_vault">Evidence vault</option>
+            <option value="digital_signature">Digital signature</option>
+            <option value="external_timestamp">External timestamp</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label className="text-[11px] text-slate-400">
+          Provider
+          <input
+            value={provider}
+            onChange={(event) => {
+              setProvider(event.currentTarget.value);
+            }}
+            maxLength={255}
+            className="mt-1 min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-xs text-white"
+          />
+        </label>
+        <label className="text-[11px] text-slate-400">
+          Reference
+          <input
+            value={reference}
+            onChange={(event) => {
+              setReference(event.currentTarget.value);
+            }}
+            maxLength={512}
+            className="mt-1 min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-xs text-white"
+          />
+        </label>
+        <label className="text-[11px] text-slate-400">
+          Anchored at
+          <input
+            type="datetime-local"
+            value={anchoredAt}
+            onChange={(event) => {
+              setAnchoredAt(event.currentTarget.value);
+            }}
+            className="mt-1 min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-3 text-xs text-white"
+          />
+        </label>
+        <label className="text-[11px] text-slate-400 sm:col-span-2">
+          Receipt SHA-256
+          <input
+            value={receiptSha256}
+            onChange={(event) => {
+              setReceiptSha256(event.currentTarget.value);
+            }}
+            maxLength={64}
+            placeholder="Optional receipt hash"
+            className="mt-1 min-h-9 w-full rounded-lg border border-white/10 bg-slate-950 px-3 font-mono text-xs text-white"
+          />
+        </label>
+        <label className="text-[11px] text-slate-400 sm:col-span-2">
+          Notes
+          <textarea
+            value={notes}
+            onChange={(event) => {
+              setNotes(event.currentTarget.value);
+            }}
+            maxLength={2000}
+            rows={2}
+            className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white"
+          />
+        </label>
+        <div className="sm:col-span-2">
+          <button
+            type="submit"
+            disabled={!canSubmit || createAnchor.isPending}
+            className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-cyan-200/20 px-3 text-xs font-semibold text-cyan-100 disabled:opacity-40"
+          >
+            {createAnchor.isPending ? (
+              <LoaderCircle className="animate-spin" size={14} aria-hidden="true" />
+            ) : (
+              <FileCheck2 size={14} aria-hidden="true" />
+            )}
+            Record external anchor
+          </button>
+        </div>
+      </form>
+      {createAnchor.isError && (
+        <div className="mt-3"><CaseError error={createAnchor.error} /></div>
+      )}
+      {anchorsQuery.isError && (
+        <div className="mt-3"><CaseError error={anchorsQuery.error} /></div>
+      )}
+      {anchorsQuery.data && anchorsQuery.data.length > 0 && (
+        <ol className="mt-3 space-y-2">
+          {anchorsQuery.data.map((anchor) => (
+            <li key={anchor.id} className="rounded-lg border border-emerald-200/10 bg-emerald-200/[0.025] p-3">
+              <p className="text-xs font-semibold text-emerald-100">
+                {anchor.anchor_provider} - {anchor.anchor_reference}
+              </p>
+              <p className="mt-1 text-[10px] uppercase tracking-wide text-emerald-200/70">
+                {anchor.anchor_type.replaceAll("_", " ")} - {new Date(anchor.anchored_at).toLocaleString()}
+              </p>
+              <p className="mt-1 truncate font-mono text-[10px] text-slate-600" title={anchor.anchor_hash}>
+                Anchor SHA-256 {anchor.anchor_hash}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
     </div>
   );
 }
