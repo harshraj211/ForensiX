@@ -5,10 +5,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from forensix_api.dependencies import (
     get_adb_client,
+    get_authenticated_session,
     get_database,
     get_settings,
     require_device_operator,
@@ -25,6 +26,8 @@ from forensix_api.schemas import (
     ProviderCollectionResponse,
     ScrcpyLaunchRequest,
     ScrcpyLaunchResponse,
+    WebsiteLivePreviewRequest,
+    WebsiteLivePreviewResponse,
 )
 from forensix_forensic.adb import (
     AdbClient,
@@ -32,9 +35,9 @@ from forensix_forensic.adb import (
     ContentProviderProfile,
 )
 from forensix_forensic.capabilities import DeviceCapabilityAssessor
-from forensix_server.auth import AuthenticatedSession
+from forensix_server.auth import AuthenticatedSession, Permission
 from forensix_server.case_devices import CaseDeviceService
-from forensix_server.cases import CaseInvalidStateError
+from forensix_server.cases import CaseAccessDeniedError, CaseInvalidStateError
 from forensix_server.config import Settings
 from forensix_server.db import (
     CaseEventRecord,
@@ -278,6 +281,109 @@ async def capture_device_screenshot(
 
 
 @router.post(
+    "/live-screen/preview/start",
+    response_model=WebsiteLivePreviewResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def start_website_live_preview(
+    request: WebsiteLivePreviewRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+    database: Annotated[Database, Depends(get_database)],
+) -> WebsiteLivePreviewResponse:
+    _validate_case_device_serial(
+        database,
+        authenticated,
+        request.case_id,
+        request.case_device_id,
+        request.serial,
+    )
+    with database.session() as session:
+        session.add(
+            CaseEventRecord(
+                case_id=request.case_id,
+                actor_id=authenticated.principal.user_id,
+                event_type="website_live_preview_started",
+                safe_detail=f"device_id={request.case_device_id};transport=adb_screencap_polling",
+            )
+        )
+    return WebsiteLivePreviewResponse(
+        case_id=request.case_id,
+        case_device_id=request.case_device_id,
+        status="started",
+        limitation=(
+            "Website preview frames are temporary and are not evidence until the operator "
+            "explicitly seals a screenshot."
+        ),
+    )
+
+
+@router.post(
+    "/live-screen/preview/stop",
+    response_model=WebsiteLivePreviewResponse,
+)
+def stop_website_live_preview(
+    request: WebsiteLivePreviewRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+    database: Annotated[Database, Depends(get_database)],
+) -> WebsiteLivePreviewResponse:
+    _validate_case_device_serial(
+        database,
+        authenticated,
+        request.case_id,
+        request.case_device_id,
+        request.serial,
+    )
+    with database.session() as session:
+        session.add(
+            CaseEventRecord(
+                case_id=request.case_id,
+                actor_id=authenticated.principal.user_id,
+                event_type="website_live_preview_stopped",
+                safe_detail=f"device_id={request.case_device_id};transport=adb_screencap_polling",
+            )
+        )
+    return WebsiteLivePreviewResponse(
+        case_id=request.case_id,
+        case_device_id=request.case_device_id,
+        status="stopped",
+        limitation="No preview process remains active on the ForensiX server.",
+    )
+
+
+@router.get("/live-screen/preview/frame", response_class=Response)
+async def get_website_live_preview_frame(
+    case_id: Annotated[str, Query(min_length=36, max_length=36)],
+    case_device_id: Annotated[str, Query(min_length=36, max_length=36)],
+    serial: Annotated[str, Query(min_length=1, max_length=255)],
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+    database: Annotated[Database, Depends(get_database)],
+) -> Response:
+    if not authenticated.principal.can(Permission.DEVICES_OPERATE):
+        raise CaseAccessDeniedError("The current user cannot operate Android devices.")
+    _validate_case_device_serial(
+        database, authenticated, case_id, case_device_id, serial
+    )
+    temp_root = database.data_dir / "tmp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix="live-frame-", dir=temp_root) as temporary:
+        frame_path = Path(temporary) / "frame.png"
+        await adb_client.capture_screenshot(serial, frame_path)
+        frame = frame_path.read_bytes()
+    return Response(
+        content=frame,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-store, private",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "X-Content-Type-Options": "nosniff",
+            "X-ForensiX-Ephemeral-Preview": "true",
+        },
+    )
+
+
+@router.post(
     "/live-screen/launch",
     response_model=ScrcpyLaunchResponse,
     status_code=status.HTTP_201_CREATED,
@@ -324,3 +430,23 @@ async def launch_live_screen(
             )
         )
     return ScrcpyLaunchResponse.model_validate(result, from_attributes=True)
+
+
+def _validate_case_device_serial(
+    database: Database,
+    authenticated: AuthenticatedSession,
+    case_id: str,
+    case_device_id: str,
+    serial: str,
+) -> None:
+    with database.session() as session:
+        device = CaseDeviceService().get_device(
+            session, authenticated.principal, case_id, case_device_id
+        )
+        CaseDeviceService().ensure_operable(
+            session, authenticated.principal, case_id
+        )
+        if sha256(serial.encode("utf-8")).hexdigest() != device.serial_hash:
+            raise CaseInvalidStateError(
+                "The connected Android serial does not match the case-linked device."
+            )

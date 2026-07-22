@@ -732,6 +732,61 @@ def test_case_bound_screenshot_is_sealed_as_logical_evidence(tmp_path: Path) -> 
     assert download.headers["content-disposition"].startswith("attachment;")
 
 
+def test_case_bound_website_live_preview_streams_ephemeral_png_frames(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Website preview case"}
+        ).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+        payload = {
+            "case_id": case["id"],
+            "case_device_id": assessment["case_device_id"],
+            "serial": "FX-DEMO-001",
+            "limitations_acknowledged": True,
+        }
+        started = client.post(
+            "/api/v1/devices/live-screen/preview/start", headers=headers, json=payload
+        )
+        frame = client.get(
+            "/api/v1/devices/live-screen/preview/frame",
+            params={
+                "case_id": case["id"],
+                "case_device_id": assessment["case_device_id"],
+                "serial": "FX-DEMO-001",
+            },
+        )
+        stopped = client.post(
+            "/api/v1/devices/live-screen/preview/stop", headers=headers, json=payload
+        )
+
+    assert started.status_code == 201
+    assert started.json()["status"] == "started"
+    assert frame.status_code == 200
+    assert frame.headers["content-type"] == "image/png"
+    assert frame.headers["cache-control"] == "no-store, private"
+    assert frame.headers["x-forensix-ephemeral-preview"] == "true"
+    assert frame.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert stopped.status_code == 200
+    assert stopped.json()["status"] == "stopped"
+    with app.state.database.session() as session:
+        event_types = [
+            event.event_type
+            for event in session.scalars(
+                select(CaseEventRecord).where(CaseEventRecord.case_id == case["id"])
+            )
+        ]
+    assert "website_live_preview_started" in event_types
+    assert "website_live_preview_stopped" in event_types
+
+
 def test_scrcpy_diagnostic_reports_missing_configuration(tmp_path: Path) -> None:
     with TestClient(create_app(_settings(tmp_path), adb_client=MockAdbClient())) as client:
         _authorize(client)

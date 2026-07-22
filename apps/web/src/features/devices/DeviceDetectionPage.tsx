@@ -22,6 +22,7 @@ import { Link, useParams } from "react-router-dom";
 import { useState } from "react";
 
 import { caseKeys } from "../cases/caseKeys";
+import { useLiveScreenPreview } from "./liveScreenContext";
 import {
   ApiError,
   assessDevice,
@@ -489,6 +490,7 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
   const [nonResumableAcknowledged, setNonResumableAcknowledged] = useState(false);
   const [providerAcknowledged, setProviderAcknowledged] = useState(false);
   const [screenAcknowledged, setScreenAcknowledged] = useState(false);
+  const websitePreview = useLiveScreenPreview();
   const scrcpyDiagnostic = useQuery({
     queryKey: ["integrations", "scrcpy"],
     queryFn: getScrcpyDiagnostic,
@@ -517,6 +519,19 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
         assessment.serial,
         mode,
       );
+    },
+  });
+  const websiteLiveScreen = useMutation({
+    mutationFn: async () => {
+      if (!assessment.case_id || !assessment.case_device_id) {
+        throw new Error("A case-linked assessment is required for live screen access.");
+      }
+      await websitePreview.start({
+        caseId: assessment.case_id,
+        deviceId: assessment.case_device_id,
+        serial: assessment.serial,
+        label: `${assessment.manufacturer ?? "Android"} ${assessment.model ?? "device"}`,
+      });
     },
   });
   const providerCollection = useMutation({
@@ -744,10 +759,21 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
               }}
               className="mt-1"
             />
-            I understand scrcpy starts a temporary device component; control-mode taps and typing
-            change device state and are recorded as investigator actions.
+            I understand continuous website preview repeatedly requests temporary screen frames;
+            scrcpy control-mode taps and typing change device state. These actions are recorded.
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!screenAcknowledged || websiteLiveScreen.isPending}
+              onClick={() => {
+                websiteLiveScreen.mutate();
+              }}
+              className="inline-flex items-center gap-2 rounded-lg bg-violet-300 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-violet-200 disabled:opacity-35"
+            >
+              <MonitorUp size={14} />
+              {websiteLiveScreen.isPending ? "Starting previewâ€¦" : "Show screen in website"}
+            </button>
             <button
               type="button"
               disabled={screenshot.isPending}
@@ -796,12 +822,14 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
               {screenshot.data.id.slice(0, 8)}
             </p>
           )}
-          {(screenshot.error || liveScreen.error) && (
+          {(screenshot.error || liveScreen.error || websiteLiveScreen.error) && (
             <p className="mt-3 text-xs text-rose-300">
               {screenshot.error instanceof ApiError
                 ? screenshot.error.message
                 : liveScreen.error instanceof ApiError
                   ? liveScreen.error.message
+                  : websiteLiveScreen.error instanceof ApiError
+                    ? websiteLiveScreen.error.message
                   : "The screen operation could not be completed."}
             </p>
           )}

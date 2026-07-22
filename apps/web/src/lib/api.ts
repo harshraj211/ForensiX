@@ -129,6 +129,13 @@ export interface ScrcpyLaunch {
   side_effects: string[];
 }
 
+export interface WebsiteLivePreviewResult {
+  case_id: string;
+  case_device_id: string;
+  status: "started" | "stopped";
+  limitation: string;
+}
+
 export interface PhysicalBlockProbe {
   id: string;
   case_id: string;
@@ -1097,6 +1104,72 @@ export function launchLiveScreen(
       serial,
       mode,
       interaction_acknowledged: true,
+    }),
+  });
+}
+
+export function startWebsiteLivePreview(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+): Promise<WebsiteLivePreviewResult> {
+  return websiteLivePreviewTransition("start", caseId, deviceId, serial);
+}
+
+export function stopWebsiteLivePreview(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+): Promise<WebsiteLivePreviewResult> {
+  return websiteLivePreviewTransition("stop", caseId, deviceId, serial);
+}
+
+export async function fetchWebsiteLivePreviewFrame(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const parameters = new URLSearchParams({
+    case_id: caseId,
+    case_device_id: deviceId,
+    serial,
+  });
+  const response = await fetch(`/api/v1/devices/live-screen/preview/frame?${parameters}`, {
+    credentials: "same-origin",
+    headers: { Accept: "image/png" },
+    signal,
+  });
+  if (!response.ok) {
+    let envelope: ErrorEnvelope = {};
+    try {
+      envelope = (await response.json()) as ErrorEnvelope;
+    } catch {
+      // A non-JSON transport failure is represented by the fallback below.
+    }
+    throw new ApiError(
+      envelope.error?.message ?? "The live phone preview frame could not be retrieved.",
+      envelope.error?.code ?? "LIVE_PREVIEW_FRAME_FAILED",
+      envelope.error?.request_id ?? response.headers.get("X-Request-ID") ?? "unknown",
+      response.status,
+    );
+  }
+  return response.blob();
+}
+
+function websiteLivePreviewTransition(
+  action: "start" | "stop",
+  caseId: string,
+  deviceId: string,
+  serial: string,
+): Promise<WebsiteLivePreviewResult> {
+  return apiRequest(`/api/v1/devices/live-screen/preview/${action}`, {
+    method: "POST",
+    body: JSON.stringify({
+      case_id: caseId,
+      case_device_id: deviceId,
+      serial,
+      limitations_acknowledged: true,
     }),
   });
 }

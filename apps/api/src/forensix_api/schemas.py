@@ -126,6 +126,20 @@ class ScrcpyLaunchResponse(BaseModel):
     side_effects: list[str]
 
 
+class WebsiteLivePreviewRequest(BaseModel):
+    case_id: str = Field(min_length=36, max_length=36)
+    case_device_id: str = Field(min_length=36, max_length=36)
+    serial: str = Field(min_length=1, max_length=255)
+    limitations_acknowledged: Literal[True]
+
+
+class WebsiteLivePreviewResponse(BaseModel):
+    case_id: str
+    case_device_id: str
+    status: Literal["started", "stopped"]
+    limitation: str
+
+
 class RootAccessProbeRequest(BaseModel):
     serial: str = Field(min_length=1, max_length=255)
     side_effects_acknowledged: Literal[True]

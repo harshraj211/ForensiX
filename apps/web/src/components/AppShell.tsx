@@ -3,6 +3,7 @@ import { Activity, BookOpenText, Boxes, FileClock, LogOut, ShieldCheck } from "l
 import { NavLink, Outlet } from "react-router-dom";
 
 import { authKeys } from "../features/auth/authKeys";
+import { LiveScreenPreviewProvider } from "../features/devices/LiveScreenPreview";
 import { getCurrentUser, logout } from "../lib/api";
 
 const navigation = [
@@ -23,7 +24,8 @@ export function AppShell() {
     },
   });
   return (
-    <div className="min-h-screen bg-[#071016] text-slate-100">
+    <LiveScreenPreviewProvider>
+      <div className="min-h-screen bg-[#071016] text-slate-100">
       <a
         href="#main-content"
         className="sr-only z-50 rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
@@ -103,6 +105,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
-    </div>
+      </div>
+    </LiveScreenPreviewProvider>
   );
 }
