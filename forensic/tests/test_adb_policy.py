@@ -119,7 +119,7 @@ def test_provider_probe_policy_is_content_free_and_profile_bounded() -> None:
         "content",
         "query",
         "--uri",
-        "content://com.android.contacts/contacts",
+        "content://com.android.contacts/data/phones",
         "--projection",
         "_id",
         "--where",

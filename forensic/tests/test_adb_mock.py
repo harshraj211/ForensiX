@@ -69,6 +69,7 @@ async def test_mock_provider_records_require_accessible_scenario() -> None:
     )
 
     assert result.records[0].values["display_name"] == "Controlled Contact"
+    assert result.records[0].values["data1"] == "+15550100"
     with pytest.raises(AdbCommandError):
         await MockAdbClient().query_content_provider(
             "FX-DEMO-001", ContentProviderProfile.CONTACTS

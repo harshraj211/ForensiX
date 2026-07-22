@@ -149,9 +149,11 @@ class MockAdbClient:
             ContentProviderProfile.CONTACTS: (
                 {
                     "_id": "1",
-                    "has_phone_number": "1",
-                    "last_time_contacted": "1784160000000",
+                    "contact_id": "1",
                     "display_name": "Controlled Contact",
+                    "data1": "+15550100",
+                    "data2": "2",
+                    "data4": "+15550100",
                 },
             ),
             ContentProviderProfile.SMS: (

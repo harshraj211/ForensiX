@@ -81,7 +81,7 @@ _PHYSICAL_BLOCK_PATHS: dict[PhysicalBlockProfile, str] = {
 }
 
 _CONTENT_PROVIDER_URIS: dict[ContentProviderProfile, str] = {
-    ContentProviderProfile.CONTACTS: "content://com.android.contacts/contacts",
+    ContentProviderProfile.CONTACTS: "content://com.android.contacts/data/phones",
     ContentProviderProfile.SMS: "content://sms",
     ContentProviderProfile.CALL_LOG: "content://call_log/calls",
 }
@@ -89,9 +89,11 @@ _CONTENT_PROVIDER_URIS: dict[ContentProviderProfile, str] = {
 _CONTENT_PROVIDER_PROJECTIONS: dict[ContentProviderProfile, tuple[str, ...]] = {
     ContentProviderProfile.CONTACTS: (
         "_id",
-        "has_phone_number",
-        "last_time_contacted",
+        "contact_id",
         "display_name",
+        "data1",
+        "data2",
+        "data4",
     ),
     ContentProviderProfile.SMS: (
         "_id",
