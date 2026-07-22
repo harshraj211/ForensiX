@@ -1,8 +1,17 @@
+import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
-from forensix_forensic.adb import MockAdbClient, MockAdbScenario
+from forensix_forensic.adb import (
+    KNOWN_FILE_RELATIVE_PATH,
+    KNOWN_FILE_SHA256,
+    MockAdbClient,
+    MockAdbScenario,
+    PulledFileResult,
+    SharedStorageRoot,
+)
 from forensix_forensic.validation import (
     SealedValidationReport,
     ValidationOutcome,
@@ -50,3 +59,64 @@ async def test_modified_validation_report_fails_integrity_verification() -> None
     modified = SealedValidationReport.model_validate(payload)
 
     assert not verify_validation_report(modified)
+
+
+@pytest.mark.asyncio
+async def test_fixed_known_file_is_acquired_twice_and_hash_verified() -> None:
+    sealed = await run_adb_validation(
+        MockAdbClient(include_validation_fixture=True),
+        mode="mock",
+        validate_known_file=True,
+    )
+
+    assert sealed.report.outcome is ValidationOutcome.PASSED
+    check = next(item for item in sealed.report.checks if item.check_id == "known_file_acquisition")
+    assert check.observed["acquisition_count"] == 2
+    assert check.observed["expected_sha256"] == KNOWN_FILE_SHA256
+    assert check.observed["known_answer_matches"] is True
+    assert check.observed["repeatable"] is True
+    assert KNOWN_FILE_RELATIVE_PATH not in sealed.model_dump_json()
+    assert verify_validation_report(sealed)
+
+
+@pytest.mark.asyncio
+async def test_requested_known_file_validation_is_incomplete_when_fixture_is_absent() -> None:
+    sealed = await run_adb_validation(
+        MockAdbClient(),
+        mode="mock",
+        validate_known_file=True,
+    )
+
+    assert sealed.report.outcome is ValidationOutcome.INCOMPLETE
+    check = next(item for item in sealed.report.checks if item.check_id == "known_file_acquisition")
+    assert check.status.value == "skipped"
+
+
+class CorruptingKnownFileClient(MockAdbClient):
+    def __init__(self) -> None:
+        super().__init__(include_validation_fixture=True)
+
+    async def pull_inventory_file(
+        self,
+        serial: str,
+        root: SharedStorageRoot,
+        relative_path: str,
+        destination: Path,
+    ) -> PulledFileResult:
+        result = await super().pull_inventory_file(serial, root, relative_path, destination)
+        await asyncio.to_thread(destination.write_bytes, b"tampered fixture")
+        return result.model_copy(update={"size_bytes": len(b"tampered fixture")})
+
+
+@pytest.mark.asyncio
+async def test_known_file_hash_mismatch_fails_sealed_validation() -> None:
+    sealed = await run_adb_validation(
+        CorruptingKnownFileClient(),
+        mode="mock",
+        validate_known_file=True,
+    )
+
+    assert sealed.report.outcome is ValidationOutcome.FAILED
+    check = next(item for item in sealed.report.checks if item.check_id == "known_file_acquisition")
+    assert check.observed["known_answer_matches"] is False
+    assert verify_validation_report(sealed)

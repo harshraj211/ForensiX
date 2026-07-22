@@ -43,6 +43,14 @@ from .policy import (
     SharedStorageRoot,
 )
 from .runner import AdbCommandResult, SubprocessAdbRunner
+from .validation_fixture import (
+    KNOWN_FILE_FIXTURE_ID,
+    KNOWN_FILE_RELATIVE_PATH,
+    KNOWN_FILE_SHA256,
+    KNOWN_FILE_SIZE_BYTES,
+    known_file_payload,
+    write_known_file_fixture,
+)
 
 __all__ = [
     "AdbBinaryNotFoundError",
@@ -57,6 +65,10 @@ __all__ = [
     "AdbError",
     "INVENTORY_MAX_DEPTH",
     "INVENTORY_MAX_ITEMS",
+    "KNOWN_FILE_FIXTURE_ID",
+    "KNOWN_FILE_RELATIVE_PATH",
+    "KNOWN_FILE_SHA256",
+    "KNOWN_FILE_SIZE_BYTES",
     "MAX_ACQUIRED_FILE_BYTES",
     "MAX_PHYSICAL_BLOCK_BYTES",
     "MAX_ROOTED_BUNDLE_BYTES",
@@ -86,4 +98,6 @@ __all__ = [
     "SubprocessAdbRunner",
     "SystemAdbClient",
     "diagnose_adb",
+    "known_file_payload",
+    "write_known_file_fixture",
 ]

@@ -40,20 +40,36 @@ schemas, every OEM/application version, certificate trust, or evidentiary admiss
 
 ## Run against a controlled physical device
 
-Use only a test device for which you have authority. Unlock it, authorize this workstation, stop
-applications that may modify shared storage, and run:
+Use only a test device for which you have authority—never place the fixture on evidentiary media.
+First create the deterministic fixture locally:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\create-validation-fixture.py `
+  --output "$env:TEMP\ForensiX-validation-v1.bin"
+```
+
+Manually copy that unchanged file to the controlled phone as
+`Download/ForensiX-validation-v1.bin`. Unlock and authorize the test phone, stop applications that
+may modify shared storage, then run:
 
 ```powershell
 .\.venv\Scripts\python.exe .\scripts\run-forensic-validation.py `
   --mode system `
   --adb-path "C:\Android\platform-tools\adb.exe" `
   --serial "SERIAL_FROM_ADB_DEVICES" `
+  --validate-known-file `
   --output .\validation-results\windows-android-device.json
 ```
 
-This command runs registered metadata operations only. It does not pull file contents. A different
-inventory digest is a warning because device activity can legitimately change paths between the two
-observations. The ADB executable itself is hashed in system mode.
+The validator can pull only that compiled-in relative path; neither the CLI nor the report accepts
+an arbitrary remote path. It acquires the fixture twice into isolated temporary workstation files,
+checks the inventory size, local sizes, fixed SHA-256, and repeatability, and removes the temporary
+copies when the check ends. A missing fixture makes the validation incomplete and a size/hash
+mismatch fails it. A different inventory digest remains a warning because device activity can
+legitimately change paths between observations. The ADB executable itself is hashed in system mode.
+
+Omit `--validate-known-file` when collecting metadata-only diagnostics. Such a run does not prove
+file acquisition behavior and cannot satisfy the physical acquisition release gate.
 
 ## Validation matrix and release gate
 

@@ -1,3 +1,4 @@
+import hashlib
 import tarfile
 from pathlib import Path
 
@@ -10,6 +11,12 @@ from forensix_forensic.adb.policy import (
     PhysicalBlockProfile,
     RootedCollectionProfile,
     SharedStorageRoot,
+)
+from forensix_forensic.adb.validation_fixture import (
+    KNOWN_FILE_RELATIVE_PATH,
+    KNOWN_FILE_SHA256,
+    KNOWN_FILE_SIZE_BYTES,
+    write_known_file_fixture,
 )
 
 
@@ -132,3 +139,15 @@ async def test_mock_pull_produces_known_answer_bytes(tmp_path: Path) -> None:
 
     assert destination.read_bytes().startswith(b"timestamp,event")
     assert result.size_bytes == destination.stat().st_size
+
+
+def test_controlled_validation_fixture_has_frozen_size_and_hash(tmp_path: Path) -> None:
+    destination = tmp_path / "ForensiX-validation-v1.bin"
+
+    write_known_file_fixture(destination)
+
+    assert destination.stat().st_size == KNOWN_FILE_SIZE_BYTES
+    assert hashlib.sha256(destination.read_bytes()).hexdigest() == KNOWN_FILE_SHA256
+    assert KNOWN_FILE_RELATIVE_PATH == "Download/ForensiX-validation-v1.bin"
+    with pytest.raises(FileExistsError):
+        write_known_file_fixture(destination)

@@ -4,11 +4,21 @@ import asyncio
 import hashlib
 import json
 import platform
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from forensix_forensic.adb import AdbClient, DeviceState, SharedStorageRoot
+from forensix_forensic.adb import (
+    KNOWN_FILE_FIXTURE_ID,
+    KNOWN_FILE_RELATIVE_PATH,
+    KNOWN_FILE_SHA256,
+    KNOWN_FILE_SIZE_BYTES,
+    AdbClient,
+    DeviceState,
+    SharedStorageRoot,
+    StorageInventoryResult,
+)
 
 from .models import (
     SealedValidationReport,
@@ -27,8 +37,9 @@ async def run_adb_validation(
     *,
     mode: str,
     selected_serial: str | None = None,
+    validate_known_file: bool = False,
 ) -> SealedValidationReport:
-    """Run non-content ADB checks and a repeatability probe over bounded path metadata."""
+    """Run bounded ADB checks and an optional fixed-profile known-file acquisition."""
     if mode not in {"mock", "system"}:
         raise ValueError("Validation mode must be mock or system.")
     started_at = datetime.now(UTC)
@@ -181,6 +192,10 @@ async def run_adb_validation(
                         second_manifest_sha256=second_digest,
                     )
                 )
+                if validate_known_file:
+                    checks.append(
+                        await _validate_known_file_acquisition(client, selected.serial, root, first)
+                    )
             else:
                 checks.append(
                     _check(
@@ -189,6 +204,15 @@ async def run_adb_validation(
                         "No readable approved root was available for repeatability testing.",
                     )
                 )
+                if validate_known_file:
+                    checks.append(
+                        _check(
+                            "known_file_acquisition",
+                            ValidationStatus.SKIPPED,
+                            "No readable approved root was available for known-file acquisition.",
+                            fixture_id=KNOWN_FILE_FIXTURE_ID,
+                        )
+                    )
     except Exception as error:  # Validation must preserve a sealed failure record.
         checks.append(
             _check(
@@ -227,6 +251,10 @@ async def run_adb_validation(
             "ADB is not a hardware write blocker and may cause device-side effects.",
             "A passing mock run is software regression evidence, not physical-device validation.",
             "Inventory repeatability does not prove completeness or access to private app data.",
+            (
+                "Known-file validation applies only to the fixed controlled fixture and does not "
+                "prove acquisition completeness for other files or devices."
+            ),
         ),
     )
     return SealedValidationReport(report=report, canonical_sha256=_report_digest(report))
@@ -284,3 +312,93 @@ def _hash_file(path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+async def _validate_known_file_acquisition(
+    client: AdbClient,
+    serial: str,
+    root: SharedStorageRoot,
+    inventory: StorageInventoryResult,
+) -> ValidationCheck:
+    """Pull the one closed-profile fixture twice and compare known-answer hashes."""
+    fixture = next(
+        (entry for entry in inventory.entries if entry.relative_path == KNOWN_FILE_RELATIVE_PATH),
+        None,
+    )
+    if fixture is None:
+        return _check(
+            "known_file_acquisition",
+            ValidationStatus.SKIPPED,
+            "The fixed validation fixture was not present in the bounded inventory.",
+            fixture_id=KNOWN_FILE_FIXTURE_ID,
+            expected_size_bytes=KNOWN_FILE_SIZE_BYTES,
+            expected_sha256=KNOWN_FILE_SHA256,
+        )
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="forensix-known-file-") as directory:
+            destinations = (Path(directory) / "pass-1.partial", Path(directory) / "pass-2.partial")
+            observed: list[tuple[int, str]] = []
+            for destination in destinations:
+                result = await client.pull_inventory_file(
+                    serial,
+                    root,
+                    KNOWN_FILE_RELATIVE_PATH,
+                    destination,
+                )
+                actual_size = await asyncio.to_thread(_regular_file_size, destination)
+                if actual_size is None:
+                    raise ValueError("Known-file pull did not produce a regular local file.")
+                if result.size_bytes != actual_size:
+                    raise ValueError("ADB pull result size did not match the local file size.")
+                observed.append((actual_size, await asyncio.to_thread(_hash_file, destination)))
+    except Exception as error:
+        return _check(
+            "known_file_acquisition",
+            ValidationStatus.FAIL,
+            "The fixed validation fixture could not be acquired and verified safely.",
+            fixture_id=KNOWN_FILE_FIXTURE_ID,
+            error_type=type(error).__name__,
+        )
+
+    first_size, first_hash = observed[0]
+    second_size, second_hash = observed[1]
+    inventory_size_matches = fixture.size_bytes == KNOWN_FILE_SIZE_BYTES
+    known_answer_matches = (
+        first_size == second_size == KNOWN_FILE_SIZE_BYTES
+        and first_hash == second_hash == KNOWN_FILE_SHA256
+    )
+    status = (
+        ValidationStatus.SUCCEEDED
+        if inventory_size_matches and known_answer_matches
+        else ValidationStatus.FAIL
+    )
+    return _check(
+        "known_file_acquisition",
+        status,
+        (
+            "Two acquisitions reproduced the fixed known size and SHA-256."
+            if status is ValidationStatus.SUCCEEDED
+            else "The acquired fixture did not reproduce its fixed known-answer metadata."
+        ),
+        fixture_id=KNOWN_FILE_FIXTURE_ID,
+        inventory_size_matches=inventory_size_matches,
+        acquisition_count=2,
+        first_size_bytes=first_size,
+        second_size_bytes=second_size,
+        expected_size_bytes=KNOWN_FILE_SIZE_BYTES,
+        first_sha256=first_hash,
+        second_sha256=second_hash,
+        expected_sha256=KNOWN_FILE_SHA256,
+        repeatable=first_hash == second_hash and first_size == second_size,
+        known_answer_matches=known_answer_matches,
+    )
+
+
+def _regular_file_size(path: Path) -> int | None:
+    try:
+        if not path.is_file() or path.is_symlink():
+            return None
+        return path.stat().st_size
+    except OSError:
+        return None

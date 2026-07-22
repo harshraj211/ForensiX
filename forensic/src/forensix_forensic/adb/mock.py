@@ -31,6 +31,11 @@ from .policy import (
     RootedCollectionProfile,
     SharedStorageRoot,
 )
+from .validation_fixture import (
+    KNOWN_FILE_RELATIVE_PATH,
+    KNOWN_FILE_SIZE_BYTES,
+    known_file_payload,
+)
 
 
 class MockAdbScenario(StrEnum):
@@ -45,8 +50,14 @@ class MockAdbScenario(StrEnum):
 
 
 class MockAdbClient:
-    def __init__(self, scenario: MockAdbScenario = MockAdbScenario.AUTHORIZED) -> None:
+    def __init__(
+        self,
+        scenario: MockAdbScenario = MockAdbScenario.AUTHORIZED,
+        *,
+        include_validation_fixture: bool = False,
+    ) -> None:
         self.scenario = scenario
+        self.include_validation_fixture = include_validation_fixture
 
     async def server_info(self) -> AdbServerInfo:
         if self.scenario is MockAdbScenario.TIMEOUT:
@@ -130,6 +141,13 @@ class MockAdbClient:
         self, serial: str, root: SharedStorageRoot
     ) -> StorageInventoryResult:
         await self._require_authorized(serial)
+        entries = [
+            ("DCIM/Camera/IMG_0001.jpg", 33, "1784160000"),
+            ("Documents/timeline.csv", 42, "1784246400"),
+            ("Download/incident-notes.pdf", 38, "1784332800"),
+        ]
+        if self.include_validation_fixture:
+            entries.append((KNOWN_FILE_RELATIVE_PATH, KNOWN_FILE_SIZE_BYTES, "1784419200"))
         return StorageInventoryResult(
             root_id=root.value,
             display_path=AdbCommandPolicy.display_path(root),
@@ -142,13 +160,9 @@ class MockAdbClient:
                     timestamp_source="android_stat_mtime_epoch",
                     timestamp_confidence="medium",
                 )
-                for path, size_bytes, epoch in (
-                    ("DCIM/Camera/IMG_0001.jpg", 33, "1784160000"),
-                    ("Documents/timeline.csv", 42, "1784246400"),
-                    ("Download/incident-notes.pdf", 38, "1784332800"),
-                )
+                for path, size_bytes, epoch in entries
             ),
-            discovered_count=3,
+            discovered_count=len(entries),
             skipped_count=0,
             truncated=False,
             max_items=INVENTORY_MAX_ITEMS,
@@ -168,6 +182,7 @@ class MockAdbClient:
             "DCIM/Camera/IMG_0001.jpg": b"ForensiX synthetic JPEG fixture\x00\x01",
             "Documents/timeline.csv": b"timestamp,event\n2026-07-16T00:00:00Z,test\n",
             "Download/incident-notes.pdf": b"%PDF-1.4\n% ForensiX synthetic fixture\n",
+            KNOWN_FILE_RELATIVE_PATH: known_file_payload(),
         }
         payload = fixtures.get(relative_path)
         if payload is None:

@@ -117,8 +117,10 @@ storage still relies on BitLocker, FileVault, or LUKS until an OS-keychain and a
 is formally validated.
 
 Create a privacy-preserving, integrity-sealed mock or controlled-device validation record with
-`scripts/run-forensic-validation.py`; see [forensic validation](docs/FORENSIC_VALIDATION.md). A
-passing mock run is regression evidence and does not replace the physical-device release matrix.
+`scripts/run-forensic-validation.py`; see [forensic validation](docs/FORENSIC_VALIDATION.md). The
+physical runner supports a fixed-path, two-pass known-file acquisition and SHA-256 check without
+allowing caller-supplied device paths. A passing mock run is regression evidence and does not
+replace the physical-device release matrix.
 
 Verified SQLite databases and safe ZIP/TAR working copies can be checked for recovery candidates
 from the Evidence Twin screen. This experimental probe reads bounded metadata only; it does not

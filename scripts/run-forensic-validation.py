@@ -24,13 +24,21 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--serial", help="Select one authorized serial; it is never written to output."
     )
+    parser.add_argument(
+        "--validate-known-file",
+        action="store_true",
+        help="Pull the one fixed controlled-device fixture twice and verify its SHA-256.",
+    )
     parser.add_argument("--output", required=True, type=Path)
     return parser.parse_args()
 
 
 async def _run(arguments: argparse.Namespace) -> int:
     if arguments.mode == "mock":
-        client: AdbClient = MockAdbClient(MockAdbScenario(arguments.scenario))
+        client: AdbClient = MockAdbClient(
+            MockAdbScenario(arguments.scenario),
+            include_validation_fixture=arguments.validate_known_file,
+        )
     else:
         adb_path = AdbBinaryResolver(arguments.adb_path).resolve()
         client = SystemAdbClient(SubprocessAdbRunner(adb_path))
@@ -38,6 +46,7 @@ async def _run(arguments: argparse.Namespace) -> int:
         client,
         mode=arguments.mode,
         selected_serial=arguments.serial,
+        validate_known_file=arguments.validate_known_file,
     )
     destination = arguments.output.expanduser().resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
