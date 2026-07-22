@@ -34,6 +34,7 @@ class PhysicalMatrixCoverage(BaseModel):
     accepted_system_records: int = Field(ge=0)
     invalid_records: int = Field(ge=0)
     rejected_non_system_records: int = Field(ge=0)
+    rejected_unverifiable_system_records: int = Field(ge=0)
     duplicate_records: int = Field(ge=0)
     hosts: tuple[str, ...]
     android_releases: tuple[str, ...]
@@ -73,6 +74,7 @@ def build_physical_matrix(
     seen: set[str] = set()
     invalid_records = 0
     rejected_non_system = 0
+    rejected_unverifiable_system = 0
     duplicate_records = 0
     for sealed in records:
         if not verify_validation_report(sealed):
@@ -84,6 +86,9 @@ def build_physical_matrix(
         seen.add(sealed.canonical_sha256)
         if sealed.report.mode != "system":
             rejected_non_system += 1
+            continue
+        if not _has_physical_identity_evidence(sealed):
+            rejected_unverifiable_system += 1
             continue
         accepted.append(sealed)
 
@@ -106,6 +111,11 @@ def build_physical_matrix(
         gaps.append(f"{invalid_records} input record(s) failed canonical seal verification.")
     if rejected_non_system:
         gaps.append(f"{rejected_non_system} mock/non-system record(s) were rejected.")
+    if rejected_unverifiable_system:
+        gaps.append(
+            f"{rejected_unverifiable_system} system record(s) lacked hashed ADB or device "
+            "identity evidence."
+        )
     if not accepted:
         gaps.append("No unique, sealed system-mode validation record was accepted.")
     missing_hosts = sorted(set(policy.required_hosts) - set(hosts))
@@ -130,7 +140,7 @@ def build_physical_matrix(
 
     outcome = (
         ValidationOutcome.FAILED
-        if invalid_records or rejected_non_system
+        if invalid_records or rejected_non_system or rejected_unverifiable_system
         else ValidationOutcome.INCOMPLETE
         if gaps
         else ValidationOutcome.PASSED
@@ -144,6 +154,7 @@ def build_physical_matrix(
             accepted_system_records=len(accepted),
             invalid_records=invalid_records,
             rejected_non_system_records=rejected_non_system,
+            rejected_unverifiable_system_records=rejected_unverifiable_system,
             duplicate_records=duplicate_records,
             hosts=hosts,
             android_releases=releases,
@@ -216,6 +227,22 @@ def _check_value_count(
         if check is not None and check.observed.get(field) == expected:
             count += 1
     return count
+
+
+def _has_physical_identity_evidence(sealed: SealedValidationReport) -> bool:
+    report = sealed.report
+    authorized = any(
+        check.check_id == "authorized_device" and check.status is ValidationStatus.SUCCEEDED
+        for check in report.checks
+    )
+    return bool(
+        authorized
+        and report.adb_executable_sha256
+        and report.device_serial_sha256
+        and report.build_fingerprint_sha256
+        and report.android_release
+        and report.android_sdk
+    )
 
 
 def _digest(report: PhysicalMatrixReport) -> str:

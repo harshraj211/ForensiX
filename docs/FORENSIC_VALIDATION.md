@@ -115,7 +115,8 @@ gate. Declare every supported Android release explicitly:
 By default the verifier requires Windows, Linux, and Darwin records, every declared Android
 release, two manufacturer families, both rooted and non-rooted coverage, and successful known-file
 and disconnect/reconnect checks in every accepted record. It verifies every source seal, rejects
-mock records, deduplicates identical reports, lists coverage gaps, and seals the matrix result. A
+mock records and system-labeled records without a hashed ADB executable plus hashed device/build
+identity, deduplicates identical reports, lists coverage gaps, and seals the matrix result. A
 passing aggregate is still supporting evidence that requires independent review; it is not proof of
 hardware write blocking or admissibility.
 

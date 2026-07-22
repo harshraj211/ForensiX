@@ -35,6 +35,7 @@
 | Workstation schema upgrades | Alembic startup upgrade plus guarded adoption of recognized pre-Alembic create-all databases | base/head, legacy-adoption, and unknown-schema refusal tests |
 | Expanded artifact capability matrix | explicit supported/blocked/elevated-access decisions for contacts, communications, browser, calendar, notification, wireless/location, and seven private messaging/social sources | deterministic assessor tests; UI renders every decision without promising unavailable data |
 | Evidence Twin known-answer validation | isolated sealed run covering source/chunk/manifest hashes, working-copy verification, SQLite inspection, contacts/SMS/MMS/calls, normalization/timeline, custody/audit, and report integrity | privacy-preserving sealed report, tamper-detection test, CLI execution, full regression suite |
+| Physical validation tooling | fixed deterministic fixture, two-pass known-file pull/hash, examiner-driven disconnect/reauthorization/reacquisition, sealed release-matrix coverage gate | mock workflow, missing/corrupt fixture, tampered/mislabeled/duplicate matrix tests; controlled-device execution pending |
 
 ## Supported development behavior
 
@@ -79,15 +80,15 @@
 ## Not implemented yet
 
 - Automated external anchoring, PKI chain/revocation validation, and write-once evidence-vault integration
-- Bulk acquisition and physical-device validation of byte-zero restart behavior
+- Physical-device matrix execution and validation of byte-zero restart behavior
 - Production installer signing, notarization, and forensic validation
+- Production-validated Signal/Snapchat content parsers for lawfully decrypted, version-specific inputs
 
 These omissions are visible project status, not silent product claims. Real-device testing remains a controlled Phase 0 activity.
 
 ## Next critical-path slice
 
-1. Install Android Platform Tools and validate inventory plus selected pulls against controlled physical devices and hostile filename fixtures.
-2. Validate disconnect/restart recovery against physical devices on Windows, Linux, and macOS.
+1. Connect controlled devices and execute the sealed inventory, known-file, and transport-cycle matrix on Windows, Linux, and macOS.
+2. Validate byte-zero restart recovery, hostile filenames, and source timestamps against those physical devices.
 3. Add external audit anchoring and signed/write-once evidence-vault integration before evidentiary claims.
-4. Validate source modification-time collection against the controlled Android/OEM matrix and document variance.
-5. Add report approval, redaction, external signing, and reproducibility validation for production release.
+4. Complete production installer signing/notarization and independent forensic-method review.

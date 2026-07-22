@@ -1,8 +1,10 @@
+import asyncio
 import json
+from pathlib import Path
 
 import pytest
 
-from forensix_forensic.adb import MockAdbClient, MockAdbScenario
+from forensix_forensic.adb import AdbServerInfo, MockAdbClient, MockAdbScenario
 from forensix_forensic.validation import (
     PhysicalMatrixPolicy,
     SealedPhysicalMatrixReport,
@@ -14,8 +16,20 @@ from forensix_forensic.validation import (
 )
 
 
-async def _physical_record(scenario: MockAdbScenario) -> SealedValidationReport:
-    client = MockAdbClient(scenario, include_validation_fixture=True)
+class PhysicalHarnessClient(MockAdbClient):
+    def __init__(self, scenario: MockAdbScenario, adb_path: Path) -> None:
+        super().__init__(scenario, include_validation_fixture=True)
+        self.adb_path = adb_path
+
+    async def server_info(self) -> AdbServerInfo:
+        observed = await super().server_info()
+        return observed.model_copy(update={"executable_path": str(self.adb_path)})
+
+
+async def _physical_record(
+    scenario: MockAdbScenario, adb_path: Path
+) -> SealedValidationReport:
+    client = PhysicalHarnessClient(scenario, adb_path)
 
     async def checkpoint(step: str) -> None:
         client.scenario = (
@@ -32,9 +46,11 @@ async def _physical_record(scenario: MockAdbScenario) -> SealedValidationReport:
 
 
 @pytest.mark.asyncio
-async def test_complete_unique_system_matrix_passes_and_is_sealed() -> None:
-    ordinary = await _physical_record(MockAdbScenario.AUTHORIZED)
-    rooted = await _physical_record(MockAdbScenario.ROOTED)
+async def test_complete_unique_system_matrix_passes_and_is_sealed(tmp_path: Path) -> None:
+    adb_path = tmp_path / "adb"
+    await asyncio.to_thread(adb_path.write_bytes, b"controlled test executable")
+    ordinary = await _physical_record(MockAdbScenario.AUTHORIZED, adb_path)
+    rooted = await _physical_record(MockAdbScenario.ROOTED, adb_path)
     policy = PhysicalMatrixPolicy(
         required_hosts=(ordinary.report.environment.operating_system,),
         required_android_releases=(ordinary.report.android_release or "14",),
@@ -54,8 +70,10 @@ async def test_complete_unique_system_matrix_passes_and_is_sealed() -> None:
 
 
 @pytest.mark.asyncio
-async def test_missing_declared_coverage_is_incomplete() -> None:
-    ordinary = await _physical_record(MockAdbScenario.AUTHORIZED)
+async def test_missing_declared_coverage_is_incomplete(tmp_path: Path) -> None:
+    adb_path = tmp_path / "adb"
+    await asyncio.to_thread(adb_path.write_bytes, b"controlled test executable")
+    ordinary = await _physical_record(MockAdbScenario.AUTHORIZED, adb_path)
     policy = PhysicalMatrixPolicy(
         required_hosts=("UnobservedOS",),
         required_android_releases=("999",),
@@ -89,8 +107,32 @@ async def test_mock_or_tampered_input_fails_matrix_gate() -> None:
 
 
 @pytest.mark.asyncio
-async def test_modified_matrix_fails_its_canonical_seal() -> None:
-    ordinary = await _physical_record(MockAdbScenario.AUTHORIZED)
+async def test_system_label_without_hashed_adb_is_rejected() -> None:
+    mislabeled = await run_adb_validation(
+        MockAdbClient(include_validation_fixture=True),
+        mode="system",
+        validate_known_file=True,
+    )
+    policy = PhysicalMatrixPolicy(
+        required_hosts=(mislabeled.report.environment.operating_system,),
+        required_android_releases=(mislabeled.report.android_release or "14",),
+        minimum_manufacturer_families=1,
+        require_rooted=False,
+        require_transport_cycle=False,
+    )
+
+    sealed = build_physical_matrix((mislabeled,), policy)
+
+    assert sealed.report.outcome is ValidationOutcome.FAILED
+    assert sealed.report.coverage.accepted_system_records == 0
+    assert sealed.report.coverage.rejected_unverifiable_system_records == 1
+
+
+@pytest.mark.asyncio
+async def test_modified_matrix_fails_its_canonical_seal(tmp_path: Path) -> None:
+    adb_path = tmp_path / "adb"
+    await asyncio.to_thread(adb_path.write_bytes, b"controlled test executable")
+    ordinary = await _physical_record(MockAdbScenario.AUTHORIZED, adb_path)
     policy = PhysicalMatrixPolicy(
         required_hosts=(ordinary.report.environment.operating_system,),
         required_android_releases=(ordinary.report.android_release or "14",),

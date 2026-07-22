@@ -124,6 +124,9 @@ matrix verifier rejects mock or tampered records and requires declared host, And
 and non-rooted coverage. A passing mock run is regression evidence and does not replace the
 physical-device release matrix.
 
+The requirement-by-requirement implementation evidence and remaining external proof are recorded in
+[the Evidence Twin completion audit](docs/EVIDENCE_TWIN_COMPLETION_AUDIT.md).
+
 Verified SQLite databases and safe ZIP/TAR working copies can be checked for recovery candidates
 from the Evidence Twin screen. This experimental probe reads bounded metadata only; it does not
 carve deleted rows or prove deletion. See [deleted-data research](docs/DELETED_DATA_RESEARCH.md).
