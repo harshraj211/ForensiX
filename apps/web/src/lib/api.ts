@@ -112,6 +112,23 @@ export interface AdbDiagnostic {
   guidance: string[];
 }
 
+export interface ScrcpyDiagnostic {
+  available: boolean;
+  status: "missing" | "digest_mismatch" | "execution_failed" | "invalid_executable" | "ready";
+  executable_path: string | null;
+  version: string | null;
+  sha256: string | null;
+  guidance: string[];
+}
+
+export interface ScrcpyLaunch {
+  process_id: number;
+  mode: "mirror" | "control";
+  version: string;
+  executable_sha256: string;
+  side_effects: string[];
+}
+
 export interface PhysicalBlockProbe {
   id: string;
   case_id: string;
@@ -1055,6 +1072,35 @@ export function collectProviderRecords(
   });
 }
 
+export function captureDeviceScreenshot(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+): Promise<EvidenceSource> {
+  return apiRequest(
+    `/api/v1/devices/${encodeURIComponent(caseId)}/case-devices/${encodeURIComponent(deviceId)}/screenshots?serial=${encodeURIComponent(serial)}`,
+    { method: "POST" },
+  );
+}
+
+export function launchLiveScreen(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+  mode: "mirror" | "control",
+): Promise<ScrcpyLaunch> {
+  return apiRequest("/api/v1/devices/live-screen/launch", {
+    method: "POST",
+    body: JSON.stringify({
+      case_id: caseId,
+      case_device_id: deviceId,
+      serial,
+      mode,
+      interaction_acknowledged: true,
+    }),
+  });
+}
+
 export function probeRootAccess(
   caseId: string,
   deviceId: string,
@@ -1096,6 +1142,10 @@ export function getPhysicalAcquisitionDiagnostic(): Promise<PhysicalAcquisitionD
 
 export function getAdbDiagnostic(): Promise<AdbDiagnostic> {
   return apiRequest("/api/v1/integrations/adb");
+}
+
+export function getScrcpyDiagnostic(): Promise<ScrcpyDiagnostic> {
+  return apiRequest("/api/v1/integrations/scrcpy");
 }
 
 export function probePhysicalBlock(

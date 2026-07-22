@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Cable,
+  Camera,
   CheckCircle2,
   CircleOff,
   Clock3,
@@ -10,6 +11,7 @@ import {
   HardDrive,
   Info,
   LoaderCircle,
+  MonitorUp,
   RefreshCw,
   ShieldCheck,
   Smartphone,
@@ -25,12 +27,15 @@ import {
   assessDevice,
   capturePhysicalBlock,
   captureRootedBundle,
+  captureDeviceScreenshot,
   collectProviderRecords,
   detectDevices,
   getCase,
   getAdbDiagnostic,
   getPhysicalAcquisitionDiagnostic,
+  getScrcpyDiagnostic,
   listCaseDevices,
+  launchLiveScreen,
   probePhysicalBlock,
   probeRootAccess,
   type CaseDevice,
@@ -483,6 +488,37 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
   const [encryptionAcknowledged, setEncryptionAcknowledged] = useState(false);
   const [nonResumableAcknowledged, setNonResumableAcknowledged] = useState(false);
   const [providerAcknowledged, setProviderAcknowledged] = useState(false);
+  const [screenAcknowledged, setScreenAcknowledged] = useState(false);
+  const scrcpyDiagnostic = useQuery({
+    queryKey: ["integrations", "scrcpy"],
+    queryFn: getScrcpyDiagnostic,
+    enabled: Boolean(assessment.case_id && assessment.case_device_id),
+  });
+  const screenshot = useMutation({
+    mutationFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id) {
+        throw new Error("A case-linked assessment is required for screenshots.");
+      }
+      return captureDeviceScreenshot(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+      );
+    },
+  });
+  const liveScreen = useMutation({
+    mutationFn: (mode: "mirror" | "control") => {
+      if (!assessment.case_id || !assessment.case_device_id) {
+        throw new Error("A case-linked assessment is required for live screen access.");
+      }
+      return launchLiveScreen(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+        mode,
+      );
+    },
+  });
   const providerCollection = useMutation({
     mutationFn: (profile: ProviderProfile) => {
       if (!assessment.case_id || !assessment.case_device_id) {
@@ -678,6 +714,103 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+      {assessment.case_id && assessment.case_device_id && (
+        <div className="mt-5 rounded-lg border border-violet-200/15 bg-violet-200/[0.025] p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-200">
+                Live screen and capture
+              </h3>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">
+                Screenshot streams a PNG directly to the workstation and seals it as hashed case
+                evidence. Live mirror and control open a dedicated scrcpy window.
+              </p>
+            </div>
+            <span className="rounded-full border border-violet-200/15 px-2 py-1 text-[10px] uppercase tracking-wider text-violet-200/70">
+              {scrcpyDiagnostic.data?.available
+                ? `scrcpy ${scrcpyDiagnostic.data.version ?? "ready"}`
+                : "scrcpy not configured"}
+            </span>
+          </div>
+          <label className="mt-3 flex items-start gap-2 text-xs leading-5 text-amber-100/80">
+            <input
+              type="checkbox"
+              checked={screenAcknowledged}
+              onChange={(event) => {
+                setScreenAcknowledged(event.target.checked);
+              }}
+              className="mt-1"
+            />
+            I understand scrcpy starts a temporary device component; control-mode taps and typing
+            change device state and are recorded as investigator actions.
+          </label>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={screenshot.isPending}
+              onClick={() => {
+                screenshot.mutate();
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-emerald-200/15 bg-emerald-200/5 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-200/10 disabled:opacity-40"
+            >
+              <Camera size={14} />
+              {screenshot.isPending ? "Capturing…" : "Capture evidence screenshot"}
+            </button>
+            <button
+              type="button"
+              disabled={
+                !screenAcknowledged || !scrcpyDiagnostic.data?.available || liveScreen.isPending
+              }
+              onClick={() => {
+                liveScreen.mutate("mirror");
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-cyan-200/15 bg-cyan-200/5 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-200/10 disabled:opacity-35"
+            >
+              <MonitorUp size={14} /> Read-only mirror
+            </button>
+            <button
+              type="button"
+              disabled={
+                !screenAcknowledged || !scrcpyDiagnostic.data?.available || liveScreen.isPending
+              }
+              onClick={() => {
+                liveScreen.mutate("control");
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-amber-200/20 bg-amber-200/5 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:bg-amber-200/10 disabled:opacity-35"
+            >
+              <MonitorUp size={14} /> Interactive control
+            </button>
+          </div>
+          {!scrcpyDiagnostic.isLoading && !scrcpyDiagnostic.data?.available && (
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              Install the official scrcpy release and set FORENSIX_SCRCPY_PATH before using live
+              mirror or control. Screenshot capture works through ADB without scrcpy.
+            </p>
+          )}
+          {screenshot.data && (
+            <p className="mt-3 text-xs text-emerald-200">
+              Screenshot sealed · SHA-256 {screenshot.data.sha256?.slice(0, 16)}… · source {" "}
+              {screenshot.data.id.slice(0, 8)}
+            </p>
+          )}
+          {(screenshot.error || liveScreen.error) && (
+            <p className="mt-3 text-xs text-rose-300">
+              {screenshot.error instanceof ApiError
+                ? screenshot.error.message
+                : liveScreen.error instanceof ApiError
+                  ? liveScreen.error.message
+                  : "The screen operation could not be completed."}
+            </p>
+          )}
+          {liveScreen.data && (
+            <p className="mt-3 text-xs text-violet-200">
+              {liveScreen.data.mode === "control" ? "Control" : "Mirror"} window launched · process
+              {" "}
+              {liveScreen.data.process_id}
+            </p>
           )}
         </div>
       )}
