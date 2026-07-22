@@ -68,6 +68,22 @@ class ContentProviderAccessProbe(BaseModel):
     exit_code: int
 
 
+class ContentProviderRecord(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    values: dict[str, str | None]
+
+
+class ContentProviderQueryResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    profile: str = Field(min_length=1, max_length=64)
+    records: tuple[ContentProviderRecord, ...]
+    discovered_count: int = Field(ge=0)
+    truncated: bool
+    max_records: int = Field(ge=1)
+
+
 class RootAccessProbe(BaseModel):
     """Bounded result of the explicitly authorized fixed `su -c id` operation."""
 

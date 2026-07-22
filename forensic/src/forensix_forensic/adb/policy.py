@@ -19,6 +19,7 @@ class AdbOperation(StrEnum):
     PROBE_PHYSICAL_BLOCK = "probe_physical_block"
     CAPTURE_PHYSICAL_BLOCK = "capture_physical_block"
     PROBE_CONTENT_PROVIDER = "probe_content_provider"
+    QUERY_CONTENT_PROVIDER = "query_content_provider"
 
 
 class SharedStorageRoot(StrEnum):
@@ -51,6 +52,7 @@ INVENTORY_MAX_ITEMS = 250
 MAX_ACQUIRED_FILE_BYTES = 100 * 1024 * 1024
 MAX_ROOTED_BUNDLE_BYTES = 1024 * 1024 * 1024
 MAX_PHYSICAL_BLOCK_BYTES = 512 * 1024 * 1024 * 1024
+CONTENT_PROVIDER_MAX_RECORDS = 500
 
 _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
     RootedCollectionProfile.ANDROID_PROVIDERS: (
@@ -82,6 +84,33 @@ _CONTENT_PROVIDER_URIS: dict[ContentProviderProfile, str] = {
     ContentProviderProfile.CONTACTS: "content://com.android.contacts/contacts",
     ContentProviderProfile.SMS: "content://sms",
     ContentProviderProfile.CALL_LOG: "content://call_log/calls",
+}
+
+_CONTENT_PROVIDER_PROJECTIONS: dict[ContentProviderProfile, tuple[str, ...]] = {
+    ContentProviderProfile.CONTACTS: (
+        "_id",
+        "has_phone_number",
+        "last_time_contacted",
+        "display_name",
+    ),
+    ContentProviderProfile.SMS: (
+        "_id",
+        "thread_id",
+        "address",
+        "date",
+        "date_sent",
+        "type",
+        "read",
+        "body",
+    ),
+    ContentProviderProfile.CALL_LOG: (
+        "_id",
+        "number",
+        "date",
+        "duration",
+        "type",
+        "name",
+    ),
 }
 
 
@@ -144,6 +173,32 @@ class AdbCommandPolicy:
             ),
             10.0,
         )
+
+    @staticmethod
+    def query_content_provider(
+        serial: str, profile: ContentProviderProfile
+    ) -> ApprovedAdbCommand:
+        """Collect a fixed projection after a successful capability probe."""
+        _validate_serial(serial)
+        return ApprovedAdbCommand(
+            AdbOperation.QUERY_CONTENT_PROVIDER,
+            (
+                "-s",
+                serial,
+                "shell",
+                "content",
+                "query",
+                "--uri",
+                _CONTENT_PROVIDER_URIS[profile],
+                "--projection",
+                ":".join(_CONTENT_PROVIDER_PROJECTIONS[profile]),
+            ),
+            60.0,
+        )
+
+    @staticmethod
+    def content_provider_projection(profile: ContentProviderProfile) -> tuple[str, ...]:
+        return _CONTENT_PROVIDER_PROJECTIONS[profile]
 
     @staticmethod
     def probe_root_access(serial: str) -> ApprovedAdbCommand:

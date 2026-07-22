@@ -128,6 +128,42 @@ def test_provider_probe_policy_is_content_free_and_profile_bounded() -> None:
     assert command.timeout_seconds == 10.0
 
 
+def test_provider_query_policy_uses_only_fixed_uri_and_projection() -> None:
+    command = AdbCommandPolicy.query_content_provider(
+        "FX-DEMO-001", ContentProviderProfile.SMS
+    )
+
+    assert command.arguments == (
+        "-s",
+        "FX-DEMO-001",
+        "shell",
+        "content",
+        "query",
+        "--uri",
+        "content://sms",
+        "--projection",
+        "_id:thread_id:address:date:date_sent:type:read:body",
+    )
+    assert command.timeout_seconds == 60.0
+
+
+@pytest.mark.asyncio
+async def test_system_provider_query_parses_fixed_projection_and_preserves_commas() -> None:
+    output = (
+        "Row: 0 _id=7, thread_id=2, address=+15550100, date=1784160000000, "
+        "date_sent=1784160000000, type=1, read=1, body=hello, investigator\n"
+    )
+    runner = RecordingRunner([_result(0, stdout=output)])
+
+    result = await SystemAdbClient(cast(SubprocessAdbRunner, runner)).query_content_provider(
+        "FX-DEMO-001", ContentProviderProfile.SMS
+    )
+
+    assert result.discovered_count == 1
+    assert result.records[0].values["_id"] == "7"
+    assert result.records[0].values["body"] == "hello, investigator"
+
+
 @pytest.mark.asyncio
 async def test_system_provider_probe_distinguishes_access_from_permission_denial() -> None:
     available_runner = RecordingRunner([_result(0, stdout="No result found.")])

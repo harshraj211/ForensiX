@@ -8,6 +8,7 @@ from forensix_forensic.adb.errors import AdbCommandError, AdbTimeoutError
 from forensix_forensic.adb.mock import MockAdbClient, MockAdbScenario
 from forensix_forensic.adb.models import DeviceState
 from forensix_forensic.adb.policy import (
+    ContentProviderProfile,
     PhysicalBlockProfile,
     RootedCollectionProfile,
     SharedStorageRoot,
@@ -58,6 +59,20 @@ async def test_rooted_mock_requires_explicit_rooted_scenario() -> None:
     assert ordinary.status.value == "unavailable"
     assert rooted.status.value == "available"
     assert rooted.uid == 0
+
+
+@pytest.mark.asyncio
+async def test_mock_provider_records_require_accessible_scenario() -> None:
+    accessible = MockAdbClient(MockAdbScenario.PROVIDERS_ACCESSIBLE)
+    result = await accessible.query_content_provider(
+        "FX-DEMO-001", ContentProviderProfile.CONTACTS
+    )
+
+    assert result.records[0].values["display_name"] == "Controlled Contact"
+    with pytest.raises(AdbCommandError):
+        await MockAdbClient().query_content_provider(
+            "FX-DEMO-001", ContentProviderProfile.CONTACTS
+        )
 
 
 @pytest.mark.asyncio

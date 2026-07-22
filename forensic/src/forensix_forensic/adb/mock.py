@@ -12,6 +12,8 @@ from .models import (
     AdbServerInfo,
     ContentProviderAccessProbe,
     ContentProviderAccessStatus,
+    ContentProviderQueryResult,
+    ContentProviderRecord,
     DeviceState,
     DeviceTransport,
     PhysicalBlockCaptureResult,
@@ -26,6 +28,7 @@ from .models import (
     StorageProbeStatus,
 )
 from .policy import (
+    CONTENT_PROVIDER_MAX_RECORDS,
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_ITEMS,
     AdbCommandPolicy,
@@ -134,6 +137,53 @@ class MockAdbClient:
                 else "Synthetic Android permission denial."
             ),
             exit_code=0 if available else 1,
+        )
+
+    async def query_content_provider(
+        self, serial: str, profile: ContentProviderProfile
+    ) -> ContentProviderQueryResult:
+        probe = await self.probe_content_provider(serial, profile)
+        if probe.status is not ContentProviderAccessStatus.AVAILABLE:
+            raise AdbCommandError(1, "Synthetic provider access was denied.")
+        fixtures: dict[ContentProviderProfile, tuple[dict[str, str | None], ...]] = {
+            ContentProviderProfile.CONTACTS: (
+                {
+                    "_id": "1",
+                    "has_phone_number": "1",
+                    "last_time_contacted": "1784160000000",
+                    "display_name": "Controlled Contact",
+                },
+            ),
+            ContentProviderProfile.SMS: (
+                {
+                    "_id": "1",
+                    "thread_id": "1",
+                    "address": "+15550100",
+                    "date": "1784160000000",
+                    "date_sent": "1784160000000",
+                    "type": "1",
+                    "read": "1",
+                    "body": "Controlled SMS fixture",
+                },
+            ),
+            ContentProviderProfile.CALL_LOG: (
+                {
+                    "_id": "1",
+                    "number": "+15550100",
+                    "date": "1784160000000",
+                    "duration": "42",
+                    "type": "1",
+                    "name": "Controlled Contact",
+                },
+            ),
+        }
+        records = tuple(ContentProviderRecord(values=item) for item in fixtures[profile])
+        return ContentProviderQueryResult(
+            profile=profile.value,
+            records=records,
+            discovered_count=len(records),
+            truncated=False,
+            max_records=CONTENT_PROVIDER_MAX_RECORDS,
         )
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe:

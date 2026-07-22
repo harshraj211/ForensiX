@@ -10,6 +10,7 @@ from .models import (
     AdbServerInfo,
     ContentProviderAccessProbe,
     ContentProviderAccessStatus,
+    ContentProviderQueryResult,
     DeviceTransport,
     PhysicalBlockCaptureResult,
     PhysicalBlockProbe,
@@ -23,12 +24,14 @@ from .models import (
 )
 from .parser import (
     parse_adb_version,
+    parse_content_provider_rows,
     parse_devices_output,
     parse_getprop_output,
     parse_package_list,
     parse_storage_inventory,
 )
 from .policy import (
+    CONTENT_PROVIDER_MAX_RECORDS,
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_ITEMS,
     MAX_ACQUIRED_FILE_BYTES,
@@ -56,6 +59,10 @@ class AdbClient(Protocol):
     async def probe_content_provider(
         self, serial: str, profile: ContentProviderProfile
     ) -> ContentProviderAccessProbe: ...
+
+    async def query_content_provider(
+        self, serial: str, profile: ContentProviderProfile
+    ) -> ContentProviderQueryResult: ...
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe: ...
 
@@ -157,6 +164,19 @@ class SystemAdbClient:
             reason_code=reason_code,
             explanation=explanation,
             exit_code=result.exit_code,
+        )
+
+    async def query_content_provider(
+        self, serial: str, profile: ContentProviderProfile
+    ) -> ContentProviderQueryResult:
+        result = await self._run(AdbCommandPolicy.query_content_provider(serial, profile))
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        return parse_content_provider_rows(
+            result.stdout,
+            profile=profile,
+            projection=AdbCommandPolicy.content_provider_projection(profile),
+            max_records=CONTENT_PROVIDER_MAX_RECORDS,
         )
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe:

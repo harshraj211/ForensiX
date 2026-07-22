@@ -18,6 +18,8 @@ from .models import (
     AdbServerInfo,
     ContentProviderAccessProbe,
     ContentProviderAccessStatus,
+    ContentProviderQueryResult,
+    ContentProviderRecord,
     DeviceState,
     DeviceTransport,
     PhysicalBlockCaptureResult,
@@ -32,6 +34,7 @@ from .models import (
     StorageProbeStatus,
 )
 from .policy import (
+    CONTENT_PROVIDER_MAX_RECORDS,
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_ITEMS,
     MAX_ACQUIRED_FILE_BYTES,
@@ -68,6 +71,7 @@ __all__ = [
     "AdbError",
     "INVENTORY_MAX_DEPTH",
     "INVENTORY_MAX_ITEMS",
+    "CONTENT_PROVIDER_MAX_RECORDS",
     "KNOWN_FILE_FIXTURE_ID",
     "KNOWN_FILE_RELATIVE_PATH",
     "KNOWN_FILE_SHA256",
@@ -84,6 +88,8 @@ __all__ = [
     "DeviceTransport",
     "ContentProviderAccessProbe",
     "ContentProviderAccessStatus",
+    "ContentProviderQueryResult",
+    "ContentProviderRecord",
     "ContentProviderProfile",
     "PhysicalBlockCaptureResult",
     "PhysicalBlockProbe",

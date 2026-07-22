@@ -6,11 +6,14 @@ from datetime import UTC, datetime
 
 from .errors import AdbProtocolError
 from .models import (
+    ContentProviderQueryResult,
+    ContentProviderRecord,
     DeviceState,
     DeviceTransport,
     StorageInventoryEntry,
     StorageInventoryResult,
 )
+from .policy import ContentProviderProfile
 
 _VERSION_PATTERN = re.compile(r"Android Debug Bridge version\s+([0-9]+(?:\.[0-9]+){1,3})")
 _STATE_MAP = {
@@ -86,6 +89,61 @@ def parse_package_list(output: str, *, maximum_packages: int = 100_000) -> tuple
         if len(packages) > maximum_packages:
             raise AdbProtocolError("ADB package output exceeded the supported package count.")
     return tuple(sorted(set(packages)))
+
+
+def parse_content_provider_rows(
+    output: str,
+    *,
+    profile: ContentProviderProfile,
+    projection: tuple[str, ...],
+    max_records: int,
+) -> ContentProviderQueryResult:
+    """Parse fixed `content query` rows without executing row-derived text."""
+    if max_records < 1:
+        raise ValueError("content-provider record limit must be positive")
+    records: list[ContentProviderRecord] = []
+    discovered_count = 0
+    for line in output.splitlines():
+        match = re.match(r"^Row:\s+\d+\s+(.*)$", line.strip())
+        if match is None:
+            continue
+        discovered_count += 1
+        if len(records) >= max_records:
+            continue
+        values = _parse_projected_values(match.group(1), projection)
+        if values is not None:
+            records.append(ContentProviderRecord(values=values))
+    return ContentProviderQueryResult(
+        profile=profile.value,
+        records=tuple(records),
+        discovered_count=discovered_count,
+        truncated=discovered_count > len(records),
+        max_records=max_records,
+    )
+
+
+def _parse_projected_values(
+    payload: str, projection: tuple[str, ...]
+) -> dict[str, str | None] | None:
+    values: dict[str, str | None] = {}
+    remainder = payload
+    for index, key in enumerate(projection):
+        prefix = f"{key}="
+        if not remainder.startswith(prefix):
+            return None
+        remainder = remainder[len(prefix) :]
+        if index + 1 < len(projection):
+            next_key = projection[index + 1]
+            marker = f", {next_key}="
+            value, separator, tail = remainder.partition(marker)
+            if not separator:
+                return None
+            remainder = f"{next_key}={tail}"
+        else:
+            value = remainder
+            remainder = ""
+        values[key] = None if value == "NULL" else value
+    return values
 
 
 def parse_storage_inventory(
