@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -6,7 +7,12 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, status
 
-from forensix_api.dependencies import get_adb_client, get_database, require_device_operator
+from forensix_api.dependencies import (
+    get_adb_client,
+    get_database,
+    get_settings,
+    require_device_operator,
+)
 from forensix_api.schemas import (
     AdbInfoResponse,
     ApiErrorResponse,
@@ -17,6 +23,8 @@ from forensix_api.schemas import (
     EvidenceSourceResponse,
     ProviderCollectionRequest,
     ProviderCollectionResponse,
+    ScrcpyLaunchRequest,
+    ScrcpyLaunchResponse,
 )
 from forensix_forensic.adb import (
     AdbClient,
@@ -27,6 +35,7 @@ from forensix_forensic.capabilities import DeviceCapabilityAssessor
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseInvalidStateError
+from forensix_server.config import Settings
 from forensix_server.db import (
     CaseEventRecord,
     Database,
@@ -266,3 +275,52 @@ async def capture_device_screenshot(
                 ),
             )
     return source_response(source)
+
+
+@router.post(
+    "/live-screen/launch",
+    response_model=ScrcpyLaunchResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def launch_live_screen(
+    request: ScrcpyLaunchRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ScrcpyLaunchResponse:
+    with database.session() as session:
+        device = CaseDeviceService().get_device(
+            session,
+            authenticated.principal,
+            request.case_id,
+            request.case_device_id,
+        )
+        CaseDeviceService().ensure_operable(
+            session, authenticated.principal, request.case_id
+        )
+        if sha256(request.serial.encode("utf-8")).hexdigest() != device.serial_hash:
+            raise CaseInvalidStateError(
+                "The connected Android serial does not match the case-linked device."
+            )
+    controller = settings.scrcpy_controller()
+    diagnostic = await asyncio.to_thread(controller.diagnose)
+    if not diagnostic.available:
+        raise CaseInvalidStateError(
+            "scrcpy is not ready. Configure the official executable and review diagnostics."
+        )
+    result = await asyncio.to_thread(
+        controller.launch, request.serial, control=request.mode == "control"
+    )
+    with database.session() as session:
+        session.add(
+            CaseEventRecord(
+                case_id=request.case_id,
+                actor_id=authenticated.principal.user_id,
+                event_type="live_screen_launched",
+                safe_detail=(
+                    f"device_id={request.case_device_id};mode={result.mode};"
+                    f"scrcpy_version={result.version};process_id={result.process_id}"
+                ),
+            )
+        )
+    return ScrcpyLaunchResponse.model_validate(result, from_attributes=True)

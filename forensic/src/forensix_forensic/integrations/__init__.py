@@ -8,6 +8,12 @@ from .aleapp import (
     AleappRunner,
     AleappRunResult,
 )
+from .scrcpy import (
+    ScrcpyController,
+    ScrcpyDiagnostic,
+    ScrcpyIntegrationError,
+    ScrcpyLaunchResult,
+)
 
 __all__ = [
     "AleappConfiguration",
@@ -16,4 +22,8 @@ __all__ = [
     "AleappOutputFile",
     "AleappRunResult",
     "AleappRunner",
+    "ScrcpyController",
+    "ScrcpyDiagnostic",
+    "ScrcpyIntegrationError",
+    "ScrcpyLaunchResult",
 ]

@@ -10,6 +10,7 @@ from forensix_api.schemas import (
     AleappDiagnosticResponse,
     ApplicationArtifactSupportResponse,
     PhysicalAcquisitionDiagnosticResponse,
+    ScrcpyDiagnosticResponse,
 )
 from forensix_forensic.adb import diagnose_adb
 from forensix_forensic.android_artifacts import application_artifact_support
@@ -55,6 +56,17 @@ def physical_acquisition_diagnostic(
             "Experimental raw userdata acquisition does not bypass device encryption, is not "
             "hardware write blocking, and is not resumable in the current release."
         ),
+    )
+
+
+@router.get("/scrcpy", response_model=ScrcpyDiagnosticResponse)
+def scrcpy_diagnostic(
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ScrcpyDiagnosticResponse:
+    del authenticated
+    return ScrcpyDiagnosticResponse.model_validate(
+        settings.scrcpy_controller().diagnose(), from_attributes=True
     )
 
 

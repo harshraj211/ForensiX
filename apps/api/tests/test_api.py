@@ -2,9 +2,11 @@ import asyncio
 import io
 import json
 import sqlite3
+import subprocess
 from base64 import b64encode
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import NoReturn
 
 import pytest
@@ -713,6 +715,72 @@ def test_case_bound_screenshot_is_sealed_as_logical_evidence(tmp_path: Path) -> 
     assert response.json()["status"] == "sealed"
     assert response.json()["source_name"] == "android-screen.png"
     assert len(response.json()["sha256"]) == 64
+
+
+def test_scrcpy_diagnostic_reports_missing_configuration(tmp_path: Path) -> None:
+    with TestClient(create_app(_settings(tmp_path), adb_client=MockAdbClient())) as client:
+        _authorize(client)
+        response = client.get("/api/v1/integrations/scrcpy")
+
+    assert response.status_code == 200
+    assert response.json()["available"] is False
+    assert response.json()["status"] == "missing"
+
+
+def test_case_bound_scrcpy_control_launch_is_audited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "scrcpy.exe"
+    executable.write_bytes(b"controlled scrcpy fixture")
+    settings = Settings(
+        environment="test",
+        data_dir=tmp_path / "data",
+        adb_mode="mock",
+        scrcpy_path=executable,
+    )
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        del args, kwargs
+        return subprocess.CompletedProcess([], 0, stdout="scrcpy 4.1\n", stderr="")
+
+    def fake_popen(arguments: list[str], **kwargs: object) -> SimpleNamespace:
+        del arguments, kwargs
+        return SimpleNamespace(pid=4242)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    app = create_app(settings, adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Live control case"}
+        ).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+        response = client.post(
+            "/api/v1/devices/live-screen/launch",
+            headers=headers,
+            json={
+                "case_id": case["id"],
+                "case_device_id": assessment["case_device_id"],
+                "serial": "FX-DEMO-001",
+                "mode": "control",
+                "interaction_acknowledged": True,
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["process_id"] == 4242
+    assert response.json()["mode"] == "control"
+    with app.state.database.session() as session:
+        event = session.scalars(
+            select(CaseEventRecord).where(CaseEventRecord.event_type == "live_screen_launched")
+        ).one()
+    assert "mode=control" in event.safe_detail
+    assert "FX-DEMO-001" not in event.safe_detail
 
 
 def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path: Path) -> None:

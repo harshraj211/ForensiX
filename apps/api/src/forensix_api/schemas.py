@@ -55,6 +55,15 @@ class AdbDiagnosticResponse(BaseModel):
     guidance: list[str]
 
 
+class ScrcpyDiagnosticResponse(BaseModel):
+    available: bool
+    status: Literal["missing", "digest_mismatch", "execution_failed", "invalid_executable", "ready"]
+    executable_path: str | None
+    version: str | None
+    sha256: str | None
+    guidance: list[str]
+
+
 class DeviceTransportResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -99,6 +108,22 @@ class ProviderCollectionResponse(BaseModel):
     truncated: bool
     max_records: int = Field(ge=1)
     limitation: str
+
+
+class ScrcpyLaunchRequest(BaseModel):
+    case_id: str = Field(min_length=36, max_length=36)
+    case_device_id: str = Field(min_length=36, max_length=36)
+    serial: str = Field(min_length=1, max_length=255)
+    mode: Literal["mirror", "control"]
+    interaction_acknowledged: Literal[True]
+
+
+class ScrcpyLaunchResponse(BaseModel):
+    process_id: int = Field(ge=1)
+    mode: Literal["mirror", "control"]
+    version: str
+    executable_sha256: str
+    side_effects: list[str]
 
 
 class RootAccessProbeRequest(BaseModel):

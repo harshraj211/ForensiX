@@ -7,7 +7,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from forensix_forensic.adb import MAX_PHYSICAL_BLOCK_BYTES
-from forensix_forensic.integrations import AleappConfiguration, AleappRunner
+from forensix_forensic.integrations import AleappConfiguration, AleappRunner, ScrcpyController
 
 
 class Settings(BaseSettings):
@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     aleapp_release_label: str = Field(default="v2026.1.0", min_length=1, max_length=64)
     aleapp_python_executable: Path | None = None
     aleapp_timeout_seconds: int = Field(default=1800, ge=30, le=7200)
+    scrcpy_path: Path | None = None
+    scrcpy_expected_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     enable_experimental_physical_acquisition: bool = False
     max_physical_acquisition_bytes: int = Field(
         default=128 * 1024 * 1024 * 1024,
@@ -63,6 +65,9 @@ class Settings(BaseSettings):
         }:
             raise ValueError("Plain HTTP deployment is restricted to a loopback host")
         return self
+
+    def scrcpy_controller(self) -> ScrcpyController:
+        return ScrcpyController(self.scrcpy_path, self.scrcpy_expected_sha256)
 
     @property
     def resolved_data_dir(self) -> Path:
