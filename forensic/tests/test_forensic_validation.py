@@ -120,3 +120,52 @@ async def test_known_file_hash_mismatch_fails_sealed_validation() -> None:
     check = next(item for item in sealed.report.checks if item.check_id == "known_file_acquisition")
     assert check.observed["known_answer_matches"] is False
     assert verify_validation_report(sealed)
+
+
+@pytest.mark.asyncio
+async def test_transport_cycle_observes_disconnect_and_reacquires_known_file() -> None:
+    client = MockAdbClient(include_validation_fixture=True)
+    checkpoints: list[str] = []
+
+    async def checkpoint(step: str) -> None:
+        checkpoints.append(step)
+        client.scenario = (
+            MockAdbScenario.NO_DEVICES
+            if step == "disconnect"
+            else MockAdbScenario.AUTHORIZED
+        )
+
+    sealed = await run_adb_validation(
+        client,
+        mode="mock",
+        validate_known_file=True,
+        validate_transport_cycle=True,
+        checkpoint=checkpoint,
+    )
+
+    assert sealed.report.outcome is ValidationOutcome.PASSED
+    assert checkpoints == ["disconnect", "reconnect"]
+    check = next(
+        item for item in sealed.report.checks if item.check_id == "transport_disconnect_reconnect"
+    )
+    assert check.observed["disconnected_state"] == "missing"
+    assert check.observed["reauthorized"] is True
+    assert check.observed["known_answer_matches"] is True
+    assert KNOWN_FILE_RELATIVE_PATH not in sealed.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_transport_cycle_requires_known_file_and_checkpoint() -> None:
+    with pytest.raises(ValueError, match="requires known-file"):
+        await run_adb_validation(
+            MockAdbClient(),
+            mode="mock",
+            validate_transport_cycle=True,
+        )
+    with pytest.raises(ValueError, match="requires an operator checkpoint"):
+        await run_adb_validation(
+            MockAdbClient(include_validation_fixture=True),
+            mode="mock",
+            validate_known_file=True,
+            validate_transport_cycle=True,
+        )

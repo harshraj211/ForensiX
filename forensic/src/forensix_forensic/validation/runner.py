@@ -5,6 +5,8 @@ import hashlib
 import json
 import platform
 import tempfile
+import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -30,6 +32,9 @@ from .models import (
 )
 
 TOOL_VERSION = "0.1.0"
+TRANSPORT_CYCLE_TIMEOUT_SECONDS = 60.0
+TRANSPORT_POLL_INTERVAL_SECONDS = 0.5
+ValidationCheckpoint = Callable[[str], Awaitable[None]]
 
 
 async def run_adb_validation(
@@ -38,10 +43,16 @@ async def run_adb_validation(
     mode: str,
     selected_serial: str | None = None,
     validate_known_file: bool = False,
+    validate_transport_cycle: bool = False,
+    checkpoint: ValidationCheckpoint | None = None,
 ) -> SealedValidationReport:
     """Run bounded ADB checks and an optional fixed-profile known-file acquisition."""
     if mode not in {"mock", "system"}:
         raise ValueError("Validation mode must be mock or system.")
+    if validate_transport_cycle and not validate_known_file:
+        raise ValueError("Transport-cycle validation requires known-file validation.")
+    if validate_transport_cycle and checkpoint is None:
+        raise ValueError("Transport-cycle validation requires an operator checkpoint callback.")
     started_at = datetime.now(UTC)
     checks: list[ValidationCheck] = []
     adb_version: str | None = None
@@ -128,6 +139,8 @@ async def run_adb_validation(
                     "Core build properties were collected and identifiers were redacted.",
                     fields_observed=len(required) - missing,
                     fields_expected=len(required),
+                    manufacturer=properties.get("ro.product.manufacturer"),
+                    model=properties.get("ro.product.model"),
                 )
             )
 
@@ -193,9 +206,31 @@ async def run_adb_validation(
                     )
                 )
                 if validate_known_file:
-                    checks.append(
-                        await _validate_known_file_acquisition(client, selected.serial, root, first)
+                    known_file_check = await _validate_known_file_acquisition(
+                        client, selected.serial, root, first
                     )
+                    checks.append(known_file_check)
+                    if validate_transport_cycle:
+                        if known_file_check.status is ValidationStatus.SUCCEEDED:
+                            assert checkpoint is not None
+                            checks.append(
+                                await _validate_transport_cycle(
+                                    client,
+                                    selected.serial,
+                                    root,
+                                    checkpoint,
+                                )
+                            )
+                        else:
+                            checks.append(
+                                _check(
+                                    "transport_disconnect_reconnect",
+                                    ValidationStatus.SKIPPED,
+                                    "The transport cycle was not attempted because the initial "
+                                    "known-file check did not pass.",
+                                    fixture_id=KNOWN_FILE_FIXTURE_ID,
+                                )
+                            )
             else:
                 checks.append(
                     _check(
@@ -213,6 +248,15 @@ async def run_adb_validation(
                             fixture_id=KNOWN_FILE_FIXTURE_ID,
                         )
                     )
+                    if validate_transport_cycle:
+                        checks.append(
+                            _check(
+                                "transport_disconnect_reconnect",
+                                ValidationStatus.SKIPPED,
+                                "No readable approved root was available for the transport cycle.",
+                                fixture_id=KNOWN_FILE_FIXTURE_ID,
+                            )
+                        )
     except Exception as error:  # Validation must preserve a sealed failure record.
         checks.append(
             _check(
@@ -254,6 +298,10 @@ async def run_adb_validation(
             (
                 "Known-file validation applies only to the fixed controlled fixture and does not "
                 "prove acquisition completeness for other files or devices."
+            ),
+            (
+                "A passing transport cycle proves detection and reacquisition only for the "
+                "observed controlled run; it does not guarantee recovery from every interruption."
             ),
         ),
     )
@@ -402,3 +450,86 @@ def _regular_file_size(path: Path) -> int | None:
         return path.stat().st_size
     except OSError:
         return None
+
+
+async def _validate_transport_cycle(
+    client: AdbClient,
+    serial: str,
+    root: SharedStorageRoot,
+    checkpoint: ValidationCheckpoint,
+) -> ValidationCheck:
+    """Observe a real disconnect, reauthorization, and fixed-file reacquisition."""
+    try:
+        await checkpoint("disconnect")
+        disconnected_state = await _wait_for_transport(client, serial, authorized=False)
+        await checkpoint("reconnect")
+        await _wait_for_transport(client, serial, authorized=True)
+        inventory = await client.inventory_shared_storage(serial, root)
+        fixture = next(
+            (
+                entry
+                for entry in inventory.entries
+                if entry.relative_path == KNOWN_FILE_RELATIVE_PATH
+            ),
+            None,
+        )
+        if fixture is None:
+            raise ValueError("The fixed fixture was absent after reconnection.")
+        with tempfile.TemporaryDirectory(prefix="forensix-reconnect-") as directory:
+            destination = Path(directory) / "post-reconnect.partial"
+            result = await client.pull_inventory_file(
+                serial,
+                root,
+                KNOWN_FILE_RELATIVE_PATH,
+                destination,
+            )
+            size_bytes = await asyncio.to_thread(_regular_file_size, destination)
+            if size_bytes is None or result.size_bytes != size_bytes:
+                raise ValueError("Post-reconnect pull size could not be validated.")
+            sha256 = await asyncio.to_thread(_hash_file, destination)
+    except Exception as error:
+        return _check(
+            "transport_disconnect_reconnect",
+            ValidationStatus.FAIL,
+            "The controlled disconnect/reconnect sequence did not complete safely.",
+            fixture_id=KNOWN_FILE_FIXTURE_ID,
+            error_type=type(error).__name__,
+        )
+
+    known_answer_matches = (
+        fixture.size_bytes == size_bytes == KNOWN_FILE_SIZE_BYTES
+        and sha256 == KNOWN_FILE_SHA256
+    )
+    return _check(
+        "transport_disconnect_reconnect",
+        ValidationStatus.SUCCEEDED if known_answer_matches else ValidationStatus.FAIL,
+        (
+            "Disconnect was observed, authorization returned, and the fixture was reacquired."
+            if known_answer_matches
+            else "The post-reconnect fixture did not match the known answer."
+        ),
+        fixture_id=KNOWN_FILE_FIXTURE_ID,
+        disconnected_state=disconnected_state,
+        reauthorized=True,
+        post_reconnect_size_bytes=size_bytes,
+        post_reconnect_sha256=sha256,
+        expected_sha256=KNOWN_FILE_SHA256,
+        known_answer_matches=known_answer_matches,
+    )
+
+
+async def _wait_for_transport(client: AdbClient, serial: str, *, authorized: bool) -> str:
+    deadline = time.monotonic() + TRANSPORT_CYCLE_TIMEOUT_SECONDS
+    while True:
+        transports = await client.list_transports()
+        selected = next((item for item in transports if item.serial == serial), None)
+        if authorized and selected is not None and selected.state is DeviceState.AUTHORIZED:
+            return DeviceState.AUTHORIZED.value
+        if not authorized and (
+            selected is None or selected.state in {DeviceState.OFFLINE, DeviceState.UNKNOWN}
+        ):
+            return "missing" if selected is None else selected.state.value
+        if time.monotonic() >= deadline:
+            expected = "authorized" if authorized else "missing or offline"
+            raise TimeoutError(f"Transport did not become {expected} within the fixed timeout.")
+        await asyncio.sleep(TRANSPORT_POLL_INTERVAL_SECONDS)

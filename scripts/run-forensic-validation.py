@@ -29,11 +29,18 @@ def _arguments() -> argparse.Namespace:
         action="store_true",
         help="Pull the one fixed controlled-device fixture twice and verify its SHA-256.",
     )
+    parser.add_argument(
+        "--validate-transport-cycle",
+        action="store_true",
+        help="Interactively observe disconnect, reconnect, and fixed-file reacquisition.",
+    )
     parser.add_argument("--output", required=True, type=Path)
     return parser.parse_args()
 
 
 async def _run(arguments: argparse.Namespace) -> int:
+    if arguments.validate_transport_cycle and not arguments.validate_known_file:
+        raise ValueError("--validate-transport-cycle requires --validate-known-file")
     if arguments.mode == "mock":
         client: AdbClient = MockAdbClient(
             MockAdbScenario(arguments.scenario),
@@ -47,6 +54,8 @@ async def _run(arguments: argparse.Namespace) -> int:
         mode=arguments.mode,
         selected_serial=arguments.serial,
         validate_known_file=arguments.validate_known_file,
+        validate_transport_cycle=arguments.validate_transport_cycle,
+        checkpoint=_operator_checkpoint if arguments.validate_transport_cycle else None,
     )
     destination = arguments.output.expanduser().resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -60,6 +69,20 @@ async def _run(arguments: argparse.Namespace) -> int:
     print(f"Report SHA-256: {sealed.canonical_sha256}")
     print(f"Written: {destination}")
     return 0 if sealed.report.outcome.value.startswith("passed") else 2
+
+
+async def _operator_checkpoint(step: str) -> None:
+    prompts = {
+        "disconnect": (
+            "Disconnect the selected controlled-device ADB transport, then press Enter. "
+            "For wired validation, unplug the USB cable: "
+        ),
+        "reconnect": (
+            "Reconnect the same controlled device, unlock it, restore ADB authorization, then "
+            "press Enter: "
+        ),
+    }
+    await asyncio.to_thread(input, prompts[step])
 
 
 def main() -> int:

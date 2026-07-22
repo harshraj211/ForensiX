@@ -58,6 +58,7 @@ may modify shared storage, then run:
   --adb-path "C:\Android\platform-tools\adb.exe" `
   --serial "SERIAL_FROM_ADB_DEVICES" `
   --validate-known-file `
+  --validate-transport-cycle `
   --output .\validation-results\windows-android-device.json
 ```
 
@@ -68,8 +69,16 @@ copies when the check ends. A missing fixture makes the validation incomplete an
 mismatch fails it. A different inventory digest remains a warning because device activity can
 legitimately change paths between observations. The ADB executable itself is hashed in system mode.
 
-Omit `--validate-known-file` when collecting metadata-only diagnostics. Such a run does not prove
-file acquisition behavior and cannot satisfy the physical acquisition release gate.
+With `--validate-transport-cycle`, the runner pauses after the initial two known-file acquisitions.
+It asks the examiner to disconnect the selected controlled-device transport, observes that the
+exact hashed transport identity becomes missing or offline, then asks for reconnection. It requires
+the same serial to return authorized within 60 seconds, inventories the same approved root again,
+and reacquires and hashes the fixed fixture. The sealed report records only the state transition,
+known size/hash result, and redacted identity. Do not run this interactive protocol on evidence
+devices or unattended automation.
+
+Omit both validation flags when collecting metadata-only diagnostics. Such a run does not prove
+file acquisition or interruption behavior and cannot satisfy the physical acquisition release gate.
 
 ## Validation matrix and release gate
 
@@ -87,6 +96,28 @@ For each supported release, retain sealed results for:
 A production release is blocked until its declared matrix is executed on physical devices, failures
 are dispositioned, and the validation records are independently reviewed. CI mock results prevent
 software regressions but never satisfy that physical-device gate.
+
+After collecting one sealed system-mode JSON record per controlled matrix run, build the release
+gate. Declare every supported Android release explicitly:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\verify-physical-validation-matrix.py `
+  --input .\validation-results\windows-infinix-android12-nonrooted.json `
+  --input .\validation-results\windows-test-rooted.json `
+  --input .\validation-results\linux-oem2-android14.json `
+  --input .\validation-results\macos-oem2-android14.json `
+  --require-android-release 12 `
+  --require-android-release 14 `
+  --minimum-manufacturers 2 `
+  --output .\validation-results\physical-matrix.json
+```
+
+By default the verifier requires Windows, Linux, and Darwin records, every declared Android
+release, two manufacturer families, both rooted and non-rooted coverage, and successful known-file
+and disconnect/reconnect checks in every accepted record. It verifies every source seal, rejects
+mock records, deduplicates identical reports, lists coverage gaps, and seals the matrix result. A
+passing aggregate is still supporting evidence that requires independent review; it is not proof of
+hardware write blocking or admissibility.
 
 ## Examiner validation report template
 
