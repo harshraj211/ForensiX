@@ -22,6 +22,7 @@ from .models import (
     RootAccessProbe,
     RootAccessStatus,
     RootedBundleResult,
+    ScreenshotCaptureResult,
     SharedStorageRootProbe,
     StorageInventoryEntry,
     StorageInventoryResult,
@@ -187,6 +188,19 @@ class MockAdbClient:
             truncated=False,
             max_records=CONTENT_PROVIDER_MAX_RECORDS,
         )
+
+    async def capture_screenshot(
+        self, serial: str, destination: Path
+    ) -> ScreenshotCaptureResult:
+        await self._require_authorized(serial)
+        AdbCommandPolicy.capture_screenshot(serial)
+        payload = (
+            b"\x89PNG\r\n\x1a\n"
+            b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00"
+            b"\x90wS\xde\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        await asyncio.to_thread(destination.write_bytes, payload)
+        return ScreenshotCaptureResult(size_bytes=len(payload))
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe:
         await self._require_authorized(serial)

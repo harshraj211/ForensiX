@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 from hashlib import sha256
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, status
@@ -12,6 +14,7 @@ from forensix_api.schemas import (
     DeviceCapabilityAssessmentResponse,
     DeviceDetectionResponse,
     DeviceTransportResponse,
+    EvidenceSourceResponse,
     ProviderCollectionRequest,
     ProviderCollectionResponse,
 )
@@ -30,6 +33,9 @@ from forensix_server.db import (
     DeviceCapabilityRun,
     DeviceDetectionRun,
 )
+from forensix_server.evidence_twin import EvidenceTwinService
+
+from .evidence_sources import source_response
 
 router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
 
@@ -209,3 +215,54 @@ async def collect_provider_records(
             "sealed evidence source; export or rooted acquisition is required for offline parsing."
         ),
     )
+
+
+@router.post(
+    "/{case_id}/case-devices/{device_id}/screenshots",
+    response_model=EvidenceSourceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def capture_device_screenshot(
+    case_id: str,
+    device_id: str,
+    serial: Annotated[str, Query(min_length=1, max_length=255)],
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+    database: Annotated[Database, Depends(get_database)],
+) -> EvidenceSourceResponse:
+    with database.session() as session:
+        device = CaseDeviceService().get_device(
+            session, authenticated.principal, case_id, device_id
+        )
+        CaseDeviceService().ensure_operable(session, authenticated.principal, case_id)
+        if sha256(serial.encode("utf-8")).hexdigest() != device.serial_hash:
+            raise CaseInvalidStateError(
+                "The connected Android serial does not match the case-linked device."
+            )
+
+    temp_root = database.data_dir / "tmp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix="screenshot-", dir=temp_root) as temporary:
+        screenshot_path = Path(temporary) / "screen.png"
+        capture = await adb_client.capture_screenshot(serial, screenshot_path)
+        with screenshot_path.open("rb") as stream:
+            source = EvidenceTwinService().seal_logical_stream(
+                database,
+                authenticated.principal,
+                case_id,
+                device_id,
+                stream,
+                source_name="android-screen.png",
+                display_name="Android screen capture",
+                declared_size_bytes=capture.size_bytes,
+                operation="adb_exec_out_screencap_png",
+                limitations=(
+                    "The image represents the displayed screen at capture time only.",
+                    (
+                        "ADB is not hardware write blocking and the device may record transport "
+                        "activity."
+                    ),
+                    "No screenshot file was intentionally created on the Android device.",
+                ),
+            )
+    return source_response(source)

@@ -147,6 +147,20 @@ def test_provider_query_policy_uses_only_fixed_uri_and_projection() -> None:
     assert command.timeout_seconds == 60.0
 
 
+def test_screenshot_policy_streams_png_without_device_side_path() -> None:
+    command = AdbCommandPolicy.capture_screenshot("FX-DEMO-001")
+
+    assert command.arguments == (
+        "-s",
+        "FX-DEMO-001",
+        "exec-out",
+        "screencap",
+        "-p",
+    )
+    assert command.timeout_seconds == 20.0
+    assert all("/sdcard" not in argument for argument in command.arguments)
+
+
 @pytest.mark.asyncio
 async def test_system_provider_query_parses_fixed_projection_and_preserves_commas() -> None:
     output = (

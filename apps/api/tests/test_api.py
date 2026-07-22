@@ -687,6 +687,34 @@ def test_provider_collection_refuses_android_permission_denial(tmp_path: Path) -
     assert response.json()["error"]["code"] == "CASE_INVALID_STATE"
 
 
+def test_case_bound_screenshot_is_sealed_as_logical_evidence(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Screenshot case"}
+        ).json()
+        assessment = client.post(
+            "/api/v1/devices/assess",
+            headers=headers,
+            json={"serial": "FX-DEMO-001", "case_id": case["id"]},
+        ).json()
+        response = client.post(
+            (
+                f"/api/v1/devices/{case['id']}/case-devices/"
+                f"{assessment['case_device_id']}/screenshots?serial=FX-DEMO-001"
+            ),
+            headers=headers,
+        )
+
+    assert response.status_code == 201
+    assert response.json()["source_type"] == "logical_adb"
+    assert response.json()["acquisition_level"] == "selective"
+    assert response.json()["status"] == "sealed"
+    assert response.json()["source_name"] == "android-screen.png"
+    assert len(response.json()["sha256"]) == 64
+
+
 def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path), adb_client=MockAdbClient(MockAdbScenario.ROOTED))
     with TestClient(app) as client:

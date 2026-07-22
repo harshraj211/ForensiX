@@ -129,6 +129,38 @@ class EvidenceTwinService:
             manifest_metadata={"profile": profile},
         )
 
+    def seal_logical_stream(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        device_id: str,
+        stream: BinaryIO,
+        *,
+        source_name: str,
+        display_name: str,
+        declared_size_bytes: int,
+        operation: str,
+        limitations: tuple[str, ...],
+        chunk_size_bytes: int = DEFAULT_EVIDENCE_CHUNK_SIZE,
+    ) -> EvidenceSourceRecord:
+        """Seal a workstation-streamed, case-authorized logical ADB artifact."""
+        return self._seal_stream(
+            database,
+            principal,
+            case_id,
+            stream,
+            source_name=source_name,
+            display_name=display_name,
+            declared_size_bytes=declared_size_bytes,
+            chunk_size_bytes=chunk_size_bytes,
+            source_type=EvidenceSourceType.LOGICAL_ADB,
+            acquisition_level=AcquisitionLevel.SELECTIVE,
+            device_id=device_id,
+            limitations=limitations,
+            manifest_metadata={"operation": operation},
+        )
+
     def seal_physical_stream(
         self,
         database: Database,

@@ -77,6 +77,16 @@ async def test_mock_provider_records_require_accessible_scenario() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mock_screenshot_is_a_png_stream(tmp_path: Path) -> None:
+    destination = tmp_path / "screen.png"
+
+    result = await MockAdbClient().capture_screenshot("FX-DEMO-001", destination)
+
+    assert result.media_type == "image/png"
+    assert destination.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+@pytest.mark.asyncio
 async def test_mock_rooted_bundle_is_a_deterministic_tar(tmp_path: Path) -> None:
     destination = tmp_path / "providers.tar"
     result = await MockAdbClient(MockAdbScenario.ROOTED).capture_rooted_bundle(

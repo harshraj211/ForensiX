@@ -18,6 +18,7 @@ from .models import (
     RootAccessProbe,
     RootAccessStatus,
     RootedBundleResult,
+    ScreenshotCaptureResult,
     SharedStorageRootProbe,
     StorageInventoryResult,
     StorageProbeStatus,
@@ -37,6 +38,7 @@ from .policy import (
     MAX_ACQUIRED_FILE_BYTES,
     MAX_PHYSICAL_BLOCK_BYTES,
     MAX_ROOTED_BUNDLE_BYTES,
+    MAX_SCREENSHOT_BYTES,
     AdbCommandPolicy,
     ApprovedAdbCommand,
     ContentProviderProfile,
@@ -63,6 +65,10 @@ class AdbClient(Protocol):
     async def query_content_provider(
         self, serial: str, profile: ContentProviderProfile
     ) -> ContentProviderQueryResult: ...
+
+    async def capture_screenshot(
+        self, serial: str, destination: Path
+    ) -> ScreenshotCaptureResult: ...
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe: ...
 
@@ -178,6 +184,26 @@ class SystemAdbClient:
             projection=AdbCommandPolicy.content_provider_projection(profile),
             max_records=CONTENT_PROVIDER_MAX_RECORDS,
         )
+
+    async def capture_screenshot(
+        self, serial: str, destination: Path
+    ) -> ScreenshotCaptureResult:
+        command = AdbCommandPolicy.capture_screenshot(serial)
+        result = await self._runner.run_stdout_to_file(
+            command.arguments,
+            destination,
+            timeout_seconds=command.timeout_seconds,
+            max_file_bytes=MAX_SCREENSHOT_BYTES,
+        )
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        size_bytes = await asyncio.to_thread(_regular_file_size, destination)
+        if size_bytes is None or size_bytes < 8:
+            raise AdbCommandError(result.exit_code, "ADB did not create a valid screenshot stream.")
+        signature = await asyncio.to_thread(_read_prefix, destination, 8)
+        if signature != b"\x89PNG\r\n\x1a\n":
+            raise AdbCommandError(result.exit_code, "ADB screenshot output was not a PNG image.")
+        return ScreenshotCaptureResult(size_bytes=size_bytes)
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe:
         result = await self._run(AdbCommandPolicy.probe_root_access(serial))
@@ -376,3 +402,8 @@ def _regular_file_size(path: Path) -> int | None:
     if path.is_symlink() or not path.is_file():
         return None
     return path.stat().st_size
+
+
+def _read_prefix(path: Path, size: int) -> bytes:
+    with path.open("rb") as stream:
+        return stream.read(size)

@@ -20,6 +20,7 @@ class AdbOperation(StrEnum):
     CAPTURE_PHYSICAL_BLOCK = "capture_physical_block"
     PROBE_CONTENT_PROVIDER = "probe_content_provider"
     QUERY_CONTENT_PROVIDER = "query_content_provider"
+    CAPTURE_SCREENSHOT = "capture_screenshot"
 
 
 class SharedStorageRoot(StrEnum):
@@ -53,6 +54,7 @@ MAX_ACQUIRED_FILE_BYTES = 100 * 1024 * 1024
 MAX_ROOTED_BUNDLE_BYTES = 1024 * 1024 * 1024
 MAX_PHYSICAL_BLOCK_BYTES = 512 * 1024 * 1024 * 1024
 CONTENT_PROVIDER_MAX_RECORDS = 500
+MAX_SCREENSHOT_BYTES = 50 * 1024 * 1024
 
 _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
     RootedCollectionProfile.ANDROID_PROVIDERS: (
@@ -201,6 +203,16 @@ class AdbCommandPolicy:
     @staticmethod
     def content_provider_projection(profile: ContentProviderProfile) -> tuple[str, ...]:
         return _CONTENT_PROVIDER_PROJECTIONS[profile]
+
+    @staticmethod
+    def capture_screenshot(serial: str) -> ApprovedAdbCommand:
+        """Stream a PNG to the workstation without creating a device-side file."""
+        _validate_serial(serial)
+        return ApprovedAdbCommand(
+            AdbOperation.CAPTURE_SCREENSHOT,
+            ("-s", serial, "exec-out", "screencap", "-p"),
+            20.0,
+        )
 
     @staticmethod
     def probe_root_access(serial: str) -> ApprovedAdbCommand:

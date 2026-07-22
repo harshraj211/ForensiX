@@ -139,6 +139,13 @@ class PulledFileResult(BaseModel):
     size_bytes: int = Field(ge=0)
 
 
+class ScreenshotCaptureResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    size_bytes: int = Field(ge=8)
+    media_type: str = "image/png"
+
+
 class RootedBundleResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
