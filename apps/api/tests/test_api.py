@@ -960,6 +960,28 @@ def test_empty_case_correlation_graph_is_hash_bound(tmp_path: Path) -> None:
     assert response.json()["builder_version"] == "1.0.0"
 
 
+def test_administrator_can_run_and_reload_sealed_known_answer_validation(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        empty = client.get("/api/v1/validation/evidence-twin/latest")
+        created = client.post(
+            "/api/v1/validation/evidence-twin/runs",
+            headers=headers,
+        )
+        latest = client.get("/api/v1/validation/evidence-twin/latest")
+
+    assert empty.status_code == 200
+    assert empty.json() is None
+    assert created.status_code == 201
+    assert created.json()["report"]["outcome"] == "passed", created.json()["report"]["checks"]
+    assert len(created.json()["canonical_sha256"]) == 64
+    assert latest.status_code == 200
+    assert latest.json()["canonical_sha256"] == created.json()["canonical_sha256"]
+
+
 def test_experimental_physical_capture_requires_configuration_and_all_risk_acknowledgements(
     tmp_path: Path,
 ) -> None:

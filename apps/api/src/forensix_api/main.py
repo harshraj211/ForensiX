@@ -28,6 +28,7 @@ from forensix_api.routers import (
     reports,
     rooted,
     timeline,
+    validation,
 )
 from forensix_forensic.adb import AdbClient, AdbError
 from forensix_server.acquisitions import AcquisitionRecoveryService
@@ -99,6 +100,7 @@ def create_app(
     app.include_router(acquisitions.router)
     app.include_router(artifacts.router)
     app.include_router(timeline.router)
+    app.include_router(validation.router)
     app.include_router(reports.router)
     app.include_router(rooted.router)
     app.include_router(rooted.capture_router)

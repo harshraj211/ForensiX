@@ -392,6 +392,76 @@ describe("audit review", () => {
   });
 });
 
+describe("known-answer validation", () => {
+  it("runs and displays a sealed synthetic validation result", async () => {
+    const sealed = {
+      report: {
+        schema_version: "forensix-evidence-twin-validation/1.0",
+        run_id: "00000000-0000-0000-0000-000000000001",
+        started_at: "2026-07-23T10:00:00Z",
+        completed_at: "2026-07-23T10:00:02Z",
+        tool_version: "0.1.0",
+        profile: "sqlite_provider_known_answer",
+        outcome: "passed",
+        environment: {
+          operating_system: "Windows",
+          operating_system_release: "11",
+          machine: "AMD64",
+          python_version: "3.12.13",
+        },
+        fixture_sha256: "a".repeat(64),
+        evidence_source_sha256: "a".repeat(64),
+        chunk_ledger_sha256: "b".repeat(64),
+        manifest_sha256: "c".repeat(64),
+        working_copy_sha256: "a".repeat(64),
+        report_output_sha256: { pdf: "d".repeat(64) },
+        checks: [
+          {
+            check_id: "provider_parsers",
+            status: "pass",
+            summary: "Four controlled Android provider parsers matched known answers.",
+            observed: { parser_count: 4, known_answers_match: true },
+          },
+        ],
+        limitations: ["Synthetic software validation is not physical-device validation."],
+      },
+      canonical_sha256: "e".repeat(64),
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/validation/evidence-twin/latest") {
+        return Promise.resolve(jsonResponse(null));
+      }
+      if (
+        url === "/api/v1/validation/evidence-twin/runs"
+        && init?.method === "POST"
+      ) {
+        return Promise.resolve(jsonResponse(sealed, 201));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderApp("/validation", {
+      ...AUTH_USER,
+      permissions: ["settings:manage"],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Known-answer validation" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("No validation run recorded")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Run validation" }));
+    expect(await screen.findByRole("heading", { name: "passed" })).toBeInTheDocument();
+    expect(screen.getByText("provider parsers")).toBeInTheDocument();
+    expect(screen.getByText(/Canonical report SHA-256/)).toHaveTextContent("e".repeat(64));
+  });
+});
+
 describe("device readiness", () => {
   it("states the controlled triage limitation before detection", () => {
     renderApp();

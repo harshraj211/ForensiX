@@ -835,6 +835,40 @@ export interface CorrelationGraph {
   warnings: string[];
 }
 
+export interface ValidationCheck {
+  check_id: string;
+  status: "pass" | "warning" | "fail" | "skipped";
+  summary: string;
+  observed: Record<string, string | number | boolean | null>;
+}
+
+export interface EvidenceTwinValidation {
+  report: {
+    schema_version: string;
+    run_id: string;
+    started_at: string;
+    completed_at: string;
+    tool_version: string;
+    profile: "sqlite_provider_known_answer";
+    outcome: "passed" | "passed_with_warnings" | "incomplete" | "failed";
+    environment: {
+      operating_system: string;
+      operating_system_release: string;
+      machine: string;
+      python_version: string;
+    };
+    fixture_sha256: string | null;
+    evidence_source_sha256: string | null;
+    chunk_ledger_sha256: string | null;
+    manifest_sha256: string | null;
+    working_copy_sha256: string | null;
+    report_output_sha256: Record<string, string>;
+    checks: ValidationCheck[];
+    limitations: string[];
+  };
+  canonical_sha256: string;
+}
+
 export interface Bookmark {
   id: string;
   artifact_id: string;
@@ -1618,6 +1652,14 @@ export function getTimeline(caseId: string): Promise<TimelineSearchResult> {
 
 export function getCorrelationGraph(caseId: string): Promise<CorrelationGraph> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/correlations`);
+}
+
+export function getLatestEvidenceTwinValidation(): Promise<EvidenceTwinValidation | null> {
+  return apiRequest("/api/v1/validation/evidence-twin/latest");
+}
+
+export function runEvidenceTwinValidation(): Promise<EvidenceTwinValidation> {
+  return apiRequest("/api/v1/validation/evidence-twin/runs", { method: "POST" });
 }
 
 export function listReports(caseId: string): Promise<PreliminaryReport[]> {

@@ -12,6 +12,7 @@ import { CorrelationGraphPage } from "./features/evidence/CorrelationGraphPage";
 import { TimelinePage } from "./features/evidence/TimelinePage";
 import { EvidenceTwinPage } from "./features/evidence-twin/EvidenceTwinPage";
 import { CaseReportsPage, ReportsCasesPage } from "./features/reports/ReportsPage";
+import { ValidationDashboardPage } from "./features/validation/ValidationDashboardPage";
 
 export function App() {
   return (
@@ -30,6 +31,7 @@ export function App() {
           <Route path="/evidence" element={<EvidenceCasesPage />} />
           <Route path="/reports" element={<ReportsCasesPage />} />
           <Route path="/audit" element={<AuditLogPage />} />
+          <Route path="/validation" element={<ValidationDashboardPage />} />
           <Route path="/cases/:caseId/reports" element={<CaseReportsPage />} />
           <Route path="*" element={<Navigate to="/devices" replace />} />
         </Route>
