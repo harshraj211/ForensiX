@@ -31,6 +31,7 @@ class SharedStorageRoot(StrEnum):
 class RootedCollectionProfile(StrEnum):
     ANDROID_PROVIDERS = "android_providers"
     ANDROID_SYSTEM = "android_system"
+    ANDROID_APPS = "android_apps"
 
 
 class PhysicalBlockProfile(StrEnum):
@@ -75,6 +76,25 @@ _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
         "/data/misc/wifi",
         "/data/misc/bluedroid",
         "/data/misc/location",
+    ),
+    RootedCollectionProfile.ANDROID_APPS: (
+        "/data/user/0/com.whatsapp/databases",
+        "/data/user/0/com.whatsapp/files/key",
+        "/data/user/0/com.whatsapp/shared_prefs",
+        "/data/user/0/org.telegram.messenger.web/files/cache4.db",
+        "/data/user/0/org.telegram.messenger.web/files/cache4.db-shm",
+        "/data/user/0/org.telegram.messenger.web/files/cache4.db-wal",
+        "/data/user/0/org.telegram.messenger.web/shared_prefs",
+        "/data/user/0/org.telegram.messenger/files/cache4.db",
+        "/data/user/0/org.telegram.messenger/files/cache4.db-shm",
+        "/data/user/0/org.telegram.messenger/files/cache4.db-wal",
+        "/data/user/0/org.telegram.messenger/shared_prefs",
+        "/data/user/0/org.thoughtcrime.securesms/databases",
+        "/data/user/0/org.thoughtcrime.securesms/shared_prefs",
+        "/data/user/0/com.facebook.orca/databases",
+        "/data/user/0/com.facebook.katana/databases",
+        "/data/user/0/com.instagram.android/databases",
+        "/data/user/0/com.snapchat.android/databases",
     ),
 }
 
@@ -155,9 +175,7 @@ class AdbCommandPolicy:
         )
 
     @staticmethod
-    def probe_content_provider(
-        serial: str, profile: ContentProviderProfile
-    ) -> ApprovedAdbCommand:
+    def probe_content_provider(serial: str, profile: ContentProviderProfile) -> ApprovedAdbCommand:
         """Check provider permission without returning a user record."""
         _validate_serial(serial)
         return ApprovedAdbCommand(
@@ -179,9 +197,7 @@ class AdbCommandPolicy:
         )
 
     @staticmethod
-    def query_content_provider(
-        serial: str, profile: ContentProviderProfile
-    ) -> ApprovedAdbCommand:
+    def query_content_provider(serial: str, profile: ContentProviderProfile) -> ApprovedAdbCommand:
         """Collect a fixed projection after a successful capability probe."""
         _validate_serial(serial)
         return ApprovedAdbCommand(

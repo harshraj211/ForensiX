@@ -2,6 +2,7 @@
 
 import asyncio
 import io
+import sqlite3
 import tarfile
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -189,9 +190,7 @@ class MockAdbClient:
             max_records=CONTENT_PROVIDER_MAX_RECORDS,
         )
 
-    async def capture_screenshot(
-        self, serial: str, destination: Path
-    ) -> ScreenshotCaptureResult:
+    async def capture_screenshot(self, serial: str, destination: Path) -> ScreenshotCaptureResult:
         await self._require_authorized(serial)
         AdbCommandPolicy.capture_screenshot(serial)
         payload = (
@@ -371,7 +370,7 @@ def _write_rooted_fixture_bundle(destination: Path, profile: RootedCollectionPro
                 b"SQLite format 3\x00ForensiX synthetic telephony provider fixture"
             ),
         }
-    else:
+    elif profile is RootedCollectionProfile.ANDROID_SYSTEM:
         fixtures = {
             "data/user_de/0/com.android.providers.downloads/databases/downloads.db": (
                 b"SQLite format 3\x00ForensiX synthetic downloads provider fixture"
@@ -383,6 +382,41 @@ def _write_rooted_fixture_bundle(destination: Path, profile: RootedCollectionPro
                 b"<?xml version='1.0'?><WifiConfigStoreData/>"
             ),
         }
+    else:
+        fixtures = {
+            "data/user/0/com.whatsapp/databases/msgstore.db": _sqlite_payload(
+                """
+                CREATE TABLE message (
+                    _id INTEGER PRIMARY KEY,
+                    timestamp INTEGER NOT NULL,
+                    text_data TEXT,
+                    from_me INTEGER,
+                    message_type INTEGER
+                );
+                INSERT INTO message VALUES (
+                    1, 1784770200000, 'FORENSIX-KAT rooted WhatsApp message', 1, 0
+                );
+                """
+            ),
+            "data/user/0/org.telegram.messenger.web/files/cache4.db": _sqlite_payload(
+                """
+                CREATE TABLE messages (
+                    _id INTEGER PRIMARY KEY,
+                    date INTEGER NOT NULL,
+                    text TEXT,
+                    dialog_id INTEGER,
+                    sender_id INTEGER,
+                    out INTEGER
+                );
+                INSERT INTO messages VALUES (
+                    1, 1784770260, 'FORENSIX-KAT rooted Telegram message', 100, 200, 0
+                );
+                """
+            ),
+            "data/user/0/org.thoughtcrime.securesms/databases/signal.db": (
+                b"ForensiX encrypted Signal placeholder; no plaintext parser claim"
+            ),
+        }
     with destination.open("xb") as output, tarfile.open(fileobj=output, mode="w|") as archive:
         for member_name, payload in fixtures.items():
             metadata = tarfile.TarInfo(member_name)
@@ -390,3 +424,12 @@ def _write_rooted_fixture_bundle(destination: Path, profile: RootedCollectionPro
             metadata.mode = 0o400
             metadata.mtime = 0
             archive.addfile(metadata, io.BytesIO(payload))
+
+
+def _sqlite_payload(script: str) -> bytes:
+    connection = sqlite3.connect(":memory:")
+    try:
+        connection.executescript(script)
+        return connection.serialize()
+    finally:
+        connection.close()

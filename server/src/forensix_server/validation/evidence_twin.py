@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
+import shutil
 import sqlite3
+import tempfile
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
@@ -319,6 +322,70 @@ def run_evidence_twin_validation(workspace: Path) -> SealedEvidenceTwinValidatio
 
 def verify_evidence_twin_validation(sealed: SealedEvidenceTwinValidationReport) -> bool:
     return _report_digest(sealed.report) == sealed.canonical_sha256
+
+
+class EvidenceTwinValidationIntegrityError(RuntimeError):
+    """Raised when a persisted validation result no longer matches its canonical seal."""
+
+
+def run_and_store_evidence_twin_validation(
+    data_dir: Path,
+) -> SealedEvidenceTwinValidationReport:
+    """Run the synthetic workflow, atomically persist its sealed result, then remove work files."""
+    validation_root = (data_dir / "validation").resolve()
+    runs_root = (validation_root / "runs").resolve()
+    runs_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    workspace = Path(tempfile.mkdtemp(prefix="forensix-validation-")).resolve()
+    if workspace.is_symlink() or not workspace.is_dir():
+        raise ValueError("The validation workspace is not a safe directory.")
+    try:
+        sealed = run_evidence_twin_validation(workspace)
+        destination = (runs_root / f"{sealed.report.run_id}.json").resolve()
+        if destination.parent != runs_root:
+            raise ValueError("The validation report path is invalid.")
+        temporary = destination.with_suffix(".json.partial")
+        payload = sealed.model_dump_json(indent=2).encode("utf-8")
+        with temporary.open("xb") as output:
+            output.write(payload)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, destination)
+        return sealed
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def load_latest_evidence_twin_validation(
+    data_dir: Path,
+) -> SealedEvidenceTwinValidationReport | None:
+    """Load and independently verify the most recent immutable validation result."""
+    runs_root = (data_dir / "validation" / "runs").resolve()
+    if not runs_root.exists():
+        return None
+    candidates = sorted(
+        (
+            item
+            for item in runs_root.glob("*.json")
+            if item.is_file() and not item.is_symlink() and item.parent.resolve() == runs_root
+        ),
+        key=lambda item: item.stat().st_mtime_ns,
+        reverse=True,
+    )
+    if not candidates:
+        return None
+    try:
+        sealed = SealedEvidenceTwinValidationReport.model_validate_json(
+            candidates[0].read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError) as error:
+        raise EvidenceTwinValidationIntegrityError(
+            "The latest validation report could not be safely decoded."
+        ) from error
+    if not verify_evidence_twin_validation(sealed):
+        raise EvidenceTwinValidationIntegrityError(
+            "The latest validation report failed canonical SHA-256 verification."
+        )
+    return sealed
 
 
 def _principal_and_case(database: Database) -> tuple[Principal, str]:

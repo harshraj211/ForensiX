@@ -392,6 +392,76 @@ describe("audit review", () => {
   });
 });
 
+describe("known-answer validation", () => {
+  it("runs and displays a sealed synthetic validation result", async () => {
+    const sealed = {
+      report: {
+        schema_version: "forensix-evidence-twin-validation/1.0",
+        run_id: "00000000-0000-0000-0000-000000000001",
+        started_at: "2026-07-23T10:00:00Z",
+        completed_at: "2026-07-23T10:00:02Z",
+        tool_version: "0.1.0",
+        profile: "sqlite_provider_known_answer",
+        outcome: "passed",
+        environment: {
+          operating_system: "Windows",
+          operating_system_release: "11",
+          machine: "AMD64",
+          python_version: "3.12.13",
+        },
+        fixture_sha256: "a".repeat(64),
+        evidence_source_sha256: "a".repeat(64),
+        chunk_ledger_sha256: "b".repeat(64),
+        manifest_sha256: "c".repeat(64),
+        working_copy_sha256: "a".repeat(64),
+        report_output_sha256: { pdf: "d".repeat(64) },
+        checks: [
+          {
+            check_id: "provider_parsers",
+            status: "pass",
+            summary: "Four controlled Android provider parsers matched known answers.",
+            observed: { parser_count: 4, known_answers_match: true },
+          },
+        ],
+        limitations: ["Synthetic software validation is not physical-device validation."],
+      },
+      canonical_sha256: "e".repeat(64),
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/validation/evidence-twin/latest") {
+        return Promise.resolve(jsonResponse(null));
+      }
+      if (
+        url === "/api/v1/validation/evidence-twin/runs"
+        && init?.method === "POST"
+      ) {
+        return Promise.resolve(jsonResponse(sealed, 201));
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderApp("/validation", {
+      ...AUTH_USER,
+      permissions: ["settings:manage"],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Known-answer validation" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("No validation run recorded")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Run validation" }));
+    expect(await screen.findByRole("heading", { name: "passed" })).toBeInTheDocument();
+    expect(screen.getByText("provider parsers")).toBeInTheDocument();
+    expect(screen.getByText(/Canonical report SHA-256/)).toHaveTextContent("e".repeat(64));
+  });
+});
+
 describe("device readiness", () => {
   it("states the controlled triage limitation before detection", () => {
     renderApp();
@@ -832,6 +902,22 @@ describe("device readiness", () => {
           serial: "FX-DEMO-001",
           root_probe_id: "probe-0000-0000-0000-000000000001",
           profile: "android_system",
+          side_effects_acknowledged: true,
+        }),
+      }),
+    );
+    await user.click(screen.getByLabelText(/authorize the fixed private-application allowlist/i));
+    await user.click(screen.getByRole("button", { name: "Capture private-app bundle" }));
+    expect(
+      await screen.findByText("Private-application Evidence Twin source sealed"),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/cases/case-1/devices/device-1/rooted-captures",
+      expect.objectContaining({
+        body: JSON.stringify({
+          serial: "FX-DEMO-001",
+          root_probe_id: "probe-0000-0000-0000-000000000001",
+          profile: "android_apps",
           side_effects_acknowledged: true,
         }),
       }),
@@ -1649,12 +1735,18 @@ describe("evidence explorer", () => {
     renderApp("/cases/case-1/evidence");
 
     expect(await screen.findByRole("heading", { name: "Evidence explorer" })).toBeInTheDocument();
+    expect(await screen.findByText("1 evidence folders")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Documents/i }));
     expect((await screen.findAllByText("timeline.csv")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("Documents/timeline.csv")).length).toBeGreaterThan(0);
     expect(await screen.findByText("Extension-derived MIME")).toBeInTheDocument();
     expect(screen.getByText("text/csv")).toBeInTheDocument();
-    expect(screen.getByText(/Original evidence is never rendered/i)).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /Inspect safely/i })).toBeInTheDocument();
+    expect(screen.getByText(/Downloads are independently SHA-256 verified/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /View file/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Download original/i })).toHaveAttribute(
+      "href",
+      "/api/v1/cases/case-1/artifacts/artifact-1/content",
+    );
     expect(screen.getByText(`SHA-256`)).toBeInTheDocument();
   });
 
@@ -1722,5 +1814,109 @@ describe("evidence explorer", () => {
     expect(screen.getByText(/acquisition collected at/i)).toBeInTheDocument();
     expect(screen.getByText("UTC recorded by acquisition workstation")).toBeInTheDocument();
     expect(screen.getByText(/No missing device-side timestamps are inferred/i)).toBeInTheDocument();
+  });
+
+  it("renders explainable evidence correlations and source links", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-GRAPH",
+            title: "Graph case",
+            description: null,
+            legal_authority: null,
+            status: "active",
+            created_by: "user-1",
+            created_at: "2026-07-16T10:00:00Z",
+            updated_at: "2026-07-16T10:00:00Z",
+            closed_at: null,
+            version: 1,
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/correlations") {
+        return Promise.resolve(
+          jsonResponse({
+            case_id: "case-1",
+            nodes: [
+              {
+                id: "source:1",
+                node_type: "source",
+                label: "Rooted provider bundle",
+                subtitle: "rooted_filesystem",
+                confidence: "high",
+                artifact_id: null,
+                source_artifact_id: null,
+                evidence_source_id: "source-1",
+              },
+              {
+                id: "source-artifact:1",
+                node_type: "artifact",
+                label: "Known Contact",
+                subtitle: "android_contact",
+                confidence: "high",
+                artifact_id: null,
+                source_artifact_id: "artifact-1",
+                evidence_source_id: "source-1",
+              },
+              {
+                id: "phone:1",
+                node_type: "phone",
+                label: "+15551234567",
+                subtitle: "Explicit normalized field",
+                confidence: "high",
+                artifact_id: null,
+                source_artifact_id: null,
+                evidence_source_id: null,
+              },
+            ],
+            edges: [
+              {
+                id: "edge-1",
+                source: "source:1",
+                target: "source-artifact:1",
+                relation: "derived_from",
+                confidence: "high",
+                evidence_count: 1,
+              },
+              {
+                id: "edge-2",
+                source: "source-artifact:1",
+                target: "phone:1",
+                relation: "mentions",
+                confidence: "high",
+                evidence_count: 1,
+              },
+            ],
+            graph_hash: "a".repeat(64),
+            builder_version: "1.0.0",
+            truncated: false,
+            warnings: ["Shared values do not prove identity."],
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/cases/case-1/correlations");
+
+    expect(
+      await screen.findByRole("heading", { name: "Investigation correlation graph" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("phone: +15551234567")).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("artifact: Known Contact"));
+    expect(await screen.findByRole("link", { name: "Open parsed source artifact" })).toHaveAttribute(
+      "href",
+      "/cases/case-1/evidence-twin",
+    );
+    expect(screen.getByText(/Graph SHA-256/)).toHaveTextContent("a".repeat(64));
   });
 });

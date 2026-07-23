@@ -165,7 +165,7 @@ class RootAccessProbeResponse(BaseModel):
 class RootedCaptureRequest(BaseModel):
     serial: str = Field(min_length=1, max_length=255)
     root_probe_id: str = Field(min_length=36, max_length=36)
-    profile: Literal["android_providers", "android_system"]
+    profile: Literal["android_providers", "android_system", "android_apps"]
     side_effects_acknowledged: Literal[True]
 
 
@@ -529,6 +529,48 @@ class TimelineSearchResponse(BaseModel):
     offset: int
     limit: int
     category_facets: dict[str, int]
+
+
+class CorrelationNodeResponse(BaseModel):
+    id: str
+    node_type: Literal[
+        "device",
+        "source",
+        "artifact",
+        "identity",
+        "phone",
+        "email",
+        "application",
+        "conversation",
+        "domain",
+        "network",
+        "location",
+    ]
+    label: str
+    subtitle: str | None
+    confidence: str
+    artifact_id: str | None
+    source_artifact_id: str | None
+    evidence_source_id: str | None
+
+
+class CorrelationEdgeResponse(BaseModel):
+    id: str
+    source: str
+    target: str
+    relation: Literal["contains", "derived_from", "mentions"]
+    confidence: str
+    evidence_count: int
+
+
+class CorrelationGraphResponse(BaseModel):
+    case_id: str
+    nodes: list[CorrelationNodeResponse]
+    edges: list[CorrelationEdgeResponse]
+    graph_hash: str
+    builder_version: str
+    truncated: bool
+    warnings: list[str]
 
 
 class BookmarkRequest(BaseModel):

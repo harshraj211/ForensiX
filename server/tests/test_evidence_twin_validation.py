@@ -4,6 +4,8 @@ from pathlib import Path
 from forensix_forensic.validation import ValidationOutcome, ValidationStatus
 from forensix_server.validation import (
     SealedEvidenceTwinValidationReport,
+    load_latest_evidence_twin_validation,
+    run_and_store_evidence_twin_validation,
     run_evidence_twin_validation,
     verify_evidence_twin_validation,
 )
@@ -60,3 +62,13 @@ def test_modified_evidence_twin_validation_report_fails_verification(tmp_path: P
     )
 
     assert not verify_evidence_twin_validation(modified)
+
+
+def test_validation_report_is_persisted_and_reverified(tmp_path: Path) -> None:
+    sealed = run_and_store_evidence_twin_validation(tmp_path)
+    loaded = load_latest_evidence_twin_validation(tmp_path)
+
+    assert loaded is not None
+    assert loaded.canonical_sha256 == sealed.canonical_sha256
+    assert verify_evidence_twin_validation(loaded)
+    assert not (tmp_path / "validation" / "work").exists()

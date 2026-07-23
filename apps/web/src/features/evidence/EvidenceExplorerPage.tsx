@@ -1,5 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bookmark, FileSearch, ImageIcon, LoaderCircle, ShieldAlert, ShieldCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  Bookmark,
+  Download,
+  Eye,
+  FileSearch,
+  Folder,
+  FolderOpen,
+  ImageIcon,
+  LoaderCircle,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -11,9 +23,10 @@ import {
   getArtifactPreview,
   getCase,
   listCases,
-  searchArtifacts,
+  searchAllArtifacts,
   addAnalystNote,
   addArtifactTag,
+  artifactContentUrl,
   bookmarkArtifact,
   removeArtifactBookmark,
   artifactPreviewContentUrl,
@@ -63,6 +76,7 @@ export function EvidenceCasesPage() {
 export function EvidenceExplorerPage() {
   const { caseId = "" } = useParams();
   const [parameters, setParameters] = useSearchParams();
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const filters = useMemo(
     () => ({
@@ -82,16 +96,24 @@ export function EvidenceExplorerPage() {
   const artifactsQuery = useQuery({
     queryKey: caseKeys.artifacts(caseId, filters),
     queryFn: () =>
-      searchArtifacts(caseId, {
+      searchAllArtifacts(caseId, {
         ...(filters.q ? { q: filters.q } : {}),
         ...(filters.category ? { category: filters.category } : {}),
         status: filters.status,
         ...(filters.extension ? { extension: filters.extension } : {}),
         ...(filters.duplicateOnly ? { duplicateOnly: true } : {}),
-      }),
+    }),
     enabled: Boolean(caseId),
   });
-  const effectiveSelectedId = selectedId ?? artifactsQuery.data?.items[0]?.id ?? null;
+  const folders = useMemo(
+    () => groupArtifactsByFolder(artifactsQuery.data?.items ?? []),
+    [artifactsQuery.data?.items],
+  );
+  const folderArtifacts = useMemo(
+    () => selectedFolder === null ? [] : (folders.get(selectedFolder) ?? []),
+    [folders, selectedFolder],
+  );
+  const effectiveSelectedId = selectedId ?? folderArtifacts[0]?.id ?? null;
   const detailQuery = useQuery({
     queryKey: ["artifact", caseId, effectiveSelectedId],
     queryFn: () => getArtifact(caseId, effectiveSelectedId ?? ""),
@@ -102,6 +124,7 @@ export function EvidenceExplorerPage() {
     const next = new URLSearchParams(parameters);
     if (value) next.set(name, value);
     else next.delete(name);
+    setSelectedFolder(null);
     setSelectedId(null);
     setParameters(next, { replace: true });
   };
@@ -115,12 +138,15 @@ export function EvidenceExplorerPage() {
         <p className="font-mono text-xs text-cyan-300/65">{caseQuery.data?.case_number ?? "Case evidence"}</p>
         <h1 className="mt-2 text-3xl font-semibold text-white">Evidence explorer</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-          Search normalized metadata, inspect provenance, and request bounded derivatives for supported images.
+          Open a source folder to inspect its acquired files, view supported formats, or download
+          any integrity-verified sealed file.
         </p>
       </header>
       <div className="mt-6 flex gap-3 rounded-xl border border-amber-200/15 bg-amber-200/5 p-4 text-xs leading-5 text-amber-100/75">
         <ShieldAlert size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
-        Original evidence is never rendered. Preview requests run in an isolated, resource-bounded worker and the browser receives only a verified PNG derivative.
+        Downloads are independently SHA-256 verified before release. Images use a safe derivative;
+        PDFs, text, audio, and video are opened only after signature checks. Unknown and potentially
+        unsafe formats remain download-only.
       </div>
       <div className="mt-6 grid gap-3 md:grid-cols-[1fr_180px_140px_150px]">
         <label className="text-xs text-slate-400">
@@ -171,15 +197,65 @@ export function EvidenceExplorerPage() {
       {artifactsQuery.isError && <div className="mt-6"><CaseError error={artifactsQuery.error} /></div>}
       {caseQuery.isError && <div className="mt-6"><CaseError error={caseQuery.error} /></div>}
       {artifactsQuery.data && (
-        <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+        <div className={`mt-6 grid gap-5 ${selectedFolder === null ? "" : "lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]"}`}>
           <section aria-label="Evidence results" className="min-w-0 rounded-2xl border border-white/8 bg-white/[0.025] p-4">
             <div className="flex items-center justify-between gap-3 px-2 pb-3">
-              <h2 className="text-sm font-semibold text-white">{artifactsQuery.data.total} normalized artifacts</h2>
-              <span className="text-[10px] text-slate-600">Newest collected first</span>
+              <div>
+                {selectedFolder !== null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedFolder(null);
+                      setSelectedId(null);
+                    }}
+                    className="mb-2 inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-cyan-200"
+                  >
+                    <ArrowLeft size={12} /> All folders
+                  </button>
+                )}
+                <h2 className="text-sm font-semibold text-white">
+                  {selectedFolder === null
+                    ? `${String(folders.size)} evidence folders`
+                    : displayFolderName(selectedFolder)}
+                </h2>
+                {selectedFolder !== null && (
+                  <p className="mt-1 font-mono text-[10px] text-slate-600">
+                    {folderArtifacts.length} acquired file{folderArtifacts.length === 1 ? "" : "s"}
+                  </p>
+                )}
+              </div>
+              <span className="text-[10px] text-slate-600">{artifactsQuery.data.total} total artifacts</span>
             </div>
             {artifactsQuery.data.items.length === 0 && <p className="p-6 text-sm text-slate-500">No evidence matches these filters.</p>}
-            <ul className="max-h-[620px] space-y-2 overflow-y-auto">
-              {artifactsQuery.data.items.map((artifact) => (
+            {selectedFolder === null ? (
+              <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {[...folders.entries()].map(([folderPath, items]) => (
+                  <li key={folderPath}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFolder(folderPath);
+                        setSelectedId(null);
+                      }}
+                      className="min-h-32 w-full rounded-xl border border-white/8 bg-black/10 p-4 text-left transition hover:border-cyan-300/25 hover:bg-cyan-300/5"
+                    >
+                      <Folder size={26} className="text-cyan-300" aria-hidden="true" />
+                      <h3 className="mt-3 truncate text-sm font-semibold text-white">
+                        {displayFolderName(folderPath)}
+                      </h3>
+                      <p className="mt-1 truncate font-mono text-[10px] text-slate-600">
+                        {folderPath || "Shared storage root"}
+                      </p>
+                      <p className="mt-3 text-[11px] text-slate-400">
+                        {items.length} file{items.length === 1 ? "" : "s"} · {formatBytes(items.reduce((sum, item) => sum + item.size_bytes, 0))}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <ul className="max-h-[620px] space-y-2 overflow-y-auto">
+              {folderArtifacts.map((artifact) => (
                 <li key={artifact.id}>
                   <button
                     type="button"
@@ -198,9 +274,12 @@ export function EvidenceExplorerPage() {
                   </button>
                 </li>
               ))}
-            </ul>
+              </ul>
+            )}
           </section>
-          <ArtifactDetail caseId={caseId} artifact={detailQuery.data} pending={detailQuery.isPending} error={detailQuery.error} />
+          {selectedFolder !== null && (
+            <ArtifactDetail caseId={caseId} artifact={detailQuery.data} pending={detailQuery.isPending} error={detailQuery.error} />
+          )}
         </div>
       )}
     </div>
@@ -211,13 +290,14 @@ function ArtifactDetail({ caseId, artifact, pending, error }: { caseId: string; 
   if (pending) return <aside role="status" className="rounded-2xl border border-white/8 p-6 text-sm text-slate-500">Loading artifact provenance...</aside>;
   if (error) return <aside><CaseError error={error} /></aside>;
   if (!artifact) return <aside className="rounded-2xl border border-dashed border-white/10 p-8 text-sm text-slate-600"><FileSearch className="mb-3" />Select an artifact.</aside>;
-  return <ArtifactDetailContent caseId={caseId} artifact={artifact} />;
+  return <ArtifactDetailContent key={artifact.id} caseId={caseId} artifact={artifact} />;
 }
 
 function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact: Artifact }) {
   const queryClient = useQueryClient();
   const [tagName, setTagName] = useState("");
   const [noteBody, setNoteBody] = useState("");
+  const [showOriginal, setShowOriginal] = useState(false);
   const annotationKey = ["artifact-annotations", caseId, artifact.id] as const;
   const annotations = useQuery({
     queryKey: annotationKey,
@@ -258,6 +338,7 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
     },
   });
   const limitations = Array.isArray(artifact.metadata.limitations) ? artifact.metadata.limitations.map(String) : [];
+  const inlineKind = inlineViewerKind(artifact);
   const actionError = annotations.error ?? preview.error ?? generatePreview.error ?? bookmark.error ?? addTag.error ?? addNote.error;
   return (
     <aside className="min-w-0 rounded-2xl border border-white/8 bg-white/[0.025] p-5">
@@ -274,6 +355,45 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
         <Detail label="Evidence file ID" value={artifact.evidence_file_id} mono />
         <Detail label="Device ID" value={artifact.device_id} mono />
       </dl>
+      <section className="mt-6 rounded-xl border border-white/8 bg-black/15 p-4" aria-label="Evidence file access">
+        <p className="flex items-center gap-2 text-xs font-semibold text-white">
+          <FolderOpen size={14} className="text-cyan-300" /> Evidence file
+        </p>
+        <p className="mt-2 text-[10px] leading-4 text-slate-500">
+          The sealed file is re-hashed before every view or download. Download is available for
+          every acquired file type.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {inlineKind !== null && artifact.category !== "image" && (
+            <button
+              type="button"
+              onClick={() => { setShowOriginal((current) => !current); }}
+              className="inline-flex min-h-9 items-center gap-2 rounded border border-cyan-200/15 px-3 text-[11px] text-cyan-100"
+            >
+              <Eye size={13} /> {showOriginal ? "Close viewer" : "View file"}
+            </button>
+          )}
+          <a
+            href={artifactContentUrl(caseId, artifact.id)}
+            className="inline-flex min-h-9 items-center gap-2 rounded border border-white/12 px-3 text-[11px] text-slate-200 hover:border-cyan-200/25 hover:text-cyan-100"
+          >
+            <Download size={13} /> Download original
+          </a>
+        </div>
+        {showOriginal && inlineKind !== null && (
+          <InlineEvidenceViewer
+            kind={inlineKind}
+            url={artifactContentUrl(caseId, artifact.id, true)}
+            title={artifact.title}
+          />
+        )}
+        {inlineKind === null && artifact.category !== "image" && (
+          <p className="mt-3 text-[10px] text-amber-100/65">
+            Browser viewing is unavailable for this format; download remains enabled.
+          </p>
+        )}
+      </section>
+      {artifact.category === "image" && (
       <section className="mt-6 rounded-xl border border-cyan-200/10 bg-cyan-300/[0.025] p-4" aria-label="Safe evidence preview">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -325,6 +445,7 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
           </div>
         )}
       </section>
+      )}
       {limitations.length > 0 && (
         <div className="mt-6 rounded-lg border border-amber-200/12 bg-amber-200/5 p-3 text-[11px] leading-5 text-amber-100/70">
           <p className="font-semibold text-amber-100">Normalization limitations</p>
@@ -397,4 +518,62 @@ function formatBytes(bytes: number): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+type InlineViewerKind = "audio" | "pdf" | "text" | "video";
+
+function groupArtifactsByFolder(artifacts: Artifact[]): Map<string, Artifact[]> {
+  const grouped = new Map<string, Artifact[]>();
+  for (const artifact of artifacts) {
+    const normalized = artifact.source_relative_path.replaceAll("\\", "/");
+    const separator = normalized.lastIndexOf("/");
+    const folder = separator < 0 ? "" : normalized.slice(0, separator);
+    const items = grouped.get(folder) ?? [];
+    items.push(artifact);
+    grouped.set(folder, items);
+  }
+  return new Map([...grouped.entries()].sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function displayFolderName(folderPath: string): string {
+  if (!folderPath) return "Shared storage root";
+  return folderPath.split("/").filter(Boolean).at(-1) ?? "Shared storage root";
+}
+
+function inlineViewerKind(artifact: Artifact): InlineViewerKind | null {
+  if (artifact.detected_mime === "application/pdf") return "pdf";
+  if (
+    artifact.detected_mime.startsWith("text/")
+    || artifact.detected_mime === "application/json"
+    || artifact.detected_mime === "application/xml"
+  ) return "text";
+  if (artifact.category === "audio") return "audio";
+  if (artifact.category === "video") return "video";
+  return null;
+}
+
+function InlineEvidenceViewer({
+  kind,
+  url,
+  title,
+}: {
+  kind: InlineViewerKind;
+  url: string;
+  title: string;
+}) {
+  if (kind === "audio") {
+    return <audio className="mt-4 w-full" controls preload="metadata" src={url}>Audio playback is unavailable.</audio>;
+  }
+  if (kind === "video") {
+    return <video className="mt-4 max-h-96 w-full rounded-lg bg-black" controls preload="metadata" src={url}>Video playback is unavailable.</video>;
+  }
+  return (
+    <iframe
+      src={url}
+      title={`${kind === "pdf" ? "PDF" : "Text"} viewer for ${title}`}
+      sandbox=""
+      referrerPolicy="no-referrer"
+      className="mt-4 h-96 w-full rounded-lg border border-white/8 bg-white"
+    />
+  );
 }

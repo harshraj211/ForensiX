@@ -792,6 +792,83 @@ export interface TimelineSearchResult {
   category_facets: Record<string, number>;
 }
 
+export type CorrelationNodeType =
+  | "device"
+  | "source"
+  | "artifact"
+  | "identity"
+  | "phone"
+  | "email"
+  | "application"
+  | "conversation"
+  | "domain"
+  | "network"
+  | "location";
+
+export interface CorrelationNode {
+  id: string;
+  node_type: CorrelationNodeType;
+  label: string;
+  subtitle: string | null;
+  confidence: string;
+  artifact_id: string | null;
+  source_artifact_id: string | null;
+  evidence_source_id: string | null;
+}
+
+export interface CorrelationEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: "contains" | "derived_from" | "mentions";
+  confidence: string;
+  evidence_count: number;
+}
+
+export interface CorrelationGraph {
+  case_id: string;
+  nodes: CorrelationNode[];
+  edges: CorrelationEdge[];
+  graph_hash: string;
+  builder_version: string;
+  truncated: boolean;
+  warnings: string[];
+}
+
+export interface ValidationCheck {
+  check_id: string;
+  status: "pass" | "warning" | "fail" | "skipped";
+  summary: string;
+  observed: Record<string, string | number | boolean | null>;
+}
+
+export interface EvidenceTwinValidation {
+  report: {
+    schema_version: string;
+    run_id: string;
+    started_at: string;
+    completed_at: string;
+    tool_version: string;
+    profile: "sqlite_provider_known_answer";
+    outcome: "passed" | "passed_with_warnings" | "incomplete" | "failed";
+    environment: {
+      operating_system: string;
+      operating_system_release: string;
+      machine: string;
+      python_version: string;
+    };
+    fixture_sha256: string | null;
+    evidence_source_sha256: string | null;
+    chunk_ledger_sha256: string | null;
+    manifest_sha256: string | null;
+    working_copy_sha256: string | null;
+    report_output_sha256: Record<string, string>;
+    checks: ValidationCheck[];
+    limitations: string[];
+  };
+  canonical_sha256: string;
+}
+
 export interface Bookmark {
   id: string;
   artifact_id: string;
@@ -1193,7 +1270,7 @@ export function captureRootedBundle(
   deviceId: string,
   serial: string,
   rootProbeId: string,
-  profile: "android_providers" | "android_system",
+  profile: "android_providers" | "android_system" | "android_apps",
 ): Promise<EvidenceSource> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/rooted-captures`,
@@ -1429,9 +1506,14 @@ export function searchArtifacts(
     duplicateOnly?: boolean;
     minSize?: number;
     maxSize?: number;
+    offset?: number;
+    limit?: number;
   },
 ): Promise<ArtifactSearchResult> {
-  const parameters = new URLSearchParams({ offset: "0", limit: "100" });
+  const parameters = new URLSearchParams({
+    offset: String(filters.offset ?? 0),
+    limit: String(filters.limit ?? 100),
+  });
   if (filters.q) parameters.set("q", filters.q);
   if (filters.category) parameters.set("category", filters.category);
   if (filters.status) parameters.set("status", filters.status);
@@ -1442,6 +1524,33 @@ export function searchArtifacts(
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts?${parameters.toString()}`,
   );
+}
+
+export async function searchAllArtifacts(
+  caseId: string,
+  filters: {
+    q?: string;
+    category?: ArtifactCategory;
+    status?: ArtifactStatus;
+    extension?: string;
+    duplicateOnly?: boolean;
+    minSize?: number;
+    maxSize?: number;
+  },
+): Promise<ArtifactSearchResult> {
+  const pageSize = 100;
+  const firstPage = await searchArtifacts(caseId, { ...filters, offset: 0, limit: pageSize });
+  const items = [...firstPage.items];
+  while (items.length < firstPage.total) {
+    const page = await searchArtifacts(caseId, {
+      ...filters,
+      offset: items.length,
+      limit: pageSize,
+    });
+    if (page.items.length === 0) break;
+    items.push(...page.items);
+  }
+  return { ...firstPage, items, offset: 0, limit: items.length };
 }
 
 export function getArtifact(caseId: string, artifactId: string): Promise<Artifact> {
@@ -1471,6 +1580,15 @@ export function generateArtifactPreview(
 
 export function artifactPreviewContentUrl(caseId: string, artifactId: string): string {
   return `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/preview/content`;
+}
+
+export function artifactContentUrl(
+  caseId: string,
+  artifactId: string,
+  inline = false,
+): string {
+  const base = `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/content`;
+  return inline ? `${base}?inline=true` : base;
 }
 
 export function getArtifactAnnotations(
@@ -1530,6 +1648,18 @@ export function getTimeline(caseId: string): Promise<TimelineSearchResult> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/timeline?offset=0&limit=200`,
   );
+}
+
+export function getCorrelationGraph(caseId: string): Promise<CorrelationGraph> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/correlations`);
+}
+
+export function getLatestEvidenceTwinValidation(): Promise<EvidenceTwinValidation | null> {
+  return apiRequest("/api/v1/validation/evidence-twin/latest");
+}
+
+export function runEvidenceTwinValidation(): Promise<EvidenceTwinValidation> {
+  return apiRequest("/api/v1/validation/evidence-twin/runs", { method: "POST" });
 }
 
 export function listReports(caseId: string): Promise<PreliminaryReport[]> {

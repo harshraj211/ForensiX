@@ -106,6 +106,7 @@ class EvidenceTwinService:
         display_name: str,
         declared_size_bytes: int,
         profile: str,
+        profile_paths: tuple[str, ...],
         chunk_size_bytes: int = DEFAULT_EVIDENCE_CHUNK_SIZE,
     ) -> EvidenceSourceRecord:
         """Seal a bundle produced only by the controlled rooted acquisition service."""
@@ -126,7 +127,11 @@ class EvidenceTwinService:
                 "This bounded rooted bundle is not a physical or bit-for-bit device image.",
                 "Encrypted application data may remain unavailable or require separate keys.",
             ),
-            manifest_metadata={"profile": profile},
+            manifest_metadata={
+                "profile": profile,
+                "policy_paths": list(profile_paths),
+                "policy_path_count": len(profile_paths),
+            },
         )
 
     def seal_logical_stream(

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, BookOpenText, Boxes, FileClock, LogOut, ShieldCheck } from "lucide-react";
+import { Activity, BookOpenText, Boxes, FileClock, FlaskConical, LogOut, ShieldCheck } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { authKeys } from "../features/auth/authKeys";
@@ -12,6 +12,7 @@ const navigation = [
   { label: "Evidence", to: "/evidence", icon: ShieldCheck, disabled: false },
   { label: "Reports", to: "/reports", icon: BookOpenText, disabled: false },
   { label: "Audit log", to: "/audit", icon: FileClock, disabled: false, permission: "audit:view" },
+  { label: "Validation", to: "/validation", icon: FlaskConical, disabled: false, permission: "settings:manage" },
 ];
 
 export function AppShell() {

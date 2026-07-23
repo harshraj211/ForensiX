@@ -129,9 +129,7 @@ def test_provider_probe_policy_is_content_free_and_profile_bounded() -> None:
 
 
 def test_provider_query_policy_uses_only_fixed_uri_and_projection() -> None:
-    command = AdbCommandPolicy.query_content_provider(
-        "FX-DEMO-001", ContentProviderProfile.SMS
-    )
+    command = AdbCommandPolicy.query_content_provider("FX-DEMO-001", ContentProviderProfile.SMS)
 
     assert command.arguments == (
         "-s",
@@ -188,9 +186,9 @@ async def test_system_provider_probe_distinguishes_access_from_permission_denial
     available = await SystemAdbClient(
         cast(SubprocessAdbRunner, available_runner)
     ).probe_content_provider("FX-DEMO-001", ContentProviderProfile.SMS)
-    denied = await SystemAdbClient(
-        cast(SubprocessAdbRunner, denied_runner)
-    ).probe_content_provider("FX-DEMO-001", ContentProviderProfile.SMS)
+    denied = await SystemAdbClient(cast(SubprocessAdbRunner, denied_runner)).probe_content_provider(
+        "FX-DEMO-001", ContentProviderProfile.SMS
+    )
 
     assert available.status is ContentProviderAccessStatus.AVAILABLE
     assert denied.status is ContentProviderAccessStatus.DENIED
@@ -208,6 +206,22 @@ def test_rooted_bundle_policy_uses_only_fixed_provider_paths() -> None:
     assert "com.android.providers.contacts/databases" in shell_text
     assert "com.android.providers.telephony/databases" in shell_text
     assert "com.android.providers.calendar/databases" in shell_text
+    assert "tar -cf -" in shell_text
+
+
+def test_rooted_app_bundle_policy_uses_only_fixed_private_app_paths() -> None:
+    command = AdbCommandPolicy.capture_rooted_bundle(
+        "FX-DEMO-001", RootedCollectionProfile.ANDROID_APPS
+    )
+
+    shell_text = command.arguments[5]
+    assert command.arguments[:5] == ("-s", "FX-DEMO-001", "exec-out", "su", "-c")
+    assert "FX-DEMO-001" not in shell_text
+    assert "/data/user/0/com.whatsapp/databases" in shell_text
+    assert "/data/user/0/org.telegram.messenger/files/cache4.db" in shell_text
+    assert "/data/user/0/org.thoughtcrime.securesms/databases" in shell_text
+    assert "/data/user/0/com.instagram.android/databases" in shell_text
+    assert "/data/user/0/com.snapchat.android/databases" in shell_text
     assert "tar -cf -" in shell_text
 
 
