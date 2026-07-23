@@ -484,6 +484,7 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
   const [rootAcknowledged, setRootAcknowledged] = useState(false);
   const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
   const [systemCaptureAcknowledged, setSystemCaptureAcknowledged] = useState(false);
+  const [appCaptureAcknowledged, setAppCaptureAcknowledged] = useState(false);
   const [physicalProbeAcknowledged, setPhysicalProbeAcknowledged] = useState(false);
   const [physicalAcquisitionAcknowledged, setPhysicalAcquisitionAcknowledged] = useState(false);
   const [encryptionAcknowledged, setEncryptionAcknowledged] = useState(false);
@@ -560,6 +561,8 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
     },
     onSuccess: () => {
       setCaptureAcknowledged(false);
+      setSystemCaptureAcknowledged(false);
+      setAppCaptureAcknowledged(false);
     },
   });
   const rootedCapture = useMutation({
@@ -587,6 +590,20 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
         assessment.serial,
         rootProbe.data.id,
         "android_system",
+      );
+    },
+  });
+  const rootedAppCapture = useMutation({
+    mutationFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+        throw new Error("A current rooted-access proof is required for this collection.");
+      }
+      return captureRootedBundle(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+        rootProbe.data.id,
+        "android_apps",
       );
     },
   });
@@ -1046,6 +1063,74 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
                       className="mt-3 inline-flex font-semibold text-cyan-200 underline decoration-cyan-300/30 underline-offset-4"
                     >
                       Examine system-artifact bundle
+                    </Link>
+                  </div>
+                )}
+              </div>
+              <div className="mt-5 border-t border-fuchsia-200/10 pt-4">
+                <p className="text-xs font-semibold text-white">
+                  Bounded private-application collection
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  Streams only fixed WhatsApp, Telegram, Signal, Messenger, Facebook, Instagram,
+                  and Snapchat database or configuration paths that exist on this rooted test
+                  device. Application schemas vary. Telegram records may use binary encoding, and
+                  ForensiX does not bypass or decrypt Signal encryption. A live database and its
+                  WAL files may not represent an atomic snapshot.
+                </p>
+                <div className="mt-3 rounded-md border border-amber-300/15 bg-amber-300/5 p-3 text-xs leading-5 text-amber-100/80">
+                  This bundle can contain messages, account identifiers, authentication material,
+                  and other highly sensitive private data. Capture only under explicit legal
+                  authority.
+                </div>
+                <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-fuchsia-100/70">
+                  <input
+                    type="checkbox"
+                    checked={appCaptureAcknowledged}
+                    onChange={(event) => {
+                      setAppCaptureAcknowledged(event.target.checked);
+                    }}
+                    className="mt-1 accent-fuchsia-300"
+                  />
+                  I authorize the fixed private-application allowlist and acknowledge that
+                  sensitive account data may be collected while encrypted records may remain
+                  unreadable.
+                </label>
+                <button
+                  type="button"
+                  disabled={!appCaptureAcknowledged || rootedAppCapture.isPending}
+                  onClick={() => {
+                    rootedAppCapture.mutate();
+                  }}
+                  className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg bg-fuchsia-200 px-4 text-xs font-semibold text-[#12091a] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {rootedAppCapture.isPending ? (
+                    <LoaderCircle size={14} className="animate-spin" />
+                  ) : (
+                    <HardDrive size={14} />
+                  )}
+                  {rootedAppCapture.isPending
+                    ? "Capturing private applications…"
+                    : "Capture private-app bundle"}
+                </button>
+                {rootedAppCapture.isError && (
+                  <div className="mt-3">
+                    <ErrorState error={rootedAppCapture.error} />
+                  </div>
+                )}
+                {rootedAppCapture.data && (
+                  <div className="mt-4 rounded-md border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-100">
+                    <p className="font-semibold">
+                      Private-application Evidence Twin source sealed
+                    </p>
+                    <p className="mt-1 font-mono text-[10px] opacity-65">
+                      SHA-256 {rootedAppCapture.data.sha256}
+                    </p>
+                    <Link
+                      to={`/cases/${assessment.case_id}/evidence-twin`}
+                      className="mt-3 inline-flex font-semibold text-cyan-200 underline decoration-cyan-300/30 underline-offset-4"
+                    >
+                      Examine private-application bundle
                     </Link>
                   </div>
                 )}

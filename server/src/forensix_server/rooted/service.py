@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from forensix_forensic.adb import (
     AdbClient,
+    AdbCommandPolicy,
     DeviceState,
     PhysicalBlockProfile,
     RootedCollectionProfile,
@@ -483,13 +484,14 @@ def _seal_rooted_path(
             device_id,
             stream,
             source_name=f"{profile.value}.tar",
-            display_name=(
-                "Rooted Android provider bundle"
-                if profile is RootedCollectionProfile.ANDROID_PROVIDERS
-                else "Rooted Android system-artifact bundle"
-            ),
+            display_name={
+                RootedCollectionProfile.ANDROID_PROVIDERS: "Rooted Android provider bundle",
+                RootedCollectionProfile.ANDROID_SYSTEM: ("Rooted Android system-artifact bundle"),
+                RootedCollectionProfile.ANDROID_APPS: ("Rooted Android private-application bundle"),
+            }[profile],
             declared_size_bytes=size_bytes,
             profile=profile.value,
+            profile_paths=AdbCommandPolicy.rooted_profile_paths(profile),
         )
 
 

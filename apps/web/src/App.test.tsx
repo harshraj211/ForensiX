@@ -836,6 +836,22 @@ describe("device readiness", () => {
         }),
       }),
     );
+    await user.click(screen.getByLabelText(/authorize the fixed private-application allowlist/i));
+    await user.click(screen.getByRole("button", { name: "Capture private-app bundle" }));
+    expect(
+      await screen.findByText("Private-application Evidence Twin source sealed"),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/cases/case-1/devices/device-1/rooted-captures",
+      expect.objectContaining({
+        body: JSON.stringify({
+          serial: "FX-DEMO-001",
+          root_probe_id: "probe-0000-0000-0000-000000000001",
+          profile: "android_apps",
+          side_effects_acknowledged: true,
+        }),
+      }),
+    );
     await user.click(screen.getByLabelText(/authorize a metadata-only probe/i));
     await user.click(screen.getByRole("button", { name: "Probe userdata block" }));
     expect(await screen.findByText("Fixed block located")).toBeInTheDocument();

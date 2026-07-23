@@ -1193,7 +1193,7 @@ export function captureRootedBundle(
   deviceId: string,
   serial: string,
   rootProbeId: string,
-  profile: "android_providers" | "android_system",
+  profile: "android_providers" | "android_system" | "android_apps",
 ): Promise<EvidenceSource> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/rooted-captures`,

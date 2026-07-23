@@ -64,16 +64,12 @@ async def test_rooted_mock_requires_explicit_rooted_scenario() -> None:
 @pytest.mark.asyncio
 async def test_mock_provider_records_require_accessible_scenario() -> None:
     accessible = MockAdbClient(MockAdbScenario.PROVIDERS_ACCESSIBLE)
-    result = await accessible.query_content_provider(
-        "FX-DEMO-001", ContentProviderProfile.CONTACTS
-    )
+    result = await accessible.query_content_provider("FX-DEMO-001", ContentProviderProfile.CONTACTS)
 
     assert result.records[0].values["display_name"] == "Controlled Contact"
     assert result.records[0].values["data1"] == "+15550100"
     with pytest.raises(AdbCommandError):
-        await MockAdbClient().query_content_provider(
-            "FX-DEMO-001", ContentProviderProfile.CONTACTS
-        )
+        await MockAdbClient().query_content_provider("FX-DEMO-001", ContentProviderProfile.CONTACTS)
 
 
 @pytest.mark.asyncio
@@ -100,6 +96,25 @@ async def test_mock_rooted_bundle_is_a_deterministic_tar(tmp_path: Path) -> None
         "data/user_de/0/com.android.providers.contacts/databases/contacts2.db",
         "data/user_de/0/com.android.providers.telephony/databases/mmssms.db",
     ]
+
+
+@pytest.mark.asyncio
+async def test_mock_rooted_app_bundle_contains_parser_fixtures(tmp_path: Path) -> None:
+    destination = tmp_path / "apps.tar"
+    await MockAdbClient(MockAdbScenario.ROOTED).capture_rooted_bundle(
+        "FX-DEMO-001", RootedCollectionProfile.ANDROID_APPS, destination
+    )
+
+    with tarfile.open(destination, "r:") as archive:
+        names = archive.getnames()
+        whatsapp = archive.extractfile("data/user/0/com.whatsapp/databases/msgstore.db")
+        telegram = archive.extractfile("data/user/0/org.telegram.messenger.web/files/cache4.db")
+
+        assert "data/user/0/org.thoughtcrime.securesms/databases/signal.db" in names
+        assert whatsapp is not None
+        assert telegram is not None
+        assert whatsapp.read(16) == b"SQLite format 3\x00"
+        assert telegram.read(16) == b"SQLite format 3\x00"
 
 
 @pytest.mark.asyncio

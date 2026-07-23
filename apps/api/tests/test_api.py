@@ -908,6 +908,16 @@ def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path:
                 "side_effects_acknowledged": True,
             },
         )
+        app_capture = client.post(
+            capture_endpoint,
+            headers=headers,
+            json={
+                "serial": "FX-DEMO-001",
+                "root_probe_id": response.json()["id"],
+                "profile": "android_apps",
+                "side_effects_acknowledged": True,
+            },
+        )
 
     assert missing_ack.status_code == 422
     assert response.status_code == 201
@@ -926,6 +936,9 @@ def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path:
     assert system_capture.status_code == 201
     assert system_capture.json()["source_name"] == "android_system.tar"
     assert system_capture.json()["display_name"] == "Rooted Android system-artifact bundle"
+    assert app_capture.status_code == 201
+    assert app_capture.json()["source_name"] == "android_apps.tar"
+    assert app_capture.json()["display_name"] == "Rooted Android private-application bundle"
 
 
 def test_experimental_physical_capture_requires_configuration_and_all_risk_acknowledgements(

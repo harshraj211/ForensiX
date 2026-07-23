@@ -165,7 +165,7 @@ class RootAccessProbeResponse(BaseModel):
 class RootedCaptureRequest(BaseModel):
     serial: str = Field(min_length=1, max_length=255)
     root_probe_id: str = Field(min_length=36, max_length=36)
-    profile: Literal["android_providers", "android_system"]
+    profile: Literal["android_providers", "android_system", "android_apps"]
     side_effects_acknowledged: Literal[True]
 
 
