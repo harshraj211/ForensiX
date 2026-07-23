@@ -1753,8 +1753,7 @@ class CustodyCheckpointSignatureRecord(Base):
     __tablename__ = "custody_checkpoint_signatures"
     __table_args__ = (
         CheckConstraint(
-            "signature_algorithm IN ('rsa_pkcs1v15_sha256', 'rsa_pss_sha256', "
-            "'ecdsa_sha256')",
+            "signature_algorithm IN ('rsa_pkcs1v15_sha256', 'rsa_pss_sha256', 'ecdsa_sha256')",
             name="ck_custody_checkpoint_signatures_algorithm",
         ),
         UniqueConstraint(

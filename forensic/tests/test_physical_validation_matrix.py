@@ -35,9 +35,7 @@ async def _physical_record(
     client = PhysicalHarnessClient(scenario, adb_path)
 
     async def checkpoint(step: str) -> None:
-        client.scenario = (
-            MockAdbScenario.NO_DEVICES if step == "disconnect" else scenario
-        )
+        client.scenario = MockAdbScenario.NO_DEVICES if step == "disconnect" else scenario
 
     return await run_adb_validation(
         client,

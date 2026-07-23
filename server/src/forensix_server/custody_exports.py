@@ -323,7 +323,8 @@ class CustodyCheckpointService:
                 "The signer certificate is not valid PEM X.509."
             ) from error
         if not (
-            certificate.not_valid_before_utc <= normalized_signed_at
+            certificate.not_valid_before_utc
+            <= normalized_signed_at
             <= certificate.not_valid_after_utc
         ):
             raise CustodyCheckpointError(
@@ -554,9 +555,7 @@ def _verify_detached_signature(
                 padding.PKCS1v15(),
                 utils.Prehashed(hashes.SHA256()),
             )
-        elif signature_algorithm == "rsa_pss_sha256" and isinstance(
-            public_key, rsa.RSAPublicKey
-        ):
+        elif signature_algorithm == "rsa_pss_sha256" and isinstance(public_key, rsa.RSAPublicKey):
             public_key.verify(
                 signature,
                 checkpoint_digest,

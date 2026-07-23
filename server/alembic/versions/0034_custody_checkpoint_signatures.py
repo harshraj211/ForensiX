@@ -38,14 +38,11 @@ def upgrade() -> None:
         sa.Column("verification_hash", sa.String(64), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.CheckConstraint(
-            "signature_algorithm IN ('rsa_pkcs1v15_sha256', 'rsa_pss_sha256', "
-            "'ecdsa_sha256')",
+            "signature_algorithm IN ('rsa_pkcs1v15_sha256', 'rsa_pss_sha256', 'ecdsa_sha256')",
             name="ck_custody_checkpoint_signatures_algorithm",
         ),
         sa.ForeignKeyConstraint(["case_id"], ["cases.id"], ondelete="RESTRICT"),
-        sa.ForeignKeyConstraint(
-            ["checkpoint_id"], ["custody_checkpoints.id"], ondelete="RESTRICT"
-        ),
+        sa.ForeignKeyConstraint(["checkpoint_id"], ["custody_checkpoints.id"], ondelete="RESTRICT"),
         sa.ForeignKeyConstraint(["verified_by"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
