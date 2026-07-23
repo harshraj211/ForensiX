@@ -32,7 +32,13 @@ from forensix_server.db import (
     Database,
     TagRecord,
 )
-from forensix_server.evidence import AnalysisService, ArtifactPreviewService, ArtifactService
+from forensix_server.evidence import (
+    AnalysisService,
+    ArtifactContentError,
+    ArtifactContentService,
+    ArtifactPreviewService,
+    ArtifactService,
+)
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/artifacts", tags=["artifacts"])
 
@@ -96,6 +102,38 @@ def get_artifact(
             record,
             ArtifactService().duplicate_count(session, case_id, record.primary_sha256),
         )
+
+
+@router.get("/{artifact_id}/content", response_class=FileResponse)
+def get_artifact_content(
+    case_id: str,
+    artifact_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+    inline: bool = False,
+) -> FileResponse:
+    content = ArtifactContentService().resolve(
+        database, authenticated.principal, case_id, artifact_id
+    )
+    if inline and content.inline_media_type is None:
+        raise ArtifactContentError(
+            "This file type cannot be displayed safely in the browser. Download it for "
+            "examination with an appropriate application."
+        )
+    return FileResponse(
+        content.path,
+        media_type=(content.inline_media_type if inline else content.declared_media_type),
+        filename=content.filename,
+        content_disposition_type="inline" if inline else "attachment",
+        headers={
+            "Cache-Control": "no-store, private",
+            "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "X-Content-Type-Options": "nosniff",
+            "X-ForensiX-Evidence-SHA256": content.sha256,
+            "X-ForensiX-Integrity-Verified": "true",
+        },
+    )
 
 
 @router.get("/{artifact_id}/preview", response_model=ArtifactPreviewResponse)

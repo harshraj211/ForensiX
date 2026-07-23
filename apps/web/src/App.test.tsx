@@ -1649,12 +1649,18 @@ describe("evidence explorer", () => {
     renderApp("/cases/case-1/evidence");
 
     expect(await screen.findByRole("heading", { name: "Evidence explorer" })).toBeInTheDocument();
+    expect(await screen.findByText("1 evidence folders")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Documents/i }));
     expect((await screen.findAllByText("timeline.csv")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("Documents/timeline.csv")).length).toBeGreaterThan(0);
     expect(await screen.findByText("Extension-derived MIME")).toBeInTheDocument();
     expect(screen.getByText("text/csv")).toBeInTheDocument();
-    expect(screen.getByText(/Original evidence is never rendered/i)).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /Inspect safely/i })).toBeInTheDocument();
+    expect(screen.getByText(/Downloads are independently SHA-256 verified/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /View file/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Download original/i })).toHaveAttribute(
+      "href",
+      "/api/v1/cases/case-1/artifacts/artifact-1/content",
+    );
     expect(screen.getByText(`SHA-256`)).toBeInTheDocument();
   });
 

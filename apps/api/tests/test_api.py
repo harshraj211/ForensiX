@@ -710,9 +710,7 @@ def test_case_bound_screenshot_is_sealed_as_logical_evidence(tmp_path: Path) -> 
         )
 
         source = response.json()
-        view = client.get(
-            f"/api/v1/cases/{case['id']}/evidence-sources/{source['id']}/content"
-        )
+        view = client.get(f"/api/v1/cases/{case['id']}/evidence-sources/{source['id']}/content")
         download = client.get(
             f"/api/v1/cases/{case['id']}/evidence-sources/{source['id']}/content?download=true"
         )
@@ -1768,6 +1766,47 @@ def test_preview_api_rejects_non_image_without_serving_source_bytes(tmp_path: Pa
     assert content.json()["error"]["code"] == "PREVIEW_NOT_AVAILABLE"
 
 
+def test_artifact_content_downloads_every_type_and_inlines_verified_text(
+    tmp_path: Path,
+) -> None:
+    app = create_app(_settings(tmp_path), adb_client=MockAdbClient())
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case, plan = _create_case_plan(client, headers, scope="quick_triage")
+        endpoint = f"/api/v1/cases/{case['id']}/acquisitions"
+        job = client.post(endpoint, headers=headers, json={"plan_id": plan["id"]}).json()
+        inventory = client.post(f"{endpoint}/{job['id']}/inventory", headers=headers).json()
+        item = next(
+            entry
+            for entry in inventory["items"]
+            if entry["relative_path"] == "Documents/timeline.csv"
+        )
+        acquired = client.post(
+            f"{endpoint}/{job['id']}/inventory/items/{item['id']}/acquire",
+            headers=headers,
+        ).json()
+        artifact = client.get(f"/api/v1/cases/{case['id']}/artifacts").json()["items"][0]
+        content_url = f"/api/v1/cases/{case['id']}/artifacts/{artifact['id']}/content"
+
+        downloaded = client.get(content_url)
+        viewed = client.get(f"{content_url}?inline=true")
+        evidence_path = tmp_path / "evidence" / Path(acquired["storage_key"])
+        evidence_path.write_bytes(b"tampered after acquisition")
+        blocked = client.get(content_url)
+
+    assert downloaded.status_code == 200
+    assert downloaded.content.startswith(b"timestamp,event")
+    assert downloaded.headers["content-disposition"].startswith("attachment;")
+    assert downloaded.headers["x-forensix-evidence-sha256"] == acquired["sha256"]
+    assert downloaded.headers["x-forensix-integrity-verified"] == "true"
+    assert downloaded.headers["x-content-type-options"] == "nosniff"
+    assert viewed.status_code == 200
+    assert viewed.headers["content-type"].startswith("text/plain")
+    assert viewed.headers["content-disposition"].startswith("inline;")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "ARTIFACT_CONTENT_INTEGRITY_FAILED"
+
+
 def test_interrupted_file_api_requires_review_and_restarts_from_zero(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path), adb_client=_PartialDisconnectClient())
     with TestClient(app) as client:
@@ -1926,8 +1965,7 @@ def test_custody_history_is_chained_amended_and_audited(tmp_path: Path) -> None:
             },
         )
         signatures = client.get(
-            f"/api/v1/cases/{case['id']}/custody/checkpoints/"
-            f"{checkpoint.json()['id']}/signatures"
+            f"/api/v1/cases/{case['id']}/custody/checkpoints/{checkpoint.json()['id']}/signatures"
         )
         downloaded = client.get(
             f"/api/v1/cases/{case['id']}/custody/checkpoints/{checkpoint.json()['id']}/download"

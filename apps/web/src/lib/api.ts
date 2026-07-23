@@ -1429,9 +1429,14 @@ export function searchArtifacts(
     duplicateOnly?: boolean;
     minSize?: number;
     maxSize?: number;
+    offset?: number;
+    limit?: number;
   },
 ): Promise<ArtifactSearchResult> {
-  const parameters = new URLSearchParams({ offset: "0", limit: "100" });
+  const parameters = new URLSearchParams({
+    offset: String(filters.offset ?? 0),
+    limit: String(filters.limit ?? 100),
+  });
   if (filters.q) parameters.set("q", filters.q);
   if (filters.category) parameters.set("category", filters.category);
   if (filters.status) parameters.set("status", filters.status);
@@ -1442,6 +1447,33 @@ export function searchArtifacts(
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts?${parameters.toString()}`,
   );
+}
+
+export async function searchAllArtifacts(
+  caseId: string,
+  filters: {
+    q?: string;
+    category?: ArtifactCategory;
+    status?: ArtifactStatus;
+    extension?: string;
+    duplicateOnly?: boolean;
+    minSize?: number;
+    maxSize?: number;
+  },
+): Promise<ArtifactSearchResult> {
+  const pageSize = 100;
+  const firstPage = await searchArtifacts(caseId, { ...filters, offset: 0, limit: pageSize });
+  const items = [...firstPage.items];
+  while (items.length < firstPage.total) {
+    const page = await searchArtifacts(caseId, {
+      ...filters,
+      offset: items.length,
+      limit: pageSize,
+    });
+    if (page.items.length === 0) break;
+    items.push(...page.items);
+  }
+  return { ...firstPage, items, offset: 0, limit: items.length };
 }
 
 export function getArtifact(caseId: string, artifactId: string): Promise<Artifact> {
@@ -1471,6 +1503,15 @@ export function generateArtifactPreview(
 
 export function artifactPreviewContentUrl(caseId: string, artifactId: string): string {
   return `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/preview/content`;
+}
+
+export function artifactContentUrl(
+  caseId: string,
+  artifactId: string,
+  inline = false,
+): string {
+  const base = `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}/content`;
+  return inline ? `${base}?inline=true` : base;
 }
 
 export function getArtifactAnnotations(
