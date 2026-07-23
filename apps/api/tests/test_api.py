@@ -941,6 +941,25 @@ def test_root_probe_requires_case_binding_and_explicit_acknowledgement(tmp_path:
     assert app_capture.json()["display_name"] == "Rooted Android private-application bundle"
 
 
+def test_empty_case_correlation_graph_is_hash_bound(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path))
+    with TestClient(app) as client:
+        headers = _authorize(client)
+        case = client.post(
+            "/api/v1/cases", headers=headers, json={"title": "Correlation API case"}
+        ).json()
+        response = client.get(
+            f"/api/v1/cases/{case['id']}/correlations",
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["nodes"] == []
+    assert response.json()["edges"] == []
+    assert len(response.json()["graph_hash"]) == 64
+    assert response.json()["builder_version"] == "1.0.0"
+
+
 def test_experimental_physical_capture_requires_configuration_and_all_risk_acknowledgements(
     tmp_path: Path,
 ) -> None:

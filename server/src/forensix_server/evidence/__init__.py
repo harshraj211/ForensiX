@@ -7,6 +7,7 @@ from .content import (
     ArtifactContentIntegrityError,
     ArtifactContentService,
 )
+from .correlation import CorrelationEdge, CorrelationGraph, CorrelationNode, CorrelationService
 from .preview import (
     ArtifactPreviewService,
     PreviewContent,
@@ -18,6 +19,10 @@ from .timeline import TimelineSearchResult, TimelineService
 
 __all__ = [
     "AnalysisService",
+    "CorrelationEdge",
+    "CorrelationGraph",
+    "CorrelationNode",
+    "CorrelationService",
     "ArtifactContent",
     "ArtifactContentError",
     "ArtifactContentIntegrityError",

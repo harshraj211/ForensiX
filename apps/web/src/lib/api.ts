@@ -792,6 +792,49 @@ export interface TimelineSearchResult {
   category_facets: Record<string, number>;
 }
 
+export type CorrelationNodeType =
+  | "device"
+  | "source"
+  | "artifact"
+  | "identity"
+  | "phone"
+  | "email"
+  | "application"
+  | "conversation"
+  | "domain"
+  | "network"
+  | "location";
+
+export interface CorrelationNode {
+  id: string;
+  node_type: CorrelationNodeType;
+  label: string;
+  subtitle: string | null;
+  confidence: string;
+  artifact_id: string | null;
+  source_artifact_id: string | null;
+  evidence_source_id: string | null;
+}
+
+export interface CorrelationEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: "contains" | "derived_from" | "mentions";
+  confidence: string;
+  evidence_count: number;
+}
+
+export interface CorrelationGraph {
+  case_id: string;
+  nodes: CorrelationNode[];
+  edges: CorrelationEdge[];
+  graph_hash: string;
+  builder_version: string;
+  truncated: boolean;
+  warnings: string[];
+}
+
 export interface Bookmark {
   id: string;
   artifact_id: string;
@@ -1571,6 +1614,10 @@ export function getTimeline(caseId: string): Promise<TimelineSearchResult> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/timeline?offset=0&limit=200`,
   );
+}
+
+export function getCorrelationGraph(caseId: string): Promise<CorrelationGraph> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/correlations`);
 }
 
 export function listReports(caseId: string): Promise<PreliminaryReport[]> {

@@ -531,6 +531,48 @@ class TimelineSearchResponse(BaseModel):
     category_facets: dict[str, int]
 
 
+class CorrelationNodeResponse(BaseModel):
+    id: str
+    node_type: Literal[
+        "device",
+        "source",
+        "artifact",
+        "identity",
+        "phone",
+        "email",
+        "application",
+        "conversation",
+        "domain",
+        "network",
+        "location",
+    ]
+    label: str
+    subtitle: str | None
+    confidence: str
+    artifact_id: str | None
+    source_artifact_id: str | None
+    evidence_source_id: str | None
+
+
+class CorrelationEdgeResponse(BaseModel):
+    id: str
+    source: str
+    target: str
+    relation: Literal["contains", "derived_from", "mentions"]
+    confidence: str
+    evidence_count: int
+
+
+class CorrelationGraphResponse(BaseModel):
+    case_id: str
+    nodes: list[CorrelationNodeResponse]
+    edges: list[CorrelationEdgeResponse]
+    graph_hash: str
+    builder_version: str
+    truncated: bool
+    warnings: list[str]
+
+
 class BookmarkRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 

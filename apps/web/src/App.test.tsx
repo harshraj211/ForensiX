@@ -1745,4 +1745,108 @@ describe("evidence explorer", () => {
     expect(screen.getByText("UTC recorded by acquisition workstation")).toBeInTheDocument();
     expect(screen.getByText(/No missing device-side timestamps are inferred/i)).toBeInTheDocument();
   });
+
+  it("renders explainable evidence correlations and source links", async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-GRAPH",
+            title: "Graph case",
+            description: null,
+            legal_authority: null,
+            status: "active",
+            created_by: "user-1",
+            created_at: "2026-07-16T10:00:00Z",
+            updated_at: "2026-07-16T10:00:00Z",
+            closed_at: null,
+            version: 1,
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/correlations") {
+        return Promise.resolve(
+          jsonResponse({
+            case_id: "case-1",
+            nodes: [
+              {
+                id: "source:1",
+                node_type: "source",
+                label: "Rooted provider bundle",
+                subtitle: "rooted_filesystem",
+                confidence: "high",
+                artifact_id: null,
+                source_artifact_id: null,
+                evidence_source_id: "source-1",
+              },
+              {
+                id: "source-artifact:1",
+                node_type: "artifact",
+                label: "Known Contact",
+                subtitle: "android_contact",
+                confidence: "high",
+                artifact_id: null,
+                source_artifact_id: "artifact-1",
+                evidence_source_id: "source-1",
+              },
+              {
+                id: "phone:1",
+                node_type: "phone",
+                label: "+15551234567",
+                subtitle: "Explicit normalized field",
+                confidence: "high",
+                artifact_id: null,
+                source_artifact_id: null,
+                evidence_source_id: null,
+              },
+            ],
+            edges: [
+              {
+                id: "edge-1",
+                source: "source:1",
+                target: "source-artifact:1",
+                relation: "derived_from",
+                confidence: "high",
+                evidence_count: 1,
+              },
+              {
+                id: "edge-2",
+                source: "source-artifact:1",
+                target: "phone:1",
+                relation: "mentions",
+                confidence: "high",
+                evidence_count: 1,
+              },
+            ],
+            graph_hash: "a".repeat(64),
+            builder_version: "1.0.0",
+            truncated: false,
+            warnings: ["Shared values do not prove identity."],
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/cases/case-1/correlations");
+
+    expect(
+      await screen.findByRole("heading", { name: "Investigation correlation graph" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("phone: +15551234567")).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("artifact: Known Contact"));
+    expect(await screen.findByRole("link", { name: "Open parsed source artifact" })).toHaveAttribute(
+      "href",
+      "/cases/case-1/evidence-twin",
+    );
+    expect(screen.getByText(/Graph SHA-256/)).toHaveTextContent("a".repeat(64));
+  });
 });
