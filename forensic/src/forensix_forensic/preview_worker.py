@@ -12,7 +12,7 @@ import os
 import sys
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PIL import ExifTags, Image, UnidentifiedImageError
 
@@ -217,16 +217,18 @@ def _apply_posix_limits() -> None:
     try:
         import resource
 
-        resource.setrlimit(  # type: ignore[attr-defined]
-            resource.RLIMIT_AS,  # type: ignore[attr-defined]
+        resource_module = cast(Any, resource)
+
+        resource_module.setrlimit(
+            resource_module.RLIMIT_AS,
             (512 * 1024 * 1024, 512 * 1024 * 1024),
         )
-        resource.setrlimit(  # type: ignore[attr-defined]
-            resource.RLIMIT_CPU,  # type: ignore[attr-defined]
+        resource_module.setrlimit(
+            resource_module.RLIMIT_CPU,
             (4, 4),
         )
-        resource.setrlimit(  # type: ignore[attr-defined]
-            resource.RLIMIT_FSIZE,  # type: ignore[attr-defined]
+        resource_module.setrlimit(
+            resource_module.RLIMIT_FSIZE,
             (MAX_OUTPUT_BYTES, MAX_OUTPUT_BYTES),
         )
     except (ImportError, OSError, ValueError):

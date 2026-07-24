@@ -35,6 +35,7 @@ MAX_THUMBNAIL_EDGE = 1024
 MAX_WORKER_OUTPUT_BYTES = 16 * 1024
 SAFE_OUTPUT_MIME = "image/png"
 SUPPORTED_SOURCE_MIMES = frozenset({"image/gif", "image/jpeg", "image/png", "image/webp"})
+CREATE_NO_WINDOW = cast(int, getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 class PreviewError(CaseInvalidStateError):
@@ -296,7 +297,7 @@ class ArtifactPreviewService:
         specification = importlib.util.find_spec("forensix_forensic.preview_worker")
         if specification is None or specification.origin is None:
             raise PreviewError("The isolated preview worker is not installed.")
-        creation_flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        creation_flags = CREATE_NO_WINDOW if os.name == "nt" else 0
         completed = subprocess.run(  # noqa: S603 - fixed executable and worker arguments
             [
                 sys.executable,

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from types import TracebackType
+from typing import Any, cast
 
 from .errors import (
     EvidenceAlreadyExistsError,
@@ -310,7 +311,7 @@ def _is_link_or_reparse_point(path: Path) -> bool:
     if path.is_symlink():
         return True
     try:
-        attributes = path.lstat().st_file_attributes
+        attributes = getattr(cast(Any, path.lstat()), "st_file_attributes", 0)
     except (AttributeError, OSError):
         return False
     return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
