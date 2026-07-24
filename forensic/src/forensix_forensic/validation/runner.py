@@ -508,8 +508,7 @@ async def _validate_transport_cycle(
         )
 
     known_answer_matches = (
-        fixture.size_bytes == size_bytes == KNOWN_FILE_SIZE_BYTES
-        and sha256 == KNOWN_FILE_SHA256
+        fixture.size_bytes == size_bytes == KNOWN_FILE_SIZE_BYTES and sha256 == KNOWN_FILE_SHA256
     )
     return _check(
         "transport_disconnect_reconnect",

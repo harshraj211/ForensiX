@@ -12,8 +12,7 @@ KNOWN_FILE_SHA256 = "509fd710e724d86c67bf138c82655cfbd6b6da493b29132d3faa5149eee
 def known_file_payload() -> bytes:
     """Return the versioned deterministic fixture bytes."""
     payload = (
-        b"ForensiX controlled physical-device validation fixture v1\r\n"
-        + bytes(range(256)) * 256
+        b"ForensiX controlled physical-device validation fixture v1\r\n" + bytes(range(256)) * 256
     )
     if len(payload) != KNOWN_FILE_SIZE_BYTES:
         raise RuntimeError("Known-file fixture size invariant failed.")

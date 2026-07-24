@@ -109,9 +109,7 @@ def get_evidence_source_content(
     download: bool = False,
 ) -> FileResponse:
     """View or download a PNG screenshot without modifying the sealed master."""
-    source = EvidenceTwinService().get_source(
-        database, authenticated.principal, case_id, source_id
-    )
+    source = EvidenceTwinService().get_source(database, authenticated.principal, case_id, source_id)
     if (
         source.status != "sealed"
         or not source.sealed_storage_key

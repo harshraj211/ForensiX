@@ -185,9 +185,7 @@ class SystemAdbClient:
             max_records=CONTENT_PROVIDER_MAX_RECORDS,
         )
 
-    async def capture_screenshot(
-        self, serial: str, destination: Path
-    ) -> ScreenshotCaptureResult:
+    async def capture_screenshot(self, serial: str, destination: Path) -> ScreenshotCaptureResult:
         command = AdbCommandPolicy.capture_screenshot(serial)
         result = await self._runner.run_stdout_to_file(
             command.arguments,

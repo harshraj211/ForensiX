@@ -133,9 +133,7 @@ async def test_transport_cycle_observes_disconnect_and_reacquires_known_file() -
     async def checkpoint(step: str) -> None:
         checkpoints.append(step)
         client.scenario = (
-            MockAdbScenario.NO_DEVICES
-            if step == "disconnect"
-            else MockAdbScenario.AUTHORIZED
+            MockAdbScenario.NO_DEVICES if step == "disconnect" else MockAdbScenario.AUTHORIZED
         )
 
     sealed = await run_adb_validation(

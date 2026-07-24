@@ -188,9 +188,7 @@ async def collect_provider_records(
             request.case_id,
             request.case_device_id,
         )
-        CaseDeviceService().ensure_operable(
-            session, authenticated.principal, request.case_id
-        )
+        CaseDeviceService().ensure_operable(session, authenticated.principal, request.case_id)
         if sha256(request.serial.encode("utf-8")).hexdigest() != device.serial_hash:
             raise CaseInvalidStateError(
                 "The connected Android serial does not match the case-linked device."
@@ -361,9 +359,7 @@ async def get_website_live_preview_frame(
 ) -> Response:
     if not authenticated.principal.can(Permission.DEVICES_OPERATE):
         raise CaseAccessDeniedError("The current user cannot operate Android devices.")
-    _validate_case_device_serial(
-        database, authenticated, case_id, case_device_id, serial
-    )
+    _validate_case_device_serial(database, authenticated, case_id, case_device_id, serial)
     temp_root = database.data_dir / "tmp"
     temp_root.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(prefix="live-frame-", dir=temp_root) as temporary:
@@ -401,9 +397,7 @@ async def launch_live_screen(
             request.case_id,
             request.case_device_id,
         )
-        CaseDeviceService().ensure_operable(
-            session, authenticated.principal, request.case_id
-        )
+        CaseDeviceService().ensure_operable(session, authenticated.principal, request.case_id)
         if sha256(request.serial.encode("utf-8")).hexdigest() != device.serial_hash:
             raise CaseInvalidStateError(
                 "The connected Android serial does not match the case-linked device."
@@ -443,9 +437,7 @@ def _validate_case_device_serial(
         device = CaseDeviceService().get_device(
             session, authenticated.principal, case_id, case_device_id
         )
-        CaseDeviceService().ensure_operable(
-            session, authenticated.principal, case_id
-        )
+        CaseDeviceService().ensure_operable(session, authenticated.principal, case_id)
         if sha256(serial.encode("utf-8")).hexdigest() != device.serial_hash:
             raise CaseInvalidStateError(
                 "The connected Android serial does not match the case-linked device."

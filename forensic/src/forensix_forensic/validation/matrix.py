@@ -111,15 +111,11 @@ def build_physical_matrix(
         ),
     )
     known_file_passes = _passing_check_count(accepted, "known_file_acquisition")
-    transport_cycle_passes = _passing_check_count(
-        accepted, "transport_disconnect_reconnect"
-    )
+    transport_cycle_passes = _passing_check_count(accepted, "transport_disconnect_reconnect")
     non_rooted_records = _check_value_count(
         accepted, "root_capability", "root_status", "unavailable"
     )
-    rooted_records = _check_value_count(
-        accepted, "root_capability", "root_status", "available"
-    )
+    rooted_records = _check_value_count(accepted, "root_capability", "root_status", "available")
 
     gaps: list[str] = []
     if invalid_records:
@@ -147,8 +143,7 @@ def build_physical_matrix(
     expected_release_commit = policy.release_commit.casefold()
     if release_commits != (expected_release_commit,):
         gaps.append(
-            "Accepted records must all bind to declared release commit "
-            f"{expected_release_commit}."
+            f"Accepted records must all bind to declared release commit {expected_release_commit}."
         )
     if policy.require_non_rooted and non_rooted_records == 0:
         gaps.append("No sealed non-rooted physical validation record was accepted.")
