@@ -11,12 +11,14 @@ import { EvidenceCasesPage, EvidenceExplorerPage } from "./features/evidence/Evi
 import { CorrelationGraphPage } from "./features/evidence/CorrelationGraphPage";
 import { TimelinePage } from "./features/evidence/TimelinePage";
 import { EvidenceTwinPage } from "./features/evidence-twin/EvidenceTwinPage";
+import { LandingPage } from "./features/marketing/LandingPage";
 import { CaseReportsPage, ReportsCasesPage } from "./features/reports/ReportsPage";
 import { ValidationDashboardPage } from "./features/validation/ValidationDashboardPage";
 
 export function App() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route element={<AuthBoundary />}>
         <Route element={<AppShell />}>
           <Route path="/devices" element={<DeviceDetectionPage />} />
