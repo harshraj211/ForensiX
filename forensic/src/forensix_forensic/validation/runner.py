@@ -49,8 +49,8 @@ async def run_adb_validation(
     run_context: ValidationRunContext | None = None,
 ) -> SealedValidationReport:
     """Run bounded ADB checks and an optional fixed-profile known-file acquisition."""
-    if mode not in {"mock", "system"}:
-        raise ValueError("Validation mode must be mock or system.")
+    if mode != "system":
+        raise ValueError("Validation mode must be system.")
     if validate_transport_cycle and not validate_known_file:
         raise ValueError("Transport-cycle validation requires known-file validation.")
     if validate_transport_cycle and checkpoint is None:
@@ -301,7 +301,6 @@ async def run_adb_validation(
                 "admissibility."
             ),
             "ADB is not a hardware write blocker and may cause device-side effects.",
-            "A passing mock run is software regression evidence, not physical-device validation.",
             "Inventory repeatability does not prove completeness or access to private app data.",
             (
                 "Known-file validation applies only to the fixed controlled fixture and does not "

@@ -21,6 +21,7 @@ class AdbOperation(StrEnum):
     PROBE_CONTENT_PROVIDER = "probe_content_provider"
     QUERY_CONTENT_PROVIDER = "query_content_provider"
     CAPTURE_SCREENSHOT = "capture_screenshot"
+    GET_BATTERY = "get_battery"
 
 
 class SharedStorageRoot(StrEnum):
@@ -163,6 +164,15 @@ class AdbCommandPolicy:
             AdbOperation.GET_PROPERTIES,
             ("-s", serial, "shell", "getprop"),
             8.0,
+        )
+
+    @staticmethod
+    def get_battery(serial: str) -> ApprovedAdbCommand:
+        _validate_serial(serial)
+        return ApprovedAdbCommand(
+            AdbOperation.GET_BATTERY,
+            ("-s", serial, "shell", "dumpsys", "battery"),
+            5.0,
         )
 
     @staticmethod

@@ -25,6 +25,20 @@ class DeviceCapabilityAssessor:
             raise AdbDeviceNotAuthorizedError(transport.state.value)
 
         properties = await self._adb_client.get_properties(serial)
+        
+        try:
+            battery_info = await self._adb_client.get_battery(serial)
+            battery_level_str = battery_info.get("level")
+            battery_level = int(battery_level_str) if battery_level_str and battery_level_str.isdigit() else None
+            
+            # Map Android BatteryManager constants for status if available (e.g., 2=charging, 3=discharging, 4=not charging, 5=full)
+            status_val = battery_info.get("status")
+            status_map = {"1": "unknown", "2": "charging", "3": "discharging", "4": "not charging", "5": "full"}
+            battery_status = status_map.get(status_val, status_val) if status_val else None
+        except Exception:
+            battery_level = None
+            battery_status = None
+
         packages = await self._adb_client.list_packages(serial)
         storage_roots = await self._adb_client.probe_shared_storage(serial)
         provider_probes = {
@@ -116,6 +130,8 @@ class DeviceCapabilityAssessor:
             security_patch=properties.get("ro.build.version.security_patch"),
             package_count=len(packages),
             storage_roots=storage_roots,
+            battery_level=battery_level,
+            battery_status=battery_status,
             capabilities=capabilities,
             warnings=(
                 "Private application data is not accessible on this non-rooted logical transport.",

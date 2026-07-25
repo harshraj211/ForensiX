@@ -8,8 +8,7 @@ from pathlib import Path
 from forensix_forensic.adb import (
     AdbBinaryResolver,
     AdbClient,
-    MockAdbClient,
-    MockAdbScenario,
+    AdbClient,
     SubprocessAdbRunner,
     SystemAdbClient,
 )
@@ -22,8 +21,7 @@ from forensix_forensic.validation import (
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("mock", "system"), default="mock")
-    parser.add_argument("--scenario", choices=tuple(MockAdbScenario), default="authorized")
+    parser.add_argument("--mode", choices=("system",), default="system")
     parser.add_argument("--adb-path", type=Path)
     parser.add_argument(
         "--serial", help="Select one authorized serial; it is never written to output."
@@ -69,14 +67,8 @@ def _arguments() -> argparse.Namespace:
 async def _run(arguments: argparse.Namespace) -> int:
     if arguments.validate_transport_cycle and not arguments.validate_known_file:
         raise ValueError("--validate-transport-cycle requires --validate-known-file")
-    if arguments.mode == "mock":
-        client: AdbClient = MockAdbClient(
-            MockAdbScenario(arguments.scenario),
-            include_validation_fixture=arguments.validate_known_file,
-        )
-    else:
-        adb_path = AdbBinaryResolver(arguments.adb_path).resolve()
-        client = SystemAdbClient(SubprocessAdbRunner(adb_path))
+    adb_path = AdbBinaryResolver(arguments.adb_path).resolve()
+    client: AdbClient = SystemAdbClient(SubprocessAdbRunner(adb_path))
     run_context = _run_context(arguments)
     sealed = await run_adb_validation(
         client,

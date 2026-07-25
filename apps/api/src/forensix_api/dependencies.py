@@ -9,8 +9,6 @@ from forensix_api.errors import ApiSecurityError
 from forensix_forensic.adb import (
     AdbBinaryResolver,
     AdbClient,
-    MockAdbClient,
-    MockAdbScenario,
     SubprocessAdbRunner,
     SystemAdbClient,
 )
@@ -87,7 +85,5 @@ def get_adb_client(request: Request) -> AdbClient:
     if injected is not None:
         return injected
     settings: Settings = request.app.state.settings
-    if settings.adb_mode == "mock":
-        return MockAdbClient(MockAdbScenario(settings.mock_adb_scenario))
     adb_path = AdbBinaryResolver(settings.adb_path).resolve()
     return SystemAdbClient(SubprocessAdbRunner(adb_path))

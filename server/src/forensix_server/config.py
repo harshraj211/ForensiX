@@ -22,8 +22,6 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     database_url: str | None = None
     adb_path: Path | None = None
-    adb_mode: Literal["system", "mock"] = "mock"
-    mock_adb_scenario: str = "authorized"
     allowed_origins: tuple[str, ...] = ("http://127.0.0.1:5173",)
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8765, ge=1024, le=65535)

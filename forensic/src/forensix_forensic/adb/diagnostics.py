@@ -32,17 +32,7 @@ async def diagnose_adb(mode: str, configured_path: Path | None) -> AdbDiagnostic
         str(item) for item in AdbBinaryResolver.sdk_candidates()
     )
     if mode == "mock":
-        return AdbDiagnostic(
-            mode="mock",
-            status="mock",
-            available=True,
-            platform=host,
-            executable_path=None,
-            version="mock",
-            transport_counts={"authorized": 1},
-            checked_locations=checked,
-            guidance=("Mock mode is active; no physical Android transport is being queried.",),
-        )
+        raise ValueError("Mock mode is permanently removed.")
     try:
         adb_path = AdbBinaryResolver(configured_path).resolve()
     except AdbError:

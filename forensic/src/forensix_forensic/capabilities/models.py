@@ -34,6 +34,8 @@ class DeviceCapabilitySnapshot(BaseModel):
     security_patch: str | None
     package_count: int = Field(ge=0)
     storage_roots: tuple[SharedStorageRootProbe, ...] = ()
+    battery_level: int | None = Field(default=None, ge=0, le=100)
+    battery_status: str | None = None
     capabilities: dict[str, CapabilityDecision]
     warnings: tuple[str, ...]
     assessor_version: str = "0.2.0"

@@ -26,6 +26,7 @@ import {
 import { authKeys } from "../auth/authKeys";
 import { CaseError, StatusBadge } from "./CasesPage";
 import { caseKeys } from "./caseKeys";
+import { AcquisitionCompletenessPanel } from "./AcquisitionCompletenessPanel";
 
 export function CaseDetailPage() {
   const { caseId = "" } = useParams();
@@ -137,6 +138,18 @@ export function CaseDetailPage() {
         )}
         {transition.isError && <CaseError error={transition.error} />}
       </div>
+      <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:p-8">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">
+            Completeness
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-white">Acquisition Completeness Matrix</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Overview of the core forensic artifacts and their acquisition status.
+          </p>
+        </div>
+        <AcquisitionCompletenessPanel caseId={caseId} />
+      </section>
       <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:p-8">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>

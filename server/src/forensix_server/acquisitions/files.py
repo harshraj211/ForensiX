@@ -139,7 +139,7 @@ class AcquisitionFileService:
     ) -> BulkAcquireResult:
         """Acquire multiple inventory items sequentially with per-item outcomes."""
         ordered_ids = self._normalize_batch_item_ids(item_ids)
-        self._validate_batch_membership(database, principal, case_id, job_id, ordered_ids)
+        ordered_ids = self._validate_batch_membership(database, principal, case_id, job_id, ordered_ids)
         batch_id = str(uuid4())
         self._record_batch_event(
             database,
@@ -522,7 +522,7 @@ class AcquisitionFileService:
         case_id: str,
         job_id: str,
         item_ids: list[str],
-    ) -> None:
+    ) -> list[str]:
         with database.session() as session:
             job = AcquisitionExecutionService().get(session, principal, case_id, job_id)
             inventory = session.scalar(
@@ -564,6 +564,20 @@ class AcquisitionFileService:
                 raise AcquisitionFileError(
                     "One or more selected paths are outside the frozen acquisition scope."
                 )
+
+            assessment = session.get(CaseDeviceAssessmentRecord, plan.assessment_id)
+            if assessment and assessment.snapshot_json:
+                try:
+                    snapshot = json.loads(assessment.snapshot_json)
+                    battery_level = snapshot.get("battery_level")
+                except json.JSONDecodeError:
+                    battery_level = None
+            else:
+                battery_level = None
+
+            from forensix_server.jobs.domain import PriorityScheduler
+            sorted_items = PriorityScheduler.prioritize_inventory_items(items, battery_level)
+            return [item.id for item in sorted_items]
 
     @staticmethod
     def _record_batch_event(

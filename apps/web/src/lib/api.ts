@@ -554,6 +554,17 @@ export type AcquisitionModule =
   | "package_inventory"
   | "shared_storage_inventory";
 
+export interface CompletenessItem {
+  artifact: string;
+  status: "captured" | "partial" | "blocked" | "failed" | "not_present";
+  reason: string | null;
+}
+
+export interface AcquisitionCompletenessResponse {
+  case_id: string;
+  items: CompletenessItem[];
+}
+
 export interface AcquisitionPlan {
   id: string;
   case_id: string;
@@ -1339,7 +1350,13 @@ export function capturePhysicalBlock(
   );
 }
 
-export function listCaseDevices(caseId: string): Promise<CaseDevice[]> {
+export async function getCaseCompleteness(
+  caseId: string,
+): Promise<AcquisitionCompletenessResponse> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/completeness`);
+}
+
+export async function listCaseDevices(caseId: string): Promise<CaseDevice[]> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/devices`);
 }
 

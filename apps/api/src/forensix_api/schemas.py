@@ -288,6 +288,17 @@ class AcquisitionPlanListResponse(BaseModel):
     limit: int
 
 
+class CompletenessItem(BaseModel):
+    artifact: str
+    status: Literal["captured", "partial", "blocked", "failed", "not_present"]
+    reason: str | None = None
+
+
+class AcquisitionCompletenessResponse(BaseModel):
+    case_id: str
+    items: list[CompletenessItem]
+
+
 class AcquisitionJobPrepareRequest(BaseModel):
     plan_id: str = Field(min_length=36, max_length=36)
 

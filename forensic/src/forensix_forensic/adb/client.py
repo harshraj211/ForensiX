@@ -56,6 +56,8 @@ class AdbClient(Protocol):
 
     async def get_properties(self, serial: str) -> dict[str, str]: ...
 
+    async def get_battery(self, serial: str) -> dict[str, str]: ...
+
     async def list_packages(self, serial: str) -> tuple[str, ...]: ...
 
     async def probe_content_provider(
@@ -132,6 +134,13 @@ class SystemAdbClient:
         if result.exit_code != 0:
             raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
         return parse_getprop_output(result.stdout)
+
+    async def get_battery(self, serial: str) -> dict[str, str]:
+        from .parser import parse_dumpsys_battery
+        result = await self._run(AdbCommandPolicy.get_battery(serial))
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        return parse_dumpsys_battery(result.stdout)
 
     async def list_packages(self, serial: str) -> tuple[str, ...]:
         result = await self._run(AdbCommandPolicy.list_packages(serial))

@@ -60,6 +60,15 @@ def test_parse_properties_and_packages() -> None:
     assert packages == ("com.example.a", "com.example.z")
 
 
+def test_parse_dumpsys_battery() -> None:
+    from forensix_forensic.adb.parser import parse_dumpsys_battery
+    output = "Current Battery Service state:\n  AC powered: false\n  USB powered: true\n  level: 15\n"
+    result = parse_dumpsys_battery(output)
+    assert result.get("level") == "15"
+    assert result.get("AC powered") == "false"
+    assert result.get("USB powered") == "true"
+
+
 def test_inventory_parser_rejects_unsafe_paths_and_enforces_item_limit() -> None:
     output = "\x00".join(
         (

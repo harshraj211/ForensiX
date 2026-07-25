@@ -76,6 +76,16 @@ def parse_getprop_output(output: str) -> dict[str, str]:
     return properties
 
 
+def parse_dumpsys_battery(output: str) -> dict[str, str]:
+    battery_info: dict[str, str] = {}
+    for line in output.splitlines():
+        line = line.strip()
+        if ":" in line:
+            key, value = line.split(":", 1)
+            battery_info[key.strip()] = value.strip()
+    return battery_info
+
+
 def parse_package_list(output: str, *, maximum_packages: int = 100_000) -> tuple[str, ...]:
     packages: list[str] = []
     for line in output.splitlines():
