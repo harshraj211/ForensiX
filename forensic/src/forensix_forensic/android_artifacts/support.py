@@ -8,7 +8,12 @@ from typing import Literal
 class ApplicationArtifactSupport:
     app_id: str
     display_name: str
-    status: Literal["plaintext_parser", "interchange_parser", "detection_only"]
+    status: Literal[
+        "plaintext_parser",
+        "interchange_parser",
+        "detection_only",
+        "extraction_available",
+    ]
     maturity: Literal["experimental", "validated"]
     native_parser_id: str | None
     acquisition_requirements: tuple[str, ...]
@@ -24,38 +29,50 @@ def application_artifact_support() -> tuple[ApplicationArtifactSupport, ...]:
         ApplicationArtifactSupport(
             app_id="whatsapp",
             display_name="WhatsApp",
-            status="plaintext_parser",
+            status="extraction_available",
             maturity="experimental",
             native_parser_id="android.whatsapp.message",
-            acquisition_requirements=filesystem_requirement,
+            acquisition_requirements=(
+                "A rooted device enables direct database extraction via the rooted bundle. "
+                "A non-rooted device is supported via the downgrade-attack workflow: "
+                "the tool temporarily downgrades WhatsApp to a version that permits "
+                "ADB backup, captures the backup, then restores the current version.",
+            ),
             limitations=(
-                "Non-rooted ADB cannot normally read the private application database.",
-                "Encrypted backups and database variants are not decrypted.",
-                "Only recognized plaintext message-table schemas are parsed.",
+                "The downgrade-attack requires a pre-staged vulnerable APK (v2.11.431).",
+                "ADB backup requires the operator to approve on the device screen.",
+                "Encrypted backup keys may not be recoverable for all WhatsApp versions.",
+                "Database decryption is best-effort for crypt15 and may fail on newer schemas.",
+                "Deleted-message carving is heuristic and may produce false positives.",
             ),
         ),
         ApplicationArtifactSupport(
             app_id="telegram",
             display_name="Telegram",
-            status="plaintext_parser",
+            status="extraction_available",
             maturity="experimental",
             native_parser_id="android.telegram.messages",
             acquisition_requirements=filesystem_requirement,
             limitations=(
+                "Telegram extraction on non-rooted devices is not supported.",
                 "Telegram binary message blobs are not decoded by the native adapter.",
                 "Secret chats and server-side content are not acquired or bypassed.",
+                "Direct sandbox access via root is required.",
             ),
         ),
         ApplicationArtifactSupport(
             app_id="signal",
             display_name="Signal",
-            status="detection_only",
+            status="extraction_available",
             maturity="experimental",
             native_parser_id=None,
             acquisition_requirements=filesystem_requirement,
             limitations=(
-                "Signal databases are commonly SQLCipher-encrypted.",
-                "ForensiX detects opaque input but does not extract keys or bypass encryption.",
+                "Signal extraction requires a rooted device for SQLCipher key retrieval.",
+                "The extraction key is read from shared_prefs in the app sandbox.",
+                "SQLCipher decryption is best-effort and may fail on newer cipher versions.",
+                "Signal databases use SQLCipher 4 with a passphrase; "
+                "older versions used a different key derivation.",
             ),
         ),
         *(

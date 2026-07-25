@@ -167,3 +167,15 @@ class PhysicalBlockCaptureResult(BaseModel):
 
     profile: str
     size_bytes: int = Field(ge=1)
+
+
+class BackupResult(BaseModel):
+    """Result of an ADB backup operation for the downgrade-attack workflow."""
+
+    model_config = ConfigDict(frozen=True)
+
+    backup_file_size_bytes: int = Field(ge=0)
+    destination_path: str
+    package_name: str
+    backup_format: str = "ab"
+    success: bool

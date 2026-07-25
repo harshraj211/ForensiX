@@ -15,6 +15,7 @@ from .errors import (
 )
 from .models import (
     AdbServerInfo,
+    BackupResult,
     ContentProviderAccessProbe,
     ContentProviderAccessStatus,
     ContentProviderQueryResult,
@@ -73,12 +74,15 @@ __all__ = [
     "INVENTORY_MAX_DEPTH",
     "INVENTORY_MAX_ITEMS",
     "CONTENT_PROVIDER_MAX_RECORDS",
+    "BackupResult",
     "KNOWN_FILE_FIXTURE_ID",
     "KNOWN_FILE_RELATIVE_PATH",
     "KNOWN_FILE_SHA256",
     "KNOWN_FILE_SIZE_BYTES",
     "MAX_ACQUIRED_FILE_BYTES",
+    "MAX_BACKUP_FILE_BYTES",
     "MAX_PHYSICAL_BLOCK_BYTES",
+    "MAX_PUSH_FILE_BYTES",
     "MAX_ROOTED_BUNDLE_BYTES",
     "MAX_SCREENSHOT_BYTES",
     "AdbOutputLimitError",

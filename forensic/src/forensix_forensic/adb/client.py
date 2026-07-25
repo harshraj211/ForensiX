@@ -8,6 +8,7 @@ from typing import Protocol
 from .errors import AdbCommandError
 from .models import (
     AdbServerInfo,
+    BackupResult,
     ContentProviderAccessProbe,
     ContentProviderAccessStatus,
     ContentProviderQueryResult,
@@ -36,6 +37,7 @@ from .policy import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_ITEMS,
     MAX_ACQUIRED_FILE_BYTES,
+    MAX_BACKUP_FILE_BYTES,
     MAX_PHYSICAL_BLOCK_BYTES,
     MAX_ROOTED_BUNDLE_BYTES,
     MAX_SCREENSHOT_BYTES,
@@ -107,6 +109,22 @@ class AdbClient(Protocol):
         *,
         expected_size_bytes: int,
     ) -> PhysicalBlockCaptureResult: ...
+
+    async def dump_package(self, serial: str, package_name: str) -> str: ...
+
+    async def backup_package(
+        self, serial: str, package_name: str, destination: Path
+    ) -> BackupResult: ...
+
+    async def install_package(self, serial: str, apk_path: str) -> bool: ...
+
+    async def uninstall_package(self, serial: str, package_name: str) -> bool: ...
+
+    async def push_file(
+        self, serial: str, local_path: Path, remote_path: str
+    ) -> bool: ...
+
+    async def root_exec(self, serial: str, command: str) -> str: ...
 
 
 class SystemAdbClient:
@@ -376,6 +394,70 @@ class SystemAdbClient:
                 "The physical capture size did not match the pre-acquisition probe.",
             )
         return PhysicalBlockCaptureResult(profile=profile.value, size_bytes=size_bytes)
+
+    # ------------------------------------------------------------------
+    # Extraction-attack client methods
+    # ------------------------------------------------------------------
+
+    async def dump_package(self, serial: str, package_name: str) -> str:
+        """Return raw dumpsys package output for the given package."""
+        result = await self._run(AdbCommandPolicy.dump_package(serial, package_name))
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        return result.stdout
+
+    async def backup_package(
+        self, serial: str, package_name: str, destination: Path
+    ) -> "BackupResult":
+        """Issue ``adb backup -noapk`` and capture the ``.ab`` file."""
+        from .models import BackupResult
+
+        command = AdbCommandPolicy.backup_package(serial, package_name, destination)
+        result = await self._runner.run_to_file(
+            command.arguments,
+            destination,
+            timeout_seconds=command.timeout_seconds,
+            max_file_bytes=MAX_BACKUP_FILE_BYTES,
+        )
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        size_bytes = await asyncio.to_thread(_regular_file_size, destination)
+        if size_bytes is None or size_bytes == 0:
+            raise AdbCommandError(result.exit_code, "ADB backup produced an empty file.")
+        return BackupResult(
+            backup_file_size_bytes=size_bytes,
+            destination_path=str(destination),
+            package_name=package_name,
+            backup_format="ab",
+            success=True,
+        )
+
+    async def install_package(self, serial: str, apk_path: str) -> bool:
+        """Install an APK on the device (returns True on success)."""
+        result = await self._run(AdbCommandPolicy.install_package(serial, apk_path))
+        combined = " ".join((result.stdout, result.stderr)).lower()
+        return result.exit_code == 0 or "success" in combined
+
+    async def uninstall_package(self, serial: str, package_name: str) -> bool:
+        """Uninstall a package while keeping its data."""
+        result = await self._run(AdbCommandPolicy.uninstall_package(serial, package_name))
+        combined = " ".join((result.stdout, result.stderr)).lower()
+        return result.exit_code == 0 or "success" in combined
+
+    async def push_file(
+        self, serial: str, local_path: Path, remote_path: str
+    ) -> bool:
+        """Push a local file to the device filesystem."""
+        result = await self._run(AdbCommandPolicy.push_file(serial, local_path, remote_path))
+        combined = " ".join((result.stdout, result.stderr)).lower()
+        return result.exit_code == 0 or "pushed" in combined or "1 file pushed" in combined
+
+    async def root_exec(self, serial: str, command: str) -> str:
+        """Execute an approved command via ``su -c`` and return stdout."""
+        result = await self._run(AdbCommandPolicy.root_exec(serial, command))
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        return result.stdout
 
     async def _run(self, command: ApprovedAdbCommand) -> AdbCommandResult:
         return await self._runner.run(command.arguments, timeout_seconds=command.timeout_seconds)

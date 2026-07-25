@@ -23,6 +23,7 @@ from forensix_api.routers import (
     custody,
     devices,
     evidence_sources,
+    extraction,
     health,
     integrations,
     reports,
@@ -106,6 +107,7 @@ def create_app(
     app.include_router(rooted.capture_router)
     app.include_router(rooted.physical_probe_router)
     app.include_router(rooted.physical_capture_router)
+    app.include_router(extraction.router)
     app.include_router(evidence_sources.router)
     app.include_router(devices.router)
     return app

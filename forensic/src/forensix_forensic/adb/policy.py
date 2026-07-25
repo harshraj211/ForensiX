@@ -22,6 +22,12 @@ class AdbOperation(StrEnum):
     QUERY_CONTENT_PROVIDER = "query_content_provider"
     CAPTURE_SCREENSHOT = "capture_screenshot"
     GET_BATTERY = "get_battery"
+    INSTALL_PACKAGE = "install_package"
+    UNINSTALL_PACKAGE = "uninstall_package"
+    PUSH_FILE = "push_file"
+    BACKUP_PACKAGE = "backup_package"
+    DUMP_PACKAGE = "dump_package"
+    ROOT_EXEC = "root_exec"
 
 
 class SharedStorageRoot(StrEnum):
@@ -57,6 +63,10 @@ MAX_ROOTED_BUNDLE_BYTES = 1024 * 1024 * 1024
 MAX_PHYSICAL_BLOCK_BYTES = 512 * 1024 * 1024 * 1024
 CONTENT_PROVIDER_MAX_RECORDS = 500
 MAX_SCREENSHOT_BYTES = 50 * 1024 * 1024
+MAX_PUSH_FILE_BYTES = 200 * 1024 * 1024
+MAX_BACKUP_FILE_BYTES = 256 * 1024 * 1024
+ADB_BACKUP_TIMEOUT_SECONDS = 300.0
+ADB_INSTALL_TIMEOUT_SECONDS = 120.0
 
 _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
     RootedCollectionProfile.ANDROID_PROVIDERS: (
@@ -155,7 +165,7 @@ class AdbCommandPolicy:
 
     @staticmethod
     def list_transports() -> ApprovedAdbCommand:
-        return ApprovedAdbCommand(AdbOperation.LIST_TRANSPORTS, ("devices", "-l"), 5.0)
+        return ApprovedAdbCommand(AdbOperation.LIST_TRANSPORTS, ("devices", "-l"), 15.0)
 
     @staticmethod
     def get_properties(serial: str) -> ApprovedAdbCommand:
@@ -301,6 +311,82 @@ class AdbCommandPolicy:
         return AdbCommandPolicy._storage_test(serial, root, "-d", AdbOperation.STORAGE_ROOT_EXISTS)
 
     @staticmethod
+    def install_package(serial: str, apk_path: str) -> ApprovedAdbCommand:
+        """Push and install an APK to the device."""
+        _validate_serial(serial)
+        _validate_apk_path(apk_path)
+        return ApprovedAdbCommand(
+            AdbOperation.INSTALL_PACKAGE,
+            ("-s", serial, "install", "-r", "-d", apk_path),
+            ADB_INSTALL_TIMEOUT_SECONDS,
+        )
+
+    @staticmethod
+    def uninstall_package(serial: str, package_name: str) -> ApprovedAdbCommand:
+        """Uninstall a package, keeping data."""
+        _validate_serial(serial)
+        _validate_package_name(package_name)
+        return ApprovedAdbCommand(
+            AdbOperation.UNINSTALL_PACKAGE,
+            ("-s", serial, "uninstall", "-k", package_name),
+            ADB_INSTALL_TIMEOUT_SECONDS,
+        )
+
+    @staticmethod
+    def push_file(serial: str, local_path: Path, remote_path: str) -> ApprovedAdbCommand:
+        """Push a single file to the device via ADB."""
+        _validate_serial(serial)
+        local = local_path.absolute()
+        if any(character in str(local) for character in ("\x00", "\r", "\n")):
+            raise ValueError("ADB push source must be a safe absolute local path")
+        _validate_remote_path(remote_path)
+        return ApprovedAdbCommand(
+            AdbOperation.PUSH_FILE,
+            ("-s", serial, "push", str(local), remote_path),
+            120.0,
+        )
+
+    @staticmethod
+    def backup_package(serial: str, package_name: str, destination: Path) -> ApprovedAdbCommand:
+        """Run ``adb backup -f <dest> -noapk <pkg>`` for the downgrade-attack workflow."""
+        _validate_serial(serial)
+        _validate_package_name(package_name)
+        dest = destination.absolute()
+        if any(character in str(dest) for character in ("\x00", "\r", "\n")):
+            raise ValueError("ADB backup destination must be a safe absolute local path")
+        return ApprovedAdbCommand(
+            AdbOperation.BACKUP_PACKAGE,
+            (
+                "-s", serial,
+                "backup", "-f", str(dest),
+                "-noapk", package_name,
+            ),
+            ADB_BACKUP_TIMEOUT_SECONDS,
+        )
+
+    @staticmethod
+    def dump_package(serial: str, package_name: str) -> ApprovedAdbCommand:
+        """Dump package metadata (version, codePath, etc.)."""
+        _validate_serial(serial)
+        _validate_package_name(package_name)
+        return ApprovedAdbCommand(
+            AdbOperation.DUMP_PACKAGE,
+            ("-s", serial, "shell", "dumpsys", "package", package_name),
+            10.0,
+        )
+
+    @staticmethod
+    def root_exec(serial: str, command: str) -> ApprovedAdbCommand:
+        """Execute a single approved command via ``su -c`` on a rooted device."""
+        _validate_serial(serial)
+        _validate_root_command(command)
+        return ApprovedAdbCommand(
+            AdbOperation.ROOT_EXEC,
+            ("-s", serial, "shell", "su", "-c", command),
+            60.0,
+        )
+
+    @staticmethod
     def storage_root_readable(serial: str, root: SharedStorageRoot) -> ApprovedAdbCommand:
         return AdbCommandPolicy._storage_test(
             serial, root, "-r", AdbOperation.STORAGE_ROOT_READABLE
@@ -385,3 +471,59 @@ def _validate_inventory_relative_path(relative_path: str) -> None:
         or any(ord(character) < 32 or ord(character) == 127 for character in relative_path)
     ):
         raise ValueError("Inventory relative path is outside the approved path policy")
+
+
+# ---------------------------------------------------------------------------
+# Validation helpers for new extraction operations
+# ---------------------------------------------------------------------------
+
+_APK_PATH_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789._-/\\: "
+)
+
+def _validate_apk_path(apk_path: str) -> None:
+    """Validate an APK file path for the install-package operation."""
+    if not apk_path or len(apk_path) > 1024:
+        raise ValueError("APK path must contain between 1 and 1024 characters")
+    if "\x00" in apk_path or "\r" in apk_path or "\n" in apk_path:
+        raise ValueError("APK path contains a prohibited control character")
+    if not apk_path.lower().endswith(".apk"):
+        raise ValueError("APK path must end with .apk")
+
+
+def _validate_package_name(package_name: str) -> None:
+    """Validate an Android package name (e.g. com.whatsapp)."""
+    import re
+    if not package_name or len(package_name) > 255:
+        raise ValueError("Package name must contain between 1 and 255 characters")
+    if not re.fullmatch(r"[a-zA-Z0-9._]+", package_name):
+        raise ValueError("Package name contains invalid characters")
+
+
+def _validate_remote_path(remote_path: str) -> None:
+    """Validate a remote ADB push destination path."""
+    if not remote_path or len(remote_path) > 1024:
+        raise ValueError("Remote path must contain between 1 and 1024 characters")
+    if "\x00" in remote_path or "\r" in remote_path or "\n" in remote_path:
+        raise ValueError("Remote path contains a prohibited control character")
+
+
+def _validate_root_command(command: str) -> None:
+    """Validate a command string for root_exec (closed set of allowed prefixes)."""
+    if not command or len(command) > 2048:
+        raise ValueError("Root command must contain between 1 and 2048 characters")
+    if "\x00" in command or "\r" in command or "\n" in command:
+        raise ValueError("Root command contains a prohibited control character")
+    allowed_prefixes = (
+        "cat ", "cp ", "chmod ", "chown ", "ls ", "stat ", "dd ",
+        "tar ", "dbtool ", "sqlite3 ", "sha256sum ", "md5sum ",
+        "am ", "pm ", "input ", "getprop ", "setprop ", "id ",
+    )
+    normalized = command.strip()
+    if not any(normalized.startswith(prefix) for prefix in allowed_prefixes):
+        raise ValueError(
+            "Root command must start with an approved forensic prefix: "
+            + ", ".join(allowed_prefixes)
+        )
