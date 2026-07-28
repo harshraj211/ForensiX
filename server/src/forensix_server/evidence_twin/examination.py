@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 
 from forensix_forensic.android_artifacts import (
     android_document_parser_registry,
@@ -33,6 +33,7 @@ from forensix_forensic.evidence_io import (
 from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import Permission, Principal
 from forensix_server.cases import CaseAccessDeniedError
+from forensix_server.cases import CaseService
 from forensix_server.custody import AuditService, CustodyService
 from forensix_server.db import (
     Database,
@@ -50,6 +51,24 @@ from .service import EvidenceTwinError, EvidenceTwinIntegrityError, EvidenceTwin
 class ParserExecutionResult:
     run: EvidenceParserRunRecord
     artifacts: tuple[EvidenceSourceArtifactRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SourceArtifactSearchResult:
+    items: list[EvidenceSourceArtifactRecord]
+    total: int
+    offset: int
+    limit: int
+    category_facets: dict[str, int]
+
+
+SOURCE_ARTIFACT_CATEGORIES = frozenset(
+    {"contact", "communication", "application", "location", "system", "file"}
+)
+SOURCE_ARTIFACT_STATUSES = frozenset(
+    {"active", "deleted", "recovered", "partial", "corrupted", "unverified"}
+)
+MAX_SEARCH_QUERY_LENGTH = 256
 
 
 type VersionedParser = EvidenceParser | DocumentEvidenceParser
@@ -322,6 +341,101 @@ class EvidenceExaminationService:
                     )
                 )
             )
+
+    def search_source_artifacts(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        *,
+        query: str | None = None,
+        category: str | None = None,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> SourceArtifactSearchResult:
+        """Search parsed artifacts across every sealed source in a case at once.
+
+        Matching is a case-insensitive substring over title and summary, the fields an
+        investigator actually reads. Category facets are computed over the full case so
+        the UI can show counts regardless of the active filter.
+        """
+        if category is not None and category not in SOURCE_ARTIFACT_CATEGORIES:
+            raise EvidenceTwinError("The artifact category filter is unsupported.")
+        if status is not None and status not in SOURCE_ARTIFACT_STATUSES:
+            raise EvidenceTwinError("The artifact status filter is unsupported.")
+        normalized_query = (query or "").strip()
+        if len(normalized_query) > MAX_SEARCH_QUERY_LENGTH:
+            raise EvidenceTwinError(
+                "The artifact search query cannot exceed 256 characters."
+            )
+        with database.session() as session:
+            CaseService().get(session, principal, case_id)
+            if not principal.can(Permission.EVIDENCE_ANALYZE):
+                raise CaseAccessDeniedError(
+                    "The current user cannot analyze case evidence."
+                )
+            conditions = [EvidenceSourceArtifactRecord.case_id == case_id]
+            if category:
+                conditions.append(EvidenceSourceArtifactRecord.category == category)
+            if status:
+                conditions.append(EvidenceSourceArtifactRecord.status == status)
+            if normalized_query:
+                like = f"%{_escape_like(normalized_query)}%"
+                conditions.append(
+                    or_(
+                        EvidenceSourceArtifactRecord.title.ilike(like, escape="\\"),
+                        EvidenceSourceArtifactRecord.summary.ilike(like, escape="\\"),
+                        EvidenceSourceArtifactRecord.subtype.ilike(like, escape="\\"),
+                    )
+                )
+            total = int(
+                session.scalar(
+                    select(func.count(EvidenceSourceArtifactRecord.id)).where(*conditions)
+                )
+                or 0
+            )
+            items = list(
+                session.scalars(
+                    select(EvidenceSourceArtifactRecord)
+                    .where(*conditions)
+                    .order_by(
+                        EvidenceSourceArtifactRecord.event_time.desc().nulls_last(),
+                        EvidenceSourceArtifactRecord.created_at.desc(),
+                        EvidenceSourceArtifactRecord.id.desc(),
+                    )
+                    .offset(max(offset, 0))
+                    .limit(max(1, min(limit, 200)))
+                )
+            )
+            facet_conditions = [EvidenceSourceArtifactRecord.case_id == case_id]
+            if normalized_query:
+                like = f"%{_escape_like(normalized_query)}%"
+                facet_conditions.append(
+                    or_(
+                        EvidenceSourceArtifactRecord.title.ilike(like, escape="\\"),
+                        EvidenceSourceArtifactRecord.summary.ilike(like, escape="\\"),
+                        EvidenceSourceArtifactRecord.subtype.ilike(like, escape="\\"),
+                    )
+                )
+            facets = {
+                facet_category: int(count)
+                for facet_category, count in session.execute(
+                    select(
+                        EvidenceSourceArtifactRecord.category,
+                        func.count(EvidenceSourceArtifactRecord.id),
+                    )
+                    .where(*facet_conditions)
+                    .group_by(EvidenceSourceArtifactRecord.category)
+                ).all()
+            }
+        return SourceArtifactSearchResult(
+            items=items,
+            total=total,
+            offset=max(offset, 0),
+            limit=max(1, min(limit, 200)),
+            category_facets=facets,
+        )
 
     @staticmethod
     def _select_parsers(
@@ -721,6 +835,11 @@ def _sqlite_archive_candidates(
     if len(candidates) > 32:
         raise EvidenceTwinError("The archive exceeds the SQLite candidate-count limit.")
     return candidates
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE/ILIKE wildcards so user text matches literally under escape='\\'."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _document_archive_candidates(

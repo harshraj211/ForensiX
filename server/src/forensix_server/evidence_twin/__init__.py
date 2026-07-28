@@ -7,7 +7,11 @@ from .domain import (
     EvidenceContainerFormat,
     EvidenceSourceType,
 )
-from .examination import EvidenceExaminationService, ParserExecutionResult
+from .examination import (
+    EvidenceExaminationService,
+    ParserExecutionResult,
+    SourceArtifactSearchResult,
+)
 from .inspection import (
     DETECTOR_VERSION,
     EvidenceInspectionService,
@@ -43,6 +47,7 @@ __all__ = [
     "EvidenceRecoveryAssessmentService",
     "InspectionDecision",
     "ParserExecutionResult",
+    "SourceArtifactSearchResult",
     "detect_evidence_container",
     "inspection_signature",
     "inspection_warnings",

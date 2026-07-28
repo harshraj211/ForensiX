@@ -7,6 +7,7 @@ import { AuthBoundary } from "./features/auth/AuthBoundary";
 import { CaseDetailPage } from "./features/cases/CaseDetailPage";
 import { CasesPage } from "./features/cases/CasesPage";
 import { DeviceDetectionPage } from "./features/devices/DeviceDetectionPage";
+import { ArtifactBrowserPage } from "./features/artifacts/ArtifactBrowserPage";
 import { EvidenceCasesPage, EvidenceExplorerPage } from "./features/evidence/EvidenceExplorerPage";
 import { CorrelationGraphPage } from "./features/evidence/CorrelationGraphPage";
 import { TimelinePage } from "./features/evidence/TimelinePage";
@@ -14,6 +15,7 @@ import { EvidenceTwinPage } from "./features/evidence-twin/EvidenceTwinPage";
 import { LandingPage } from "./features/marketing/LandingPage";
 import { CaseReportsPage, ReportsCasesPage } from "./features/reports/ReportsPage";
 import { ValidationDashboardPage } from "./features/validation/ValidationDashboardPage";
+import { ArtifactSearchPage } from "./features/evidence/ArtifactSearchPage";
 
 export function App() {
   return (
@@ -27,6 +29,8 @@ export function App() {
           <Route path="/cases/:caseId/devices" element={<DeviceDetectionPage />} />
           <Route path="/cases/:caseId/acquisitions" element={<AcquisitionPlanningPage />} />
           <Route path="/cases/:caseId/evidence" element={<EvidenceExplorerPage />} />
+          <Route path="/cases/:caseId/artifacts" element={<ArtifactBrowserPage />} />
+          <Route path="/cases/:caseId/artifact-search" element={<ArtifactSearchPage />} />
           <Route path="/cases/:caseId/evidence-twin" element={<EvidenceTwinPage />} />
           <Route path="/cases/:caseId/timeline" element={<TimelinePage />} />
           <Route path="/cases/:caseId/correlations" element={<CorrelationGraphPage />} />

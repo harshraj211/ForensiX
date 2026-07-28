@@ -808,6 +808,14 @@ class EvidenceSourceArtifactResponse(BaseModel):
     created_at: datetime
 
 
+class SourceArtifactSearchResponse(BaseModel):
+    items: list[EvidenceSourceArtifactResponse]
+    total: int
+    offset: int
+    limit: int
+    category_facets: dict[str, int]
+
+
 class AleappDiagnosticResponse(BaseModel):
     available: bool
     hash_verified: bool

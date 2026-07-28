@@ -22,6 +22,7 @@ from forensix_api.schemas import (
     EvidenceToolOutputResponse,
     EvidenceWorkingCopyResponse,
     RecoveryAssessmentResponse,
+    SourceArtifactSearchResponse,
 )
 from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import AuthenticatedSession
@@ -331,6 +332,36 @@ def list_evidence_parser_runs(
             database, authenticated.principal, case_id, source_id
         )
     ]
+
+
+@router.get("/artifacts/search", response_model=SourceArtifactSearchResponse)
+def search_source_artifacts(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+    q: str | None = None,
+    category: str | None = None,
+    status: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
+) -> SourceArtifactSearchResponse:
+    result = EvidenceExaminationService().search_source_artifacts(
+        database,
+        authenticated.principal,
+        case_id,
+        query=q,
+        category=category,
+        status=status,
+        offset=offset,
+        limit=limit,
+    )
+    return SourceArtifactSearchResponse(
+        items=[_artifact_response(item) for item in result.items],
+        total=result.total,
+        offset=result.offset,
+        limit=result.limit,
+        category_facets=result.category_facets,
+    )
 
 
 @router.get("/{source_id}/artifacts", response_model=list[EvidenceSourceArtifactResponse])

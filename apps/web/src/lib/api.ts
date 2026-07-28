@@ -1853,6 +1853,35 @@ export function listEvidenceSourceArtifacts(
   );
 }
 
+export interface SourceArtifactSearchResult {
+  items: EvidenceSourceArtifact[];
+  total: number;
+  offset: number;
+  limit: number;
+  category_facets: Record<string, number>;
+}
+
+export function searchSourceArtifacts(
+  caseId: string,
+  options: {
+    query?: string;
+    category?: string;
+    status?: string;
+    offset?: number;
+    limit?: number;
+  } = {},
+): Promise<SourceArtifactSearchResult> {
+  const params = new URLSearchParams();
+  if (options.query && options.query.trim()) params.set("q", options.query.trim());
+  if (options.category) params.set("category", options.category);
+  if (options.status) params.set("status", options.status);
+  params.set("offset", String(options.offset ?? 0));
+  params.set("limit", String(options.limit ?? 50));
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/artifacts/search?${params.toString()}`,
+  );
+}
+
 export function getAleappDiagnostic(): Promise<AleappDiagnostic> {
   return apiRequest("/api/v1/integrations/aleapp");
 }

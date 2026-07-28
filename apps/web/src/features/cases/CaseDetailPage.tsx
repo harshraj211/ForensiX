@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, GitFork, Link2, LoaderCircle, Plus, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, GitFork, Link2, LoaderCircle, Plus, Search, ShieldCheck, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -250,6 +250,40 @@ export function CaseDetailPage() {
           className="inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-4 text-sm font-semibold text-cyan-100"
         >
           Explore evidence
+        </Link>
+      </section>
+      <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+        <div className="flex gap-4">
+          <ClipboardList className="mt-1 shrink-0 text-cyan-300" size={21} aria-hidden="true" />
+          <div>
+            <h2 className="text-xl font-semibold text-white">Artifact browser</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Browse parsed messages, calls, contacts, and app data by category across all sealed sources.
+            </p>
+          </div>
+        </div>
+        <Link
+          to={`/cases/${caseId}/artifacts`}
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-4 text-sm font-semibold text-cyan-100"
+        >
+          Browse artifacts
+        </Link>
+      </section>
+      <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+        <div className="flex gap-4">
+          <Search className="mt-1 shrink-0 text-cyan-300" size={21} aria-hidden="true" />
+          <div>
+            <h2 className="text-xl font-semibold text-white">Artifact search</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Search parsed messages, calls, contacts, and app data across every sealed source in the case at once.
+            </p>
+          </div>
+        </div>
+        <Link
+          to={`/cases/${caseId}/artifact-search`}
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-4 text-sm font-semibold text-cyan-100"
+        >
+          Search artifacts
         </Link>
       </section>
       <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:p-8">
