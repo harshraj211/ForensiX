@@ -1167,3 +1167,57 @@ class AuditLogResponse(BaseModel):
     previous_hash: str
     entry_hash: str
     created_at: datetime
+
+
+class MediaDetectionLabel(BaseModel):
+    label: str
+    confidence: float
+    basis: str
+    status: str | None = None
+
+
+class MediaAnalysisResponse(BaseModel):
+    id: str
+    artifact_id: str
+    case_id: str
+    media_kind: Literal["image", "video", "audio"]
+    status: Literal["analyzed", "unsupported", "rejected", "failed"]
+    detected_mime: str | None
+    width: int | None
+    height: int | None
+    perceptual_hash: str | None
+    captured_at_raw: str | None
+    camera_make: str | None
+    camera_model: str | None
+    gps_present: bool
+    gps_latitude: float | None
+    gps_longitude: float | None
+    exif: dict[str, Any]
+    ocr_status: Literal["not_attempted", "completed", "unavailable", "empty"]
+    ocr_engine: str | None
+    ocr_text: str | None
+    detections: list[MediaDetectionLabel]
+    detector_maturity: str
+    error_code: str | None
+    error_message: str | None
+    analysis_hash: str
+    worker_version: str
+    analyzed_at: datetime
+
+
+class MediaAnalysisListResponse(BaseModel):
+    items: list[MediaAnalysisResponse]
+    total: int
+    offset: int
+    limit: int
+
+
+class SimilarMediaItem(BaseModel):
+    distance: int
+    analysis: MediaAnalysisResponse
+
+
+class SimilarMediaResponse(BaseModel):
+    base: MediaAnalysisResponse
+    matches: list[SimilarMediaItem]
+    max_distance: int

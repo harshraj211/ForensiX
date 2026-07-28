@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, GitFork, Link2, LoaderCircle, Plus, Search, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, GitFork, Link2, LoaderCircle, MapPin, Plus, Search, ShieldCheck, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -267,6 +267,23 @@ export function CaseDetailPage() {
           className="inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-4 text-sm font-semibold text-cyan-100"
         >
           Browse artifacts
+        </Link>
+      </section>
+      <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+        <div className="flex gap-4">
+          <MapPin className="mt-1 shrink-0 text-cyan-300" size={21} aria-hidden="true" />
+          <div>
+            <h2 className="text-xl font-semibold text-white">Media locations</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Plot GPS coordinates from geotagged photo EXIF on an offline map. No tiles are fetched, so inspecting a location never leaves the workstation.
+            </p>
+          </div>
+        </div>
+        <Link
+          to={`/cases/${caseId}/media-map`}
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-4 text-sm font-semibold text-cyan-100"
+        >
+          Open map
         </Link>
       </section>
       <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">

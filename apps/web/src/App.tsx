@@ -15,6 +15,7 @@ import { EvidenceTwinPage } from "./features/evidence-twin/EvidenceTwinPage";
 import { LandingPage } from "./features/marketing/LandingPage";
 import { CaseReportsPage, ReportsCasesPage } from "./features/reports/ReportsPage";
 import { ValidationDashboardPage } from "./features/validation/ValidationDashboardPage";
+import { MediaMapPage } from "./features/evidence/MediaMapPage";
 import { ArtifactSearchPage } from "./features/evidence/ArtifactSearchPage";
 
 export function App() {
@@ -30,6 +31,7 @@ export function App() {
           <Route path="/cases/:caseId/acquisitions" element={<AcquisitionPlanningPage />} />
           <Route path="/cases/:caseId/evidence" element={<EvidenceExplorerPage />} />
           <Route path="/cases/:caseId/artifacts" element={<ArtifactBrowserPage />} />
+          <Route path="/cases/:caseId/media-map" element={<MediaMapPage />} />
           <Route path="/cases/:caseId/artifact-search" element={<ArtifactSearchPage />} />
           <Route path="/cases/:caseId/evidence-twin" element={<EvidenceTwinPage />} />
           <Route path="/cases/:caseId/timeline" element={<TimelinePage />} />

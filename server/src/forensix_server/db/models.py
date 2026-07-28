@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -1886,4 +1887,86 @@ class AuditLogRecord(Base):
     entry_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class MediaAnalysisRecord(Base):
+    """Derived media analysis for one image/video/audio artifact.
+
+    All findings come from a bounded, isolated worker reading a hash-verified sealed
+    object. Perceptual hashing, EXIF/GPS extraction, and OCR are recorded here; the
+    source evidence is never mutated. Content-classification labels are produced by a
+    pluggable detector framework whose maturity is recorded honestly per label.
+    """
+
+    __tablename__ = "media_analyses"
+    __table_args__ = (
+        CheckConstraint(
+            "media_kind IN ('image', 'video', 'audio')",
+            name="ck_media_analyses_kind",
+        ),
+        CheckConstraint(
+            "status IN ('analyzed', 'unsupported', 'rejected', 'failed')",
+            name="ck_media_analyses_status",
+        ),
+        CheckConstraint(
+            "ocr_status IN ('not_attempted', 'completed', 'unavailable', 'empty')",
+            name="ck_media_analyses_ocr_status",
+        ),
+        CheckConstraint(
+            "width IS NULL OR width >= 0", name="ck_media_analyses_width"
+        ),
+        CheckConstraint(
+            "height IS NULL OR height >= 0", name="ck_media_analyses_height"
+        ),
+        UniqueConstraint("artifact_id", name="uq_media_analyses_artifact"),
+        UniqueConstraint("analysis_hash", name="uq_media_analyses_hash"),
+        Index("ix_media_analyses_case_kind", "case_id", "media_kind"),
+        Index("ix_media_analyses_perceptual", "case_id", "perceptual_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    artifact_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    evidence_file_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("acquired_evidence_files.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    analyzed_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    media_kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    detected_mime: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Perceptual (difference) hash for near-duplicate / similar-image grouping.
+    perceptual_hash: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    # EXIF-derived capture instant, camera make/model, and GPS presence/coordinates.
+    captured_at_raw: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    camera_make: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    camera_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    gps_present: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    gps_latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gps_longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    exif_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    # OCR text extracted from the image, if an OCR engine was available.
+    ocr_status: Mapped[str] = mapped_column(String(16), nullable=False, default="not_attempted")
+    ocr_engine: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Pluggable content-classification labels (categorization, object/face detection).
+    detection_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    detector_maturity: Mapped[str] = mapped_column(String(24), nullable=False, default="heuristic")
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    analysis_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    worker_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    analyzed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
     )

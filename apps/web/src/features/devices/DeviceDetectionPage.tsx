@@ -789,7 +789,7 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
               className="inline-flex items-center gap-2 rounded-lg bg-violet-300 px-3 py-2 text-xs font-semibold text-slate-950 transition hover:bg-violet-200 disabled:opacity-35"
             >
               <MonitorUp size={14} />
-              {websiteLiveScreen.isPending ? "Starting previewâ€¦" : "Show screen in website"}
+              {websiteLiveScreen.isPending ? "Starting preview…" : "Show screen in website"}
             </button>
             <button
               type="button"

@@ -910,6 +910,64 @@ export interface ArtifactAnnotations {
   notes: AnalystNote[];
 }
 
+export type MediaKind = "image" | "video" | "audio";
+export type MediaAnalysisStatus = "analyzed" | "unsupported" | "rejected" | "failed";
+export type MediaOcrStatus = "not_attempted" | "completed" | "unavailable" | "empty";
+
+export interface MediaDetectionLabel {
+  label: string;
+  confidence: number;
+  basis: string;
+  status?: string | null;
+}
+
+export interface MediaAnalysis {
+  id: string;
+  artifact_id: string;
+  case_id: string;
+  media_kind: MediaKind;
+  status: MediaAnalysisStatus;
+  detected_mime: string | null;
+  width: number | null;
+  height: number | null;
+  perceptual_hash: string | null;
+  captured_at_raw: string | null;
+  camera_make: string | null;
+  camera_model: string | null;
+  gps_present: boolean;
+  gps_latitude: number | null;
+  gps_longitude: number | null;
+  exif: Record<string, unknown>;
+  ocr_status: MediaOcrStatus;
+  ocr_engine: string | null;
+  ocr_text: string | null;
+  detections: MediaDetectionLabel[];
+  detector_maturity: string;
+  error_code: string | null;
+  error_message: string | null;
+  analysis_hash: string;
+  worker_version: string;
+  analyzed_at: string;
+}
+
+export interface MediaAnalysisList {
+  items: MediaAnalysis[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface SimilarMediaItem {
+  distance: number;
+  analysis: MediaAnalysis;
+}
+
+export interface SimilarMediaResult {
+  base: MediaAnalysis;
+  matches: SimilarMediaItem[];
+  max_distance: number;
+}
+
 export interface EvidenceVerification {
   id: string;
   evidence_file_id: string;
@@ -1879,6 +1937,46 @@ export function searchSourceArtifacts(
   params.set("limit", String(options.limit ?? 50));
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/artifacts/search?${params.toString()}`,
+  );
+}
+
+export function getMediaAnalysis(
+  caseId: string,
+  artifactId: string,
+): Promise<MediaAnalysis | null> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/media/artifacts/${encodeURIComponent(artifactId)}`,
+  );
+}
+
+export function analyzeMedia(caseId: string, artifactId: string): Promise<MediaAnalysis> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/media/artifacts/${encodeURIComponent(artifactId)}`,
+    { method: "POST" },
+  );
+}
+
+export function findSimilarMedia(
+  caseId: string,
+  artifactId: string,
+  maxDistance = 10,
+): Promise<SimilarMediaResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/media/artifacts/${encodeURIComponent(artifactId)}/similar?max_distance=${String(maxDistance)}`,
+  );
+}
+
+export function listMediaAnalyses(
+  caseId: string,
+  options: { mediaKind?: MediaKind; gpsOnly?: boolean; offset?: number; limit?: number } = {},
+): Promise<MediaAnalysisList> {
+  const params = new URLSearchParams();
+  if (options.mediaKind) params.set("media_kind", options.mediaKind);
+  if (options.gpsOnly) params.set("gps_only", "true");
+  params.set("offset", String(options.offset ?? 0));
+  params.set("limit", String(options.limit ?? 50));
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/media/analyses?${params.toString()}`,
   );
 }
 

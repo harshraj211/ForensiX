@@ -35,6 +35,7 @@ import {
   type ArtifactCategory,
   type ArtifactStatus,
 } from "../../lib/api";
+import { MediaAnalysisPanel } from "./MediaAnalysisPanel";
 
 const categories: Array<{ value: ArtifactCategory | ""; label: string }> = [
   { value: "", label: "All categories" },
@@ -445,6 +446,9 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
           </div>
         )}
       </section>
+      )}
+      {artifact.category === "image" && (
+        <MediaAnalysisPanel caseId={caseId} artifactId={artifact.id} />
       )}
       {limitations.length > 0 && (
         <div className="mt-6 rounded-lg border border-amber-200/12 bg-amber-200/5 p-3 text-[11px] leading-5 text-amber-100/70">

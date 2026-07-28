@@ -26,6 +26,7 @@ from forensix_api.routers import (
     extraction,
     health,
     integrations,
+    media_analysis,
     reports,
     rooted,
     timeline,
@@ -100,6 +101,7 @@ def create_app(
     app.include_router(custody.router)
     app.include_router(acquisitions.router)
     app.include_router(artifacts.router)
+    app.include_router(media_analysis.router)
     app.include_router(timeline.router)
     app.include_router(validation.router)
     app.include_router(reports.router)

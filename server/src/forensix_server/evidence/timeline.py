@@ -16,10 +16,12 @@ from forensix_server.db import (
     ArtifactRecord,
     EvidenceSourceArtifactRecord,
     EvidenceSourceTimelineEventRecord,
+    MediaAnalysisRecord,
     TimelineEventRecord,
 )
 
 TIMELINE_BUILDER_VERSION = "1.1.0"
+MEDIA_CAPTURE_TIMESTAMP_TYPE = "media_exif_captured_at"
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +129,65 @@ class TimelineService:
         session.flush()
         return record
 
+    def materialize_media_capture(
+        self,
+        session: Session,
+        artifact: ArtifactRecord,
+        media: MediaAnalysisRecord,
+    ) -> TimelineEventRecord | None:
+        """Materialize an EXIF capture-time event only when the raw string parses cleanly.
+
+        EXIF timestamps carry no timezone offset, so the event is marked confidence=low
+        and timezone_basis states the ambiguity explicitly. Returns None when
+        captured_at_raw is absent or unparseable — never invents a time.
+        """
+        if media.captured_at_raw is None:
+            return None
+        event_time = _parse_exif_datetime(media.captured_at_raw)
+        if event_time is None:
+            return None
+        existing = session.scalar(
+            select(TimelineEventRecord).where(
+                TimelineEventRecord.artifact_id == artifact.id,
+                TimelineEventRecord.timestamp_type == MEDIA_CAPTURE_TIMESTAMP_TYPE,
+            )
+        )
+        if existing is not None:
+            return existing
+        summary = f"EXIF capture time recorded in {artifact.title}."
+        payload = {
+            "artifact_id": artifact.id,
+            "builder_version": TIMELINE_BUILDER_VERSION,
+            "case_id": artifact.case_id,
+            "category": "media",
+            "confidence": "low",
+            "event_time": event_time.isoformat(),
+            "job_id": artifact.job_id,
+            "original_time": media.captured_at_raw,
+            "precision": "second",
+            "summary": summary,
+            "timestamp_type": MEDIA_CAPTURE_TIMESTAMP_TYPE,
+            "timezone_basis": "UTC assumed; EXIF timestamp carries no timezone offset",
+        }
+        record = TimelineEventRecord(
+            case_id=artifact.case_id,
+            artifact_id=artifact.id,
+            job_id=artifact.job_id,
+            category="media",
+            timestamp_type=MEDIA_CAPTURE_TIMESTAMP_TYPE,
+            event_time=event_time,
+            original_time=media.captured_at_raw,
+            timezone_basis="UTC assumed; EXIF timestamp carries no timezone offset",
+            precision="second",
+            confidence="low",
+            summary=summary,
+            builder_version=TIMELINE_BUILDER_VERSION,
+            event_hash=sha256(_canonical_json(payload).encode("utf-8")).hexdigest(),
+        )
+        session.add(record)
+        session.flush()
+        return record
+
     @staticmethod
     def _materialize_source_modified(
         session: Session, artifact: ArtifactRecord
@@ -219,6 +280,26 @@ class TimelineService:
             )
             self.materialize_source_artifact(session, source_artifact)
             created += exists is None
+        analyses = list(
+            session.scalars(
+                select(MediaAnalysisRecord).where(
+                    MediaAnalysisRecord.status == "analyzed",
+                    MediaAnalysisRecord.captured_at_raw.is_not(None),
+                )
+            )
+        )
+        for media in analyses:
+            artifact = session.get(ArtifactRecord, media.artifact_id)
+            if artifact is None:
+                continue
+            exists = session.scalar(
+                select(TimelineEventRecord.id).where(
+                    TimelineEventRecord.artifact_id == media.artifact_id,
+                    TimelineEventRecord.timestamp_type == MEDIA_CAPTURE_TIMESTAMP_TYPE,
+                )
+            )
+            self.materialize_media_capture(session, artifact, media)
+            created += exists is None
         return created
 
     def search(
@@ -282,6 +363,21 @@ def _aware_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _parse_exif_datetime(raw: str) -> datetime | None:
+    """Parse the EXIF 'YYYY:MM:DD HH:MM:SS' form; return None on any deviation.
+
+    EXIF times have no timezone; the parsed value is tagged UTC by convention with the
+    ambiguity recorded in the event's timezone_basis. Anything not matching the exact
+    EXIF grammar yields None so no timestamp is invented.
+    """
+    candidate = raw.strip()
+    try:
+        parsed = datetime.strptime(candidate, "%Y:%m:%d %H:%M:%S")
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC)
 
 
 def _canonical_json(value: object) -> str:
