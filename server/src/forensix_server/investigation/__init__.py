@@ -9,6 +9,16 @@ from .service import (
     CommandCenterSummary,
     InvestigationCommandCenterService,
 )
+from .storyboard import (
+    InvestigationStoryboard,
+    InvestigationStoryboardService,
+    StoryboardFinding,
+    StoryboardGap,
+    StoryboardLead,
+    StoryboardMetrics,
+    StoryboardMoment,
+    StoryboardSection,
+)
 
 __all__ = [
     "CommandCenterActivity",
@@ -18,4 +28,12 @@ __all__ = [
     "CommandCenterJobs",
     "CommandCenterSummary",
     "InvestigationCommandCenterService",
+    "InvestigationStoryboard",
+    "InvestigationStoryboardService",
+    "StoryboardFinding",
+    "StoryboardGap",
+    "StoryboardLead",
+    "StoryboardMetrics",
+    "StoryboardMoment",
+    "StoryboardSection",
 ]

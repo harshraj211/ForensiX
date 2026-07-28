@@ -2091,3 +2091,137 @@ describe("key evidence workspace", () => {
     expect(screen.getByRole("button", { name: "Remove" })).toBeEnabled();
   });
 });
+
+describe("investigation storyboard", () => {
+  it("connects curated findings to chronology, relationships, gaps, and integrity", async () => {
+    const now = "2026-07-28T10:00:00Z";
+    const findingId = "finding-1";
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-STORY01",
+            title: "Storyboard case",
+            description: null,
+            legal_authority: "Controlled validation",
+            status: "active",
+            created_by: "user-1",
+            created_at: now,
+            updated_at: now,
+            closed_at: null,
+            version: 1,
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/storyboard") {
+        return Promise.resolve(
+          jsonResponse({
+            case_id: "case-1",
+            overview:
+              "Examiners selected 1 key finding across 1 evidence category. One directly linked timeline moment and one explicit relationship lead are available.",
+            metrics: {
+              key_findings: 1,
+              critical_findings: 1,
+              high_findings: 0,
+              evidence_categories: 1,
+              timeline_claims: 1,
+              linked_moments: 1,
+              relationship_leads: 1,
+            },
+            sections: [
+              {
+                id: "communication",
+                title: "Communication evidence",
+                summary: "1 examiner-curated finding, including 1 critical item.",
+                finding_ids: [findingId],
+                critical_count: 1,
+                high_count: 0,
+                latest_event_time: now,
+              },
+            ],
+            findings: [
+              {
+                id: findingId,
+                target_type: "source_artifact",
+                target_id: "source-artifact-1",
+                priority: "critical",
+                category: "communication",
+                subtype: "sms",
+                title: "SMS inbox: +15550001111",
+                summary: "Known message linked to the primary subject",
+                rationale: "Message directly names the working investigation subject.",
+                confidence: "high",
+                event_time: now,
+                source_locator: "sms:7",
+                integrity_hash: "a".repeat(64),
+                parser_id: "android.telephony.sms",
+                timeline_event_ids: ["event-1"],
+                related_entities: ["phone: +15550001111"],
+              },
+            ],
+            moments: [
+              {
+                id: "event-1",
+                event_time: now,
+                summary: "SMS inbox: +15550001111: Known message",
+                category: "communication",
+                confidence: "high",
+                timestamp_type: "parsed_artifact_event_time",
+                timezone_basis: "UTC normalized by the versioned artifact parser",
+                event_hash: "b".repeat(64),
+                finding_ids: [findingId],
+                key_evidence_linked: true,
+              },
+            ],
+            leads: [
+              {
+                id: "phone-1",
+                entity_type: "phone",
+                label: "+15550001111",
+                confidence: "high",
+                evidence_count: 1,
+                finding_ids: [findingId],
+              },
+            ],
+            gaps: [],
+            limitations: [
+              "This storyboard organizes recorded evidence; it does not determine guilt.",
+            ],
+            source_hashes: {
+              correlation_graph: "c".repeat(64),
+              key_evidence: "d".repeat(64),
+              timeline: "e".repeat(64),
+            },
+            builder_version: "1.0.0",
+            snapshot_hash: "f".repeat(64),
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/cases/case-1/storyboard");
+
+    expect(
+      await screen.findByRole("heading", { name: "Investigation Storyboard" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Communication evidence")).toBeInTheDocument();
+    expect(screen.getByText("SMS inbox: +15550001111")).toBeInTheDocument();
+    expect(
+      screen.getByText("Message directly names the working investigation subject."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("+15550001111").length).toBeGreaterThan(0);
+    expect(screen.getByText(/parsed artifact event time/i)).toBeInTheDocument();
+    expect(screen.getByText(/Storyboard SHA-256/)).toHaveTextContent("f".repeat(64));
+    expect(screen.getByRole("button", { name: "Copy narrative" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Print review" })).toBeEnabled();
+  });
+});

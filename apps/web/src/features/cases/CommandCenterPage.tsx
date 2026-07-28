@@ -15,6 +15,7 @@ import {
   HardDrive,
   LoaderCircle,
   MapPin,
+  PanelsTopLeft,
   Radar,
   Search,
   ShieldCheck,
@@ -264,6 +265,7 @@ export function CommandCenterPage() {
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <WorkspaceLink icon={Search} label="Global artifact search" to={`/cases/${caseId}/artifact-search`} />
           <WorkspaceLink icon={Flag} label="Key Evidence" to={`/cases/${caseId}/key-evidence`} />
+          <WorkspaceLink icon={PanelsTopLeft} label="Investigation Storyboard" to={`/cases/${caseId}/storyboard`} />
           <WorkspaceLink icon={Clock3} label="Evidence timeline" to={`/cases/${caseId}/timeline`} />
           <WorkspaceLink icon={GitFork} label="Relationship graph" to={`/cases/${caseId}/correlations`} />
           <WorkspaceLink icon={MapPin} label="Offline media map" to={`/cases/${caseId}/media-map`} />

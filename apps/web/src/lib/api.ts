@@ -847,6 +847,90 @@ export interface KeyEvidenceList {
   category_facets: Record<string, number>;
 }
 
+export interface StoryboardMetrics {
+  key_findings: number;
+  critical_findings: number;
+  high_findings: number;
+  evidence_categories: number;
+  timeline_claims: number;
+  linked_moments: number;
+  relationship_leads: number;
+}
+
+export interface StoryboardFinding {
+  id: string;
+  target_type: KeyEvidenceTargetType;
+  target_id: string;
+  priority: KeyEvidencePriority;
+  category: string;
+  subtype: string;
+  title: string;
+  summary: string;
+  rationale: string | null;
+  confidence: string;
+  event_time: string | null;
+  source_locator: string;
+  integrity_hash: string;
+  parser_id: string;
+  timeline_event_ids: string[];
+  related_entities: string[];
+}
+
+export interface StoryboardMoment {
+  id: string;
+  event_time: string;
+  summary: string;
+  category: string;
+  confidence: string;
+  timestamp_type: string;
+  timezone_basis: string;
+  event_hash: string;
+  finding_ids: string[];
+  key_evidence_linked: boolean;
+}
+
+export interface StoryboardLead {
+  id: string;
+  entity_type: string;
+  label: string;
+  confidence: string;
+  evidence_count: number;
+  finding_ids: string[];
+}
+
+export interface StoryboardSection {
+  id: string;
+  title: string;
+  summary: string;
+  finding_ids: string[];
+  critical_count: number;
+  high_count: number;
+  latest_event_time: string | null;
+}
+
+export interface StoryboardGap {
+  code: string;
+  severity: "critical" | "warning" | "info";
+  title: string;
+  detail: string;
+  action_path: string;
+}
+
+export interface InvestigationStoryboard {
+  case_id: string;
+  overview: string;
+  metrics: StoryboardMetrics;
+  sections: StoryboardSection[];
+  findings: StoryboardFinding[];
+  moments: StoryboardMoment[];
+  leads: StoryboardLead[];
+  gaps: StoryboardGap[];
+  limitations: string[];
+  source_hashes: Record<string, string>;
+  builder_version: string;
+  snapshot_hash: string;
+}
+
 export interface ArtifactPreview {
   id: string | null;
   artifact_id: string;
@@ -1168,6 +1252,10 @@ export function getCase(caseId: string): Promise<CaseRecord> {
 
 export function getCommandCenter(caseId: string): Promise<CommandCenterSummary> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/command-center`);
+}
+
+export function getInvestigationStoryboard(caseId: string): Promise<InvestigationStoryboard> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/storyboard`);
 }
 
 export function listCustodyEvents(caseId: string): Promise<CustodyEvent[]> {

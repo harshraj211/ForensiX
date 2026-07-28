@@ -19,6 +19,7 @@ import { ValidationDashboardPage } from "./features/validation/ValidationDashboa
 import { MediaMapPage } from "./features/evidence/MediaMapPage";
 import { ArtifactSearchPage } from "./features/evidence/ArtifactSearchPage";
 import { KeyEvidencePage } from "./features/evidence/KeyEvidencePage";
+import { InvestigationStoryboardPage } from "./features/evidence/InvestigationStoryboardPage";
 
 export function App() {
   return (
@@ -37,6 +38,7 @@ export function App() {
           <Route path="/cases/:caseId/media-map" element={<MediaMapPage />} />
           <Route path="/cases/:caseId/artifact-search" element={<ArtifactSearchPage />} />
           <Route path="/cases/:caseId/key-evidence" element={<KeyEvidencePage />} />
+          <Route path="/cases/:caseId/storyboard" element={<InvestigationStoryboardPage />} />
           <Route path="/cases/:caseId/evidence-twin" element={<EvidenceTwinPage />} />
           <Route path="/cases/:caseId/timeline" element={<TimelinePage />} />
           <Route path="/cases/:caseId/correlations" element={<CorrelationGraphPage />} />

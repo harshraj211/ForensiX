@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, Flag, GitFork, LayoutDashboard, Link2, LoaderCircle, MapPin, Plus, Search, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, Flag, GitFork, LayoutDashboard, Link2, LoaderCircle, MapPin, PanelsTopLeft, Plus, Search, ShieldCheck, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -191,6 +191,24 @@ export function CaseDetailPage() {
           className="inline-flex min-h-10 items-center justify-center rounded-lg border border-amber-300/20 bg-amber-300/7 px-4 text-sm font-semibold text-amber-100"
         >
           Review Key Evidence
+        </Link>
+      </section>
+      <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-violet-300/12 bg-violet-300/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+        <div className="flex gap-4">
+          <PanelsTopLeft className="mt-1 shrink-0 text-violet-300" size={21} aria-hidden="true" />
+          <div>
+            <h2 className="text-xl font-semibold text-white">Investigation Storyboard</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Combine Key Evidence, timestamp claims, and explicit relationships into a
+              deterministic report-ready review.
+            </p>
+          </div>
+        </div>
+        <Link
+          to={`/cases/${caseId}/storyboard`}
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-violet-300/20 bg-violet-300/7 px-4 text-sm font-semibold text-violet-100"
+        >
+          Open Storyboard
         </Link>
       </section>
       <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:p-8">

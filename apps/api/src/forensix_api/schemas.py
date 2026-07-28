@@ -525,6 +525,90 @@ class KeyEvidenceListResponse(BaseModel):
     category_facets: dict[str, int]
 
 
+class StoryboardMetricsResponse(BaseModel):
+    key_findings: int
+    critical_findings: int
+    high_findings: int
+    evidence_categories: int
+    timeline_claims: int
+    linked_moments: int
+    relationship_leads: int
+
+
+class StoryboardFindingResponse(BaseModel):
+    id: str
+    target_type: str
+    target_id: str
+    priority: str
+    category: str
+    subtype: str
+    title: str
+    summary: str
+    rationale: str | None
+    confidence: str
+    event_time: datetime | None
+    source_locator: str
+    integrity_hash: str
+    parser_id: str
+    timeline_event_ids: list[str]
+    related_entities: list[str]
+
+
+class StoryboardMomentResponse(BaseModel):
+    id: str
+    event_time: datetime
+    summary: str
+    category: str
+    confidence: str
+    timestamp_type: str
+    timezone_basis: str
+    event_hash: str
+    finding_ids: list[str]
+    key_evidence_linked: bool
+
+
+class StoryboardLeadResponse(BaseModel):
+    id: str
+    entity_type: str
+    label: str
+    confidence: str
+    evidence_count: int
+    finding_ids: list[str]
+
+
+class StoryboardSectionResponse(BaseModel):
+    id: str
+    title: str
+    summary: str
+    finding_ids: list[str]
+    critical_count: int
+    high_count: int
+    latest_event_time: datetime | None
+
+
+class StoryboardGapResponse(BaseModel):
+    code: str
+    severity: Literal["critical", "warning", "info"]
+    title: str
+    detail: str
+    action_path: str
+
+
+class InvestigationStoryboardResponse(BaseModel):
+    case_id: str
+    overview: str
+    metrics: StoryboardMetricsResponse
+    sections: list[StoryboardSectionResponse]
+    findings: list[StoryboardFindingResponse]
+    moments: list[StoryboardMomentResponse]
+    leads: list[StoryboardLeadResponse]
+    gaps: list[StoryboardGapResponse]
+    limitations: list[str]
+    source_hashes: dict[str, str]
+    builder_version: str
+    snapshot_hash: str
+
+
 class ArtifactPreviewResponse(BaseModel):
     id: str | None
     artifact_id: str

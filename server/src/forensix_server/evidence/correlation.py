@@ -256,7 +256,7 @@ def _extract_entities(metadata: dict[str, Any]) -> set[tuple[str, str]]:
     application = _text(metadata.get("application")) or _text(metadata.get("package"))
     if application:
         found.add(("application", application))
-    for key in ("number", "phone_account_address", "via_number"):
+    for key in ("address", "number", "phone_account_address", "via_number"):
         if value := _text(metadata.get(key)):
             found.add(("phone", value))
     for key in ("display_name", "sender_name"):
