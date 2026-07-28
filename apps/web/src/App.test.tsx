@@ -2010,3 +2010,84 @@ describe("evidence explorer", () => {
     expect(screen.getByText(/Graph SHA-256/)).toHaveTextContent("a".repeat(64));
   });
 });
+
+describe("key evidence workspace", () => {
+  it("unifies parsed findings with examiner rationale and integrity provenance", async () => {
+    const now = "2026-07-28T10:00:00Z";
+    const finding = {
+      id: "finding-1",
+      case_id: "case-1",
+      target_type: "source_artifact",
+      target_id: "source-artifact-1",
+      category: "contact",
+      subtype: "android_contact",
+      title: "Priority Contact",
+      summary: "Contact Priority Contact with 1 observed phone value.",
+      source_locator: "raw_contacts:10",
+      status: "active",
+      confidence: "high",
+      event_time: null,
+      integrity_hash: "a".repeat(64),
+      parser_id: "android.contacts_provider",
+      parser_version: "1.0.0",
+      size_bytes: null,
+      priority: "critical",
+      reason: "Known number connects this extraction to the primary subject.",
+      created_by: "user-1",
+      created_at: now,
+      updated_at: now,
+      tags: [],
+      note_count: 0,
+      latest_note: null,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-KEY0001",
+            title: "Key evidence case",
+            description: null,
+            legal_authority: "Controlled validation",
+            status: "active",
+            created_by: "user-1",
+            created_at: now,
+            updated_at: now,
+            closed_at: null,
+            version: 1,
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/key-evidence") {
+        return Promise.resolve(
+          jsonResponse({
+            items: [finding],
+            total: 1,
+            priority_counts: { critical: 1, high: 0, normal: 0 },
+            category_facets: { contact: 1 },
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/cases/case-1/key-evidence");
+
+    expect(await screen.findByRole("heading", { name: "Key Evidence" })).toBeInTheDocument();
+    expect((await screen.findAllByText("Priority Contact")).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Known number connects this extraction to the primary subject.").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("raw_contacts:10")).toBeInTheDocument();
+    expect(screen.getByText("android.contacts_provider v1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("a".repeat(64))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeEnabled();
+  });
+});

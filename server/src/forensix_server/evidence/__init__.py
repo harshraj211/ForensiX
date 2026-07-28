@@ -8,6 +8,13 @@ from .content import (
     ArtifactContentService,
 )
 from .correlation import CorrelationEdge, CorrelationGraph, CorrelationNode, CorrelationService
+from .key_evidence import (
+    KeyEvidenceItem,
+    KeyEvidenceList,
+    KeyEvidencePriority,
+    KeyEvidenceService,
+    KeyEvidenceTargetType,
+)
 from .preview import (
     ArtifactPreviewService,
     PreviewContent,
@@ -23,6 +30,11 @@ __all__ = [
     "CorrelationGraph",
     "CorrelationNode",
     "CorrelationService",
+    "KeyEvidenceItem",
+    "KeyEvidenceList",
+    "KeyEvidencePriority",
+    "KeyEvidenceService",
+    "KeyEvidenceTargetType",
     "ArtifactContent",
     "ArtifactContentError",
     "ArtifactContentIntegrityError",

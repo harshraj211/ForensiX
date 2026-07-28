@@ -985,6 +985,59 @@ class BookmarkRecord(Base):
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class KeyEvidenceRecord(Base):
+    """Case-scoped finding that can reference either normalized artifact family."""
+
+    __tablename__ = "key_evidence"
+    __table_args__ = (
+        CheckConstraint(
+            "target_type IN ('artifact', 'source_artifact')",
+            name="ck_key_evidence_target_type",
+        ),
+        CheckConstraint(
+            "(target_type = 'artifact' AND artifact_id IS NOT NULL "
+            "AND source_artifact_id IS NULL) OR "
+            "(target_type = 'source_artifact' AND source_artifact_id IS NOT NULL "
+            "AND artifact_id IS NULL)",
+            name="ck_key_evidence_target_reference",
+        ),
+        CheckConstraint(
+            "priority IN ('critical', 'high', 'normal')",
+            name="ck_key_evidence_priority",
+        ),
+        UniqueConstraint("artifact_id", name="uq_key_evidence_artifact"),
+        UniqueConstraint("source_artifact_id", name="uq_key_evidence_source_artifact"),
+        Index("ix_key_evidence_case_priority_created", "case_id", "priority", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    target_type: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    artifact_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    source_artifact_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("evidence_source_artifacts.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    priority: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    reason: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class TagRecord(Base):
     """Case-scoped normalized analyst tag."""
 

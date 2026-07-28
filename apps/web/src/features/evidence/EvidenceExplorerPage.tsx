@@ -36,6 +36,7 @@ import {
   type ArtifactStatus,
 } from "../../lib/api";
 import { MediaAnalysisPanel } from "./MediaAnalysisPanel";
+import { PromoteToKeyEvidence } from "./PromoteToKeyEvidence";
 
 const categories: Array<{ value: ArtifactCategory | ""; label: string }> = [
   { value: "", label: "All categories" },
@@ -456,6 +457,13 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
           <ul className="mt-2 list-disc space-y-1 pl-4">{limitations.map((item) => <li key={item}>{item}</li>)}</ul>
         </div>
       )}
+      <div className="mt-6">
+        <PromoteToKeyEvidence
+          caseId={caseId}
+          targetType="artifact"
+          targetId={artifact.id}
+        />
+      </div>
       <section className="mt-6 border-t border-white/8 pt-5">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-white">Analyst annotations</h3>

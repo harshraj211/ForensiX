@@ -810,6 +810,43 @@ export interface ArtifactSearchResult {
   category_facets: Record<string, number>;
 }
 
+export type KeyEvidenceTargetType = "artifact" | "source_artifact";
+export type KeyEvidencePriority = "critical" | "high" | "normal";
+
+export interface KeyEvidenceItem {
+  id: string;
+  case_id: string;
+  target_type: KeyEvidenceTargetType;
+  target_id: string;
+  category: string;
+  subtype: string;
+  title: string;
+  summary: string;
+  source_locator: string;
+  status: string;
+  confidence: string;
+  event_time: string | null;
+  integrity_hash: string;
+  parser_id: string;
+  parser_version: string;
+  size_bytes: number | null;
+  priority: KeyEvidencePriority;
+  reason: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  tags: string[];
+  note_count: number;
+  latest_note: string | null;
+}
+
+export interface KeyEvidenceList {
+  items: KeyEvidenceItem[];
+  total: number;
+  priority_counts: Record<string, number>;
+  category_facets: Record<string, number>;
+}
+
 export interface ArtifactPreview {
   id: string | null;
   artifact_id: string;
@@ -1690,6 +1727,47 @@ export async function searchAllArtifacts(
 export function getArtifact(caseId: string, artifactId: string): Promise<Artifact> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}`,
+  );
+}
+
+export function listKeyEvidence(
+  caseId: string,
+  filters: { q?: string; priority?: KeyEvidencePriority; category?: string } = {},
+): Promise<KeyEvidenceList> {
+  const parameters = new URLSearchParams();
+  if (filters.q) parameters.set("q", filters.q);
+  if (filters.priority) parameters.set("priority", filters.priority);
+  if (filters.category) parameters.set("category", filters.category);
+  const query = parameters.toString();
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/key-evidence${query ? `?${query}` : ""}`,
+  );
+}
+
+export function promoteKeyEvidence(
+  caseId: string,
+  input: {
+    targetType: KeyEvidenceTargetType;
+    targetId: string;
+    priority: KeyEvidencePriority;
+    reason?: string;
+  },
+): Promise<KeyEvidenceItem> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/key-evidence`, {
+    method: "POST",
+    body: JSON.stringify({
+      target_type: input.targetType,
+      target_id: input.targetId,
+      priority: input.priority,
+      reason: input.reason || null,
+    }),
+  });
+}
+
+export function removeKeyEvidence(caseId: string, findingId: string): Promise<void> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/key-evidence/${encodeURIComponent(findingId)}`,
+    { method: "DELETE" },
   );
 }
 

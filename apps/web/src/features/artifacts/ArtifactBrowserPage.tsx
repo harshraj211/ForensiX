@@ -26,6 +26,7 @@ import {
   listEvidenceSourceArtifacts,
   type EvidenceSourceArtifact,
 } from "../../lib/api";
+import { PromoteToKeyEvidence } from "../evidence/PromoteToKeyEvidence";
 
 const twinKeys = {
   sources: (caseId: string) => ["evidence-twin", caseId, "sources"] as const,
@@ -165,7 +166,13 @@ function MetaRow({ label, value }: { label: string; value: string | number | boo
   );
 }
 
-function DetailPanel({ artifact }: { artifact: EvidenceSourceArtifact }) {
+function DetailPanel({
+  artifact,
+  caseId,
+}: {
+  artifact: EvidenceSourceArtifact;
+  caseId: string;
+}) {
   const meta = artifact.metadata;
   return (
     <div className="flex h-full flex-col overflow-y-auto p-5">
@@ -184,6 +191,13 @@ function DetailPanel({ artifact }: { artifact: EvidenceSourceArtifact }) {
           {new Date(artifact.event_time).toLocaleString()}
         </p>
       )}
+      <div className="mt-4">
+        <PromoteToKeyEvidence
+          caseId={caseId}
+          targetType="source_artifact"
+          targetId={artifact.id}
+        />
+      </div>
       <dl className="mt-5 space-y-3 border-t border-white/8 pt-4">
         <MetaRow label="Parser" value={`${artifact.parser_id} v${artifact.parser_version}`} />
         <MetaRow label="Source locator" value={artifact.source_locator} />
@@ -391,7 +405,7 @@ export function ArtifactBrowserPage() {
         {/* Detail panel — hidden on small screens */}
         <div className="hidden overflow-hidden lg:block">
           {selected ? (
-            <DetailPanel artifact={selected} />
+            <DetailPanel artifact={selected} caseId={caseId} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-slate-600">
               Select an artifact to inspect

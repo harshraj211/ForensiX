@@ -9,7 +9,7 @@ import {
   CircleDot,
   Clock3,
   Database,
-  FileSearch,
+  Flag,
   Fingerprint,
   GitFork,
   HardDrive,
@@ -263,10 +263,10 @@ export function CommandCenterPage() {
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <WorkspaceLink icon={Search} label="Global artifact search" to={`/cases/${caseId}/artifact-search`} />
+          <WorkspaceLink icon={Flag} label="Key Evidence" to={`/cases/${caseId}/key-evidence`} />
           <WorkspaceLink icon={Clock3} label="Evidence timeline" to={`/cases/${caseId}/timeline`} />
           <WorkspaceLink icon={GitFork} label="Relationship graph" to={`/cases/${caseId}/correlations`} />
           <WorkspaceLink icon={MapPin} label="Offline media map" to={`/cases/${caseId}/media-map`} />
-          <WorkspaceLink icon={FileSearch} label="Evidence explorer" to={`/cases/${caseId}/evidence`} />
           <WorkspaceLink icon={BookOpenText} label="Reports and review" to={`/cases/${caseId}/reports`} />
         </div>
       </section>

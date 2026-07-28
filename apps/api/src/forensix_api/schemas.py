@@ -484,6 +484,47 @@ class ArtifactSearchResponse(BaseModel):
     category_facets: dict[str, int]
 
 
+class KeyEvidencePromoteRequest(BaseModel):
+    target_type: Literal["artifact", "source_artifact"]
+    target_id: str = Field(min_length=36, max_length=36)
+    priority: Literal["critical", "high", "normal"] = "normal"
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class KeyEvidenceItemResponse(BaseModel):
+    id: str
+    case_id: str
+    target_type: Literal["artifact", "source_artifact"]
+    target_id: str
+    category: str
+    subtype: str
+    title: str
+    summary: str
+    source_locator: str
+    status: str
+    confidence: str
+    event_time: datetime | None
+    integrity_hash: str
+    parser_id: str
+    parser_version: str
+    size_bytes: int | None
+    priority: Literal["critical", "high", "normal"]
+    reason: str | None
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+    tags: list[str]
+    note_count: int
+    latest_note: str | None
+
+
+class KeyEvidenceListResponse(BaseModel):
+    items: list[KeyEvidenceItemResponse]
+    total: int
+    priority_counts: dict[str, int]
+    category_facets: dict[str, int]
+
+
 class ArtifactPreviewResponse(BaseModel):
     id: str | None
     artifact_id: str

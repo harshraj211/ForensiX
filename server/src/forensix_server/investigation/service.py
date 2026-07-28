@@ -24,6 +24,7 @@ from forensix_server.db import (
     EvidenceSourceVerificationRecord,
     EvidenceVerificationRecord,
     JobRecord,
+    KeyEvidenceRecord,
     ReportRecord,
     ReportReviewEventRecord,
     TimelineEventRecord,
@@ -180,12 +181,19 @@ class InvestigationCommandCenterService:
             )
             or 0
         )
-        bookmarks = _count(
+        legacy_bookmarks = _count(
             session,
             BookmarkRecord,
             BookmarkRecord.case_id == case_id,
             BookmarkRecord.removed_at.is_(None),
         )
+        key_evidence_count = _count(
+            session,
+            KeyEvidenceRecord,
+            KeyEvidenceRecord.case_id == case_id,
+            KeyEvidenceRecord.removed_at.is_(None),
+        )
+        bookmarks = key_evidence_count or legacy_bookmarks
         category_facets = _category_facets(session, case_id)
 
         custody_count = _count(

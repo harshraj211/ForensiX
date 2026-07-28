@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, GitFork, LayoutDashboard, Link2, LoaderCircle, MapPin, Plus, Search, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, Flag, GitFork, LayoutDashboard, Link2, LoaderCircle, MapPin, Plus, Search, ShieldCheck, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -174,6 +174,24 @@ export function CaseDetailPage() {
           </p>
         </div>
         <AcquisitionCompletenessPanel caseId={caseId} />
+      </section>
+      <section className="mt-6 flex flex-col justify-between gap-4 rounded-2xl border border-amber-300/12 bg-amber-300/[0.025] p-6 sm:flex-row sm:items-center sm:p-8">
+        <div className="flex gap-4">
+          <Flag className="mt-1 shrink-0 text-amber-300" size={21} aria-hidden="true" />
+          <div>
+            <h2 className="text-xl font-semibold text-white">Key Evidence</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Curate high-value findings from acquired files and parsed Android artifacts into one
+              auditable review board.
+            </p>
+          </div>
+        </div>
+        <Link
+          to={`/cases/${caseId}/key-evidence`}
+          className="inline-flex min-h-10 items-center justify-center rounded-lg border border-amber-300/20 bg-amber-300/7 px-4 text-sm font-semibold text-amber-100"
+        >
+          Review Key Evidence
+        </Link>
       </section>
       <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:p-8">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">

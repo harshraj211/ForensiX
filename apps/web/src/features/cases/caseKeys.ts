@@ -2,6 +2,8 @@ export const caseKeys = {
   all: ["cases"] as const,
   detail: (caseId: string) => ["cases", caseId] as const,
   commandCenter: (caseId: string) => ["cases", caseId, "command-center"] as const,
+  keyEvidence: (caseId: string, filters: Record<string, string> = {}) =>
+    ["cases", caseId, "key-evidence", filters] as const,
   devices: (caseId: string) => ["cases", caseId, "devices"] as const,
   deviceAssessments: (caseId: string, deviceId: string) =>
     ["cases", caseId, "devices", deviceId, "assessments"] as const,
