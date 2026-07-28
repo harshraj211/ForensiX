@@ -163,6 +163,96 @@ describe("case workspace", () => {
     expect(screen.getByLabelText("Legal authority")).toBeInTheDocument();
   });
 
+  it("shows the case investigation command center", async () => {
+    const now = "2026-07-28T10:00:00Z";
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-COMMAND1",
+            title: "Command center validation",
+            description: "Controlled command center fixture",
+            legal_authority: "Internal validation",
+            status: "active",
+            created_by: "user-1",
+            created_at: now,
+            updated_at: now,
+            closed_at: null,
+            version: 2,
+          }),
+        );
+      }
+      if (url === "/api/v1/cases/case-1/command-center") {
+        return Promise.resolve(
+          jsonResponse({
+            case_id: "case-1",
+            generated_at: now,
+            device_count: 1,
+            jobs: { total: 2, active: 0, completed: 2, attention_required: 0 },
+            evidence: {
+              acquired_files: 12,
+              sealed_sources: 1,
+              normalized_artifacts: 11,
+              imported_artifacts: 5,
+              total_artifacts: 16,
+              total_size_bytes: 1048576,
+              bookmarked_artifacts: 2,
+              category_facets: { image: 8, communication: 5, document: 3 },
+            },
+            integrity: {
+              custody_chain_valid: true,
+              custody_event_count: 8,
+              verification_exceptions: 0,
+              verified_observations: 13,
+            },
+            timeline_event_count: 24,
+            report_count: 1,
+            reports_pending_review: 1,
+            next_action: "review_report",
+            attention: [
+              {
+                code: "REPORT_REVIEW_PENDING",
+                severity: "warning",
+                title: "Report review pending",
+                detail: "1 preliminary report has no recorded review decision.",
+              },
+            ],
+            recent_activity: [
+              {
+                kind: "report",
+                title: "Preliminary report generated",
+                detail: "Command center report",
+                occurred_at: now,
+              },
+            ],
+          }),
+        );
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/cases/case-1/command-center");
+
+    expect(
+      await screen.findByRole("heading", { name: "Command center validation" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Investigation Command Center")).toBeInTheDocument();
+    expect(screen.getByText("16")).toBeInTheDocument();
+    expect(screen.getByText("All checks clear")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Review the preliminary report" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("communication")).toBeInTheDocument();
+  });
+
   it("creates a custody checkpoint and records an external anchor receipt", async () => {
     const now = "2026-07-20T01:00:00Z";
     let created = false;

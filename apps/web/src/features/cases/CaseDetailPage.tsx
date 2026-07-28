@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, GitFork, Link2, LoaderCircle, MapPin, Plus, Search, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, BookOpenText, ClipboardList, Clock3, DatabaseBackup, FileCheck2, GitFork, LayoutDashboard, Link2, LoaderCircle, MapPin, Plus, Search, ShieldCheck, Smartphone } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -138,6 +138,31 @@ export function CaseDetailPage() {
         )}
         {transition.isError && <CaseError error={transition.error} />}
       </div>
+      <section className="mt-6 overflow-hidden rounded-2xl border border-cyan-300/15 bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.12),transparent_42%),rgba(34,211,238,0.035)] p-6 sm:p-8">
+        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+          <div className="flex gap-4">
+            <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-cyan-300 text-slate-950">
+              <LayoutDashboard size={21} aria-hidden="true" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+                Investigation overview
+              </p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Command Center</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                See collection progress, integrity posture, evidence composition, recent activity,
+                and the next recommended examiner action in one place.
+              </p>
+            </div>
+          </div>
+          <Link
+            to={`/cases/${caseId}/command-center`}
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-cyan-300 px-5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-200"
+          >
+            Open Command Center
+          </Link>
+        </div>
+      </section>
       <section className="mt-6 rounded-2xl border border-white/8 bg-white/[0.025] p-6 sm:p-8">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">

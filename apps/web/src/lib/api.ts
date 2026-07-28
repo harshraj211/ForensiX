@@ -191,6 +191,61 @@ export interface CaseList {
   limit: number;
 }
 
+export type CommandCenterNextAction =
+  | "detect_device"
+  | "create_acquisition_plan"
+  | "monitor_acquisition"
+  | "acquire_evidence"
+  | "index_evidence"
+  | "review_evidence"
+  | "generate_report"
+  | "review_report"
+  | "continue_analysis";
+
+export interface CommandCenterSummary {
+  case_id: string;
+  generated_at: string;
+  device_count: number;
+  jobs: {
+    total: number;
+    active: number;
+    completed: number;
+    attention_required: number;
+  };
+  evidence: {
+    acquired_files: number;
+    sealed_sources: number;
+    normalized_artifacts: number;
+    imported_artifacts: number;
+    total_artifacts: number;
+    total_size_bytes: number;
+    bookmarked_artifacts: number;
+    category_facets: Record<string, number>;
+  };
+  integrity: {
+    custody_chain_valid: boolean;
+    custody_event_count: number;
+    verification_exceptions: number;
+    verified_observations: number;
+  };
+  timeline_event_count: number;
+  report_count: number;
+  reports_pending_review: number;
+  next_action: CommandCenterNextAction;
+  attention: Array<{
+    code: string;
+    severity: "critical" | "warning" | "info";
+    title: string;
+    detail: string;
+  }>;
+  recent_activity: Array<{
+    kind: "case" | "acquisition" | "custody" | "evidence" | "report";
+    title: string;
+    detail: string;
+    occurred_at: string;
+  }>;
+}
+
 export interface CustodyEvent {
   id: string;
   case_id: string;
@@ -1072,6 +1127,10 @@ export function listCases(): Promise<CaseList> {
 
 export function getCase(caseId: string): Promise<CaseRecord> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}`);
+}
+
+export function getCommandCenter(caseId: string): Promise<CommandCenterSummary> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/command-center`);
 }
 
 export function listCustodyEvents(caseId: string): Promise<CustodyEvent[]> {

@@ -1,9 +1,11 @@
 """Case lifecycle and membership endpoints."""
 
 import json
-from typing import Annotated
+from dataclasses import asdict
+from typing import Annotated, Literal, TypedDict
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import select
 
 from forensix_api.dependencies import (
     get_authenticated_session,
@@ -11,6 +13,7 @@ from forensix_api.dependencies import (
     require_csrf_session,
 )
 from forensix_api.schemas import (
+    AcquisitionCompletenessResponse,
     AcquisitionPlanCreateRequest,
     AcquisitionPlanListResponse,
     AcquisitionPlanResponse,
@@ -25,7 +28,12 @@ from forensix_api.schemas import (
     CaseResponse,
     CaseTransitionRequest,
     CaseUpdateRequest,
-    AcquisitionCompletenessResponse,
+    CommandCenterActivityResponse,
+    CommandCenterAttentionResponse,
+    CommandCenterEvidenceResponse,
+    CommandCenterIntegrityResponse,
+    CommandCenterJobsResponse,
+    CommandCenterResponse,
     CompletenessItem,
 )
 from forensix_server.acquisitions import (
@@ -38,9 +46,23 @@ from forensix_server.acquisitions import (
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseService, CaseStatus
-from forensix_server.db import AcquisitionPlanRecord, Database
+from forensix_server.db import (
+    AcquiredEvidenceFileRecord,
+    AcquisitionInventoryItemRecord,
+    AcquisitionPlanRecord,
+    Database,
+)
+from forensix_server.investigation import InvestigationCommandCenterService
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
+
+CompletenessStatus = Literal["captured", "partial", "blocked", "failed", "not_present"]
+
+
+class _CompletenessCategory(TypedDict):
+    keywords: list[str]
+    status: CompletenessStatus
+    reason: str | None
 
 
 @router.get("", response_model=CaseListResponse, responses={401: {"model": ApiErrorResponse}})
@@ -104,6 +126,36 @@ def get_case(
         case = CaseService().get(session, authenticated.principal, case_id)
         response = CaseResponse.model_validate(case)
     return response
+
+
+@router.get("/{case_id}/command-center", response_model=CommandCenterResponse)
+def get_command_center(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> CommandCenterResponse:
+    with database.session() as session:
+        summary = InvestigationCommandCenterService().summarize(
+            session, authenticated.principal, case_id
+        )
+        return CommandCenterResponse(
+            case_id=summary.case_id,
+            generated_at=summary.generated_at,
+            device_count=summary.device_count,
+            jobs=CommandCenterJobsResponse(**asdict(summary.jobs)),
+            evidence=CommandCenterEvidenceResponse(**asdict(summary.evidence)),
+            integrity=CommandCenterIntegrityResponse(**asdict(summary.integrity)),
+            timeline_event_count=summary.timeline_event_count,
+            report_count=summary.report_count,
+            reports_pending_review=summary.reports_pending_review,
+            next_action=summary.next_action,
+            attention=[
+                CommandCenterAttentionResponse(**asdict(item)) for item in summary.attention
+            ],
+            recent_activity=[
+                CommandCenterActivityResponse(**asdict(item)) for item in summary.recent_activity
+            ],
+        )
 
 
 @router.patch(
@@ -372,52 +424,63 @@ def get_case_completeness(
     authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
     database: Annotated[Database, Depends(get_database)],
 ) -> AcquisitionCompletenessResponse:
-    from forensix_server.db import AcquiredEvidenceFileRecord, AcquisitionInventoryItemRecord
-    from sqlalchemy import select
     with database.session() as session:
         CaseService().get(session, authenticated.principal, case_id)
-        
+
         query = select(
             AcquiredEvidenceFileRecord.status,
             AcquiredEvidenceFileRecord.error_message,
-            AcquisitionInventoryItemRecord.relative_path
+            AcquisitionInventoryItemRecord.relative_path,
         ).join(
             AcquisitionInventoryItemRecord,
-            AcquiredEvidenceFileRecord.inventory_item_id == AcquisitionInventoryItemRecord.id
+            AcquiredEvidenceFileRecord.inventory_item_id == AcquisitionInventoryItemRecord.id,
         ).where(AcquiredEvidenceFileRecord.case_id == case_id)
-        
+
         results = session.execute(query).all()
-        
-        categories = {
-            "Device Info": {"keywords": ["device_info", "metadata"], "status": "not_present", "reason": None},
+
+        categories: dict[str, _CompletenessCategory] = {
+            "Device Info": {
+                "keywords": ["device_info", "metadata"],
+                "status": "not_present",
+                "reason": None,
+            },
             "Contacts": {"keywords": ["contacts2.db"], "status": "not_present", "reason": None},
             "Call Logs": {"keywords": ["calllog.db"], "status": "not_present", "reason": None},
-            "SMS": {"keywords": ["mmssms.db", "telephony.db"], "status": "not_present", "reason": None},
-            "App Inventory": {"keywords": ["packages.xml", "inventory"], "status": "not_present", "reason": None},
-            "Media": {"keywords": [".jpg", ".png", ".mp4", ".jpeg"], "status": "not_present", "reason": None}
+            "SMS": {
+                "keywords": ["mmssms.db", "telephony.db"],
+                "status": "not_present",
+                "reason": None,
+            },
+            "App Inventory": {
+                "keywords": ["packages.xml", "inventory"],
+                "status": "not_present",
+                "reason": None,
+            },
+            "Media": {
+                "keywords": [".jpg", ".png", ".mp4", ".jpeg"],
+                "status": "not_present",
+                "reason": None,
+            },
         }
-        
+
         for r_status, r_error, r_path in results:
             path_lower = r_path.lower()
-            for cat, data in categories.items():
+            for data in categories.values():
                 if any(kw in path_lower for kw in data["keywords"]):
                     if r_status == "completed":
                         data["status"] = "captured"
-                    elif r_status == "failed":
-                        if data["status"] != "captured":
-                            data["status"] = "failed"
-                            data["reason"] = r_error
+                    elif r_status == "failed" and data["status"] != "captured":
+                        data["status"] = "failed"
+                        data["reason"] = r_error
                     break
-                    
-        items = []
-        for cat, data in categories.items():
-            items.append(CompletenessItem(
-                artifact=cat,
+
+        items = [
+            CompletenessItem(
+                artifact=category,
                 status=data["status"],
-                reason=data["reason"]
-            ))
-            
-        return AcquisitionCompletenessResponse(
-            case_id=case_id,
-            items=items
-        )
+                reason=data["reason"],
+            )
+            for category, data in categories.items()
+        ]
+
+        return AcquisitionCompletenessResponse(case_id=case_id, items=items)

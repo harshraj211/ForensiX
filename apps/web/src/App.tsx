@@ -6,6 +6,7 @@ import { AuditLogPage } from "./features/audit/AuditLogPage";
 import { AuthBoundary } from "./features/auth/AuthBoundary";
 import { CaseDetailPage } from "./features/cases/CaseDetailPage";
 import { CasesPage } from "./features/cases/CasesPage";
+import { CommandCenterPage } from "./features/cases/CommandCenterPage";
 import { DeviceDetectionPage } from "./features/devices/DeviceDetectionPage";
 import { ArtifactBrowserPage } from "./features/artifacts/ArtifactBrowserPage";
 import { EvidenceCasesPage, EvidenceExplorerPage } from "./features/evidence/EvidenceExplorerPage";
@@ -27,6 +28,7 @@ export function App() {
           <Route path="/devices" element={<DeviceDetectionPage />} />
           <Route path="/cases" element={<CasesPage />} />
           <Route path="/cases/:caseId" element={<CaseDetailPage />} />
+          <Route path="/cases/:caseId/command-center" element={<CommandCenterPage />} />
           <Route path="/cases/:caseId/devices" element={<DeviceDetectionPage />} />
           <Route path="/cases/:caseId/acquisitions" element={<AcquisitionPlanningPage />} />
           <Route path="/cases/:caseId/evidence" element={<EvidenceExplorerPage />} />

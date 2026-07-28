@@ -940,6 +940,70 @@ class CaseListResponse(BaseModel):
     limit: int
 
 
+class CommandCenterJobsResponse(BaseModel):
+    total: int
+    active: int
+    completed: int
+    attention_required: int
+
+
+class CommandCenterEvidenceResponse(BaseModel):
+    acquired_files: int
+    sealed_sources: int
+    normalized_artifacts: int
+    imported_artifacts: int
+    total_artifacts: int
+    total_size_bytes: int
+    bookmarked_artifacts: int
+    category_facets: dict[str, int]
+
+
+class CommandCenterIntegrityResponse(BaseModel):
+    custody_chain_valid: bool
+    custody_event_count: int
+    verification_exceptions: int
+    verified_observations: int
+
+
+class CommandCenterAttentionResponse(BaseModel):
+    code: str
+    severity: Literal["critical", "warning", "info"]
+    title: str
+    detail: str
+
+
+class CommandCenterActivityResponse(BaseModel):
+    kind: Literal["case", "acquisition", "custody", "evidence", "report"]
+    title: str
+    detail: str
+    occurred_at: datetime
+
+
+class CommandCenterResponse(BaseModel):
+    case_id: str
+    generated_at: datetime
+    device_count: int
+    jobs: CommandCenterJobsResponse
+    evidence: CommandCenterEvidenceResponse
+    integrity: CommandCenterIntegrityResponse
+    timeline_event_count: int
+    report_count: int
+    reports_pending_review: int
+    next_action: Literal[
+        "detect_device",
+        "create_acquisition_plan",
+        "monitor_acquisition",
+        "acquire_evidence",
+        "index_evidence",
+        "review_evidence",
+        "generate_report",
+        "review_report",
+        "continue_analysis",
+    ]
+    attention: list[CommandCenterAttentionResponse]
+    recent_activity: list[CommandCenterActivityResponse]
+
+
 class CaseMemberRequest(BaseModel):
     user_id: str = Field(min_length=36, max_length=36)
     access_level: CaseAccessLevel
