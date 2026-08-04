@@ -487,6 +487,83 @@ export interface RecoveryAssessment {
   assessed_at: string;
 }
 
+export interface RecoveryFragment {
+  source_file: string;
+  offset_bytes: number;
+  length_bytes: number;
+  fragment_type: string;
+  confidence: "high" | "medium" | "low";
+  content_preview: string;
+  content_sha256: string;
+  metadata: Record<string, unknown>;
+  fragment_hash: string;
+}
+
+export interface RecoveryCarving {
+  id: string;
+  evidence_source_id: string;
+  working_copy_id: string;
+  inspection_id: string;
+  case_id: string;
+  executed_by: string;
+  maturity: "experimental";
+  status: "candidate_fragments_observed" | "no_candidate_fragments" | "unsupported";
+  fragment_count: number;
+  fragments: RecoveryFragment[];
+  input_locators: string[];
+  skipped_locators: string[];
+  source_file_count: number;
+  source_total_bytes: number;
+  wal_fragments_found: number;
+  freelist_fragments_found: number;
+  unallocated_fragments_found: number;
+  duration_seconds: number;
+  limitations: string[];
+  run_hash: string;
+  tool_version: string;
+  executed_at: string;
+}
+
+export interface ExternalRecoveryOutputFile {
+  relative_path: string;
+  size_bytes: number;
+  sha256: string;
+}
+
+export interface ExternalRecovery {
+  id: string;
+  evidence_source_id: string;
+  working_copy_id: string;
+  inspection_id: string;
+  case_id: string;
+  executed_by: string;
+  tool_id: string;
+  maturity: "experimental";
+  status: "completed" | "completed_with_warnings" | "unsupported";
+  recovered_file_count: number;
+  output_storage_key: string;
+  command: string[];
+  console_summary: string;
+  executable_sha256: string | null;
+  exit_code: number | null;
+  output_files: ExternalRecoveryOutputFile[];
+  output_total_bytes: number;
+  version: string;
+  limitations: string[];
+  run_hash: string;
+  tool_version: string;
+  executed_at: string;
+}
+
+export interface PhotoRecDiagnostic {
+  available: boolean;
+  status: string;
+  executable_path: string | null;
+  version: string | null;
+  sha256: string | null;
+  guidance: string[];
+}
+
 export interface EvidenceParserRun {
   id: string;
   evidence_source_id: string;
@@ -2104,6 +2181,42 @@ export function getEvidenceRecoveryAssessment(
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/recovery-assessment`,
   );
+}
+
+export function carveEvidenceRecoveryCandidates(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+): Promise<RecoveryCarving> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/recovery-carving`,
+    { method: "POST" },
+  );
+}
+
+export function getEvidenceRecoveryCarving(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+): Promise<RecoveryCarving> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/recovery-carving`,
+  );
+}
+
+export function runExternalRecovery(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+): Promise<ExternalRecovery> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/external-recovery`,
+    { method: "POST" },
+  );
+}
+
+export function getPhotoRecDiagnostic(): Promise<PhotoRecDiagnostic> {
+  return apiRequest("/api/v1/integrations/photorec");
 }
 
 export function runNativeEvidenceParsers(

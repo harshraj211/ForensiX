@@ -2,6 +2,7 @@
 param(
     [string]$AdbPath,
     [string]$ScrcpyPath,
+    [string]$PhotoRecPath,
     [ValidateRange(1024, 65535)][int]$ApiPort = 8765,
     [ValidateRange(1024, 65535)][int]$WebPort = 5173,
     [switch]$NoBrowser
@@ -66,6 +67,29 @@ if ($ScrcpyPath) {
     $scrcpyReady = $true
 }
 
+if (-not $PhotoRecPath) {
+    $photoRecCommand = Get-Command photorec_win.exe -ErrorAction SilentlyContinue
+    if ($photoRecCommand) {
+        $PhotoRecPath = $photoRecCommand.Source
+    } else {
+        $localPhotoRec = Join-Path $projectRoot "tools\testdisk\photorec_win.exe"
+        if (Test-Path -LiteralPath $localPhotoRec -PathType Leaf) {
+            $PhotoRecPath = $localPhotoRec
+        }
+    }
+}
+
+$photoRecReady = $false
+if ($PhotoRecPath) {
+    if (-not (Test-Path -LiteralPath $PhotoRecPath -PathType Leaf)) {
+        throw "The configured PhotoRec executable was not found: $PhotoRecPath"
+    }
+    $PhotoRecPath = (Resolve-Path -LiteralPath $PhotoRecPath).Path
+    $env:FORENSIX_PHOTOREC_PATH = $PhotoRecPath
+    $env:FORENSIX_PHOTOREC_EXPECTED_SHA256 = (Get-FileHash -LiteralPath $PhotoRecPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $photoRecReady = $true
+}
+
 $pnpmCommand = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
 if (-not $pnpmCommand) {
     throw "pnpm.cmd was not found on PATH. Install pnpm 11 or newer."
@@ -127,6 +151,12 @@ if ($scrcpyReady) {
     Write-Host "Live mirror: ready (read-only by default; control needs an acknowledgement)"
 } else {
     Write-Warning "scrcpy was not found. Run .\scripts\install-scrcpy.ps1 to enable live mirror and control."
+}
+if ($photoRecReady) {
+    Write-Host "PhotoRec: $PhotoRecPath"
+    Write-Host "External recovery: ready for verified raw ext4/F2FS Evidence Twin copies only"
+} else {
+    Write-Warning "PhotoRec was not found. Run .\scripts\install-testdisk.ps1 to enable experimental image recovery."
 }
 Write-Host "Runtime logs: $logDirectory"
 

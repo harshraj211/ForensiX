@@ -18,12 +18,14 @@ import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
 import {
   assessEvidenceRecoveryCandidates,
+  carveEvidenceRecoveryCandidates,
   createEvidenceWorkingCopy,
   getAleappDiagnostic,
   getApplicationArtifactSupport,
   getCase,
   getEvidenceSourceContentUrl,
   getEvidenceWorkingCopyInspection,
+  getPhotoRecDiagnostic,
   importEvidenceSource,
   inspectEvidenceWorkingCopy,
   listEvidenceParserRuns,
@@ -34,13 +36,17 @@ import {
   listEvidenceWorkingCopies,
   runNativeEvidenceParsers,
   runAleapp,
+  runExternalRecovery,
   verifyEvidenceWorkingCopy,
   verifyEvidenceSource,
   type EvidenceSource,
   type EvidenceSourceArtifact,
   type EvidenceToolOutput,
   type EvidenceWorkingCopy,
+  type ExternalRecovery,
+  type PhotoRecDiagnostic,
   type RecoveryAssessment,
+  type RecoveryCarving,
   type AleappDiagnostic,
   type ApplicationArtifactSupport,
 } from "../../lib/api";
@@ -60,6 +66,7 @@ const twinKeys = {
   toolOutputs: (caseId: string, sourceId: string) =>
     ["evidence-twin", caseId, sourceId, "tool-outputs"] as const,
   aleapp: ["integrations", "aleapp"] as const,
+  photorec: ["integrations", "photorec"] as const,
   applicationArtifacts: ["integrations", "application-artifacts"] as const,
 };
 
@@ -81,6 +88,10 @@ export function EvidenceTwinPage() {
   const aleappQuery = useQuery({
     queryKey: twinKeys.aleapp,
     queryFn: getAleappDiagnostic,
+  });
+  const photorecQuery = useQuery({
+    queryKey: twinKeys.photorec,
+    queryFn: getPhotoRecDiagnostic,
   });
   const applicationSupportQuery = useQuery({
     queryKey: twinKeys.applicationArtifacts,
@@ -272,6 +283,7 @@ export function EvidenceTwinPage() {
               caseId={caseId}
               source={source}
               aleapp={aleappQuery.data ?? null}
+              photorec={photorecQuery.data ?? null}
             />
           ))}
         </div>
@@ -304,10 +316,12 @@ function EvidenceSourceCard({
   caseId,
   source,
   aleapp,
+  photorec,
 }: {
   caseId: string;
   source: EvidenceSource;
   aleapp: AleappDiagnostic | null;
+  photorec: PhotoRecDiagnostic | null;
 }) {
   const queryClient = useQueryClient();
   const copiesQuery = useQuery({
@@ -445,6 +459,7 @@ function EvidenceSourceCard({
               .length ?? 0
           }
           aleapp={aleapp}
+          photorec={photorec}
           toolOutputs={
             toolOutputsQuery.data?.filter(
               (output) => output.working_copy_id === workingCopy.id,
@@ -466,6 +481,7 @@ function WorkingCopyPanel({
   artifacts,
   parserRunCount,
   aleapp,
+  photorec,
   toolOutputs,
 }: {
   caseId: string;
@@ -474,10 +490,13 @@ function WorkingCopyPanel({
   artifacts: EvidenceSourceArtifact[];
   parserRunCount: number;
   aleapp: AleappDiagnostic | null;
+  photorec: PhotoRecDiagnostic | null;
   toolOutputs: EvidenceToolOutput[];
 }) {
   const queryClient = useQueryClient();
   const [recoveryAssessment, setRecoveryAssessment] = useState<RecoveryAssessment | null>(null);
+  const [recoveryCarving, setRecoveryCarving] = useState<RecoveryCarving | null>(null);
+  const [externalRecovery, setExternalRecovery] = useState<ExternalRecovery | null>(null);
   const inspectionQuery = useQuery({
     queryKey: twinKeys.inspection(caseId, sourceId, workingCopy.id),
     queryFn: () => getEvidenceWorkingCopyInspection(caseId, sourceId, workingCopy.id),
@@ -522,9 +541,26 @@ function WorkingCopyPanel({
       setRecoveryAssessment(assessment);
     },
   });
+  const runRecoveryCarving = useMutation({
+    mutationFn: () => carveEvidenceRecoveryCandidates(caseId, sourceId, workingCopy.id),
+    onSuccess: (carving) => {
+      setRecoveryCarving(carving);
+    },
+  });
+  const runExternalRecoveryTool = useMutation({
+    mutationFn: () => runExternalRecovery(caseId, sourceId, workingCopy.id),
+    onSuccess: (run) => {
+      setExternalRecovery(run);
+    },
+  });
   const inspection = inspectionQuery.data;
   const recoverySupported = Boolean(
     inspection && new Set(["sqlite", "zip", "tar"]).has(inspection.detected_type),
+  );
+  const externalRecoverySupported = Boolean(
+    inspection &&
+      new Set(["ext4", "f2fs"]).has(inspection.detected_type) &&
+      photorec?.available,
   );
 
   return (
@@ -610,6 +646,30 @@ function WorkingCopyPanel({
             ? "Assessing recovery metadata…"
             : "Assess recovery candidates (experimental)"}
         </button>
+        <button
+          type="button"
+          disabled={runRecoveryCarving.isPending || !recoverySupported}
+          onClick={() => {
+            runRecoveryCarving.mutate();
+          }}
+          className="min-h-9 rounded-lg border border-rose-200/25 px-3 text-xs font-semibold text-rose-100 disabled:opacity-40"
+        >
+          {runRecoveryCarving.isPending
+            ? "Scanning byte fragments..."
+            : "Run SQLite fragment scan (experimental)"}
+        </button>
+        <button
+          type="button"
+          disabled={runExternalRecoveryTool.isPending || !externalRecoverySupported}
+          onClick={() => {
+            runExternalRecoveryTool.mutate();
+          }}
+          className="min-h-9 rounded-lg border border-fuchsia-200/25 px-3 text-xs font-semibold text-fuchsia-100 disabled:opacity-40"
+        >
+          {runExternalRecoveryTool.isPending
+            ? "Running PhotoRec on working copy..."
+            : "Run TestDisk/PhotoRec recovery (experimental)"}
+        </button>
       </div>
       {inspection && (
         <div className="mt-4 rounded-lg border border-white/8 bg-black/10 p-3 text-xs text-slate-400">
@@ -630,6 +690,13 @@ function WorkingCopyPanel({
       )}
       {recoveryAssessment && (
         <RecoveryAssessmentPanel assessment={recoveryAssessment} />
+      )}
+      {recoveryCarving && <RecoveryCarvingPanel carving={recoveryCarving} />}
+      {externalRecovery && <ExternalRecoveryPanel run={externalRecovery} />}
+      {inspection && new Set(["ext4", "f2fs"]).has(inspection.detected_type) && !photorec?.available && (
+        <p className="mt-4 rounded-lg border border-fuchsia-200/15 bg-fuchsia-200/[0.035] p-3 text-xs leading-5 text-fuchsia-100/80">
+          TestDisk/PhotoRec external recovery is not configured on this workstation. {photorec?.guidance[0] ?? "Configure a hash-pinned PhotoRec executable first."}
+        </p>
       )}
       <p className="mt-4 text-xs text-slate-500">
         {parserRunCount} parser run(s) · {artifacts.length} normalized artifact(s)
@@ -661,7 +728,117 @@ function WorkingCopyPanel({
       {runParsers.isError && <div className="mt-4"><CaseError error={runParsers.error} /></div>}
       {runAleappParser.isError && <div className="mt-4"><CaseError error={runAleappParser.error} /></div>}
       {assessRecovery.isError && <div className="mt-4"><CaseError error={assessRecovery.error} /></div>}
+      {runRecoveryCarving.isError && <div className="mt-4"><CaseError error={runRecoveryCarving.error} /></div>}
+      {runExternalRecoveryTool.isError && <div className="mt-4"><CaseError error={runExternalRecoveryTool.error} /></div>}
     </section>
+  );
+}
+
+function ExternalRecoveryPanel({ run }: { run: ExternalRecovery }) {
+  return (
+    <div className="mt-4 rounded-lg border border-fuchsia-200/20 bg-fuchsia-200/[0.04] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fuchsia-100">
+            TestDisk/PhotoRec external recovery
+          </p>
+          <p className="mt-2 text-sm font-semibold text-white">
+            {run.recovered_file_count} carved file candidate(s)
+          </p>
+        </div>
+        <span className="rounded-full border border-fuchsia-200/20 px-2 py-1 text-[10px] uppercase text-fuchsia-100">
+          {run.status.replaceAll("_", " ")}
+        </span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-fuchsia-100/75">
+        The TestDisk project’s PhotoRec component was run only on the verified examination copy.
+        Output is candidate material: it is not proof of deletion, original ownership, or Android source.
+      </p>
+      <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-3">
+        <p>{formatBytes(run.output_total_bytes)} output</p>
+        <p>Exit code {run.exit_code ?? "not run"}</p>
+        <p>PhotoRec {run.version}</p>
+      </div>
+      {run.output_files.length > 0 && (
+        <div className="mt-3 max-h-56 overflow-y-auto rounded-lg border border-white/8 bg-black/10 p-3">
+          {run.output_files.map((file) => (
+            <p key={file.relative_path} className="mt-2 text-xs text-slate-300 first:mt-0">
+              {file.relative_path} · {formatBytes(file.size_bytes)}
+              <span className="ml-2 font-mono text-[10px] text-slate-600">{file.sha256}</span>
+            </p>
+          ))}
+        </div>
+      )}
+      {run.limitations.map((limitation) => (
+        <p key={limitation} className="mt-2 text-xs leading-5 text-slate-500">• {limitation}</p>
+      ))}
+      <p className="mt-3 truncate font-mono text-[10px] text-slate-600" title={run.run_hash}>
+        Recovery run SHA-256 {run.run_hash}
+      </p>
+    </div>
+  );
+}
+
+function RecoveryCarvingPanel({ carving }: { carving: RecoveryCarving }) {
+  return (
+    <div className="mt-4 rounded-lg border border-rose-200/20 bg-rose-200/[0.04] p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-100">
+            Experimental SQLite fragment scan
+          </p>
+          <p className="mt-2 text-sm font-semibold text-white">
+            {carving.fragment_count} candidate fragment(s) — not verified recovered records
+          </p>
+        </div>
+        <span className="rounded-full border border-rose-200/20 px-2 py-1 text-[10px] uppercase text-rose-100">
+          {carving.status.replaceAll("_", " ")}
+        </span>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-rose-100/75">
+        The scan is bounded to a verified working copy and never modifies the Android device or
+        sealed master. Its text snippets are investigative leads only and can be current, stale,
+        or false-positive bytes.
+      </p>
+      <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-3">
+        <p>{carving.source_file_count} SQLite input(s)</p>
+        <p>{carving.wal_fragments_found} WAL candidate(s)</p>
+        <p>{carving.freelist_fragments_found} freelist candidate(s)</p>
+      </div>
+      {carving.fragments.length > 0 && (
+        <div className="mt-3 max-h-96 space-y-2 overflow-y-auto pr-1">
+          {carving.fragments.map((fragment) => (
+            <details
+              key={fragment.fragment_hash}
+              className="rounded-lg border border-white/8 bg-black/10 p-3"
+            >
+              <summary className="cursor-pointer text-xs font-semibold text-slate-200">
+                {fragment.source_file} · offset {fragment.offset_bytes.toLocaleString()} · {fragment.fragment_type.replaceAll("_", " ")}
+              </summary>
+              <p className="mt-2 text-[10px] uppercase tracking-wide text-rose-100/75">
+                {fragment.confidence} confidence · {fragment.length_bytes} bytes · SHA-256 {fragment.content_sha256}
+              </p>
+              <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-slate-950/70 p-3 text-xs leading-5 text-slate-200">
+                {fragment.content_preview}
+              </pre>
+            </details>
+          ))}
+        </div>
+      )}
+      {carving.skipped_locators.length > 0 && (
+        <p className="mt-3 text-xs text-amber-100/80">
+          {carving.skipped_locators.length} input(s) exceeded the scan policy and were skipped.
+        </p>
+      )}
+      {carving.limitations.map((limitation) => (
+        <p key={limitation} className="mt-2 text-xs leading-5 text-slate-500">
+          • {limitation}
+        </p>
+      ))}
+      <p className="mt-3 truncate font-mono text-[10px] text-slate-600" title={carving.run_hash}>
+        Scan SHA-256 {carving.run_hash}
+      </p>
+    </div>
   );
 }
 

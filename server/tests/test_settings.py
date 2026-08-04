@@ -39,5 +39,21 @@ def test_settings_require_complete_aleapp_pin(tmp_path: Path) -> None:
         aleapp_release_label="v2026.1.0-test",
     )
 
-    assert settings.aleapp_runner() is not None
-    assert settings.aleapp_runner().diagnose().hash_verified
+    runner = settings.aleapp_runner()
+    assert runner is not None
+    assert runner.diagnose().hash_verified
+
+
+def test_settings_require_complete_photorec_pin(tmp_path: Path) -> None:
+    executable = tmp_path / "photorec_win.exe"
+    executable.write_bytes(b"photorec fixture")
+
+    with pytest.raises(ValidationError, match="configured together"):
+        Settings(photorec_path=executable)
+
+    settings = Settings(
+        photorec_path=executable,
+        photorec_expected_sha256=sha256(executable.read_bytes()).hexdigest(),
+    )
+
+    assert settings.photorec_controller().diagnose().available

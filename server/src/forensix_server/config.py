@@ -7,7 +7,13 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from forensix_forensic.adb import MAX_PHYSICAL_BLOCK_BYTES
-from forensix_forensic.integrations import AleappConfiguration, AleappRunner, ScrcpyController
+from forensix_forensic.integrations import (
+    AleappConfiguration,
+    AleappRunner,
+    PhotoRecConfiguration,
+    PhotoRecController,
+    ScrcpyController,
+)
 
 
 class Settings(BaseSettings):
@@ -21,6 +27,7 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "production"] = "development"
     data_dir: Path = Path("data")
     database_url: str | None = None
+    adb_mode: Literal["system", "mock"] = "system"
     adb_path: Path | None = None
     allowed_origins: tuple[str, ...] = ("http://127.0.0.1:5173",)
     api_host: str = "127.0.0.1"
@@ -36,6 +43,15 @@ class Settings(BaseSettings):
     aleapp_timeout_seconds: int = Field(default=1800, ge=30, le=7200)
     scrcpy_path: Path | None = None
     scrcpy_expected_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    photorec_path: Path | None = None
+    photorec_expected_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    photorec_timeout_seconds: int = Field(default=7200, ge=60, le=28_800)
+    photorec_max_output_files: int = Field(default=10_000, ge=1, le=100_000)
+    photorec_max_output_bytes: int = Field(
+        default=16 * 1024 * 1024 * 1024,
+        ge=1 * 1024 * 1024,
+        le=1 * 1024 * 1024 * 1024 * 1024,
+    )
     enable_experimental_physical_acquisition: bool = False
     max_physical_acquisition_bytes: int = Field(
         default=128 * 1024 * 1024 * 1024,
@@ -56,6 +72,8 @@ class Settings(BaseSettings):
     def validate_aleapp_pair(self) -> "Settings":
         if (self.aleapp_program_path is None) != (self.aleapp_expected_sha256 is None):
             raise ValueError("ALEAPP program path and expected SHA-256 must be configured together")
+        if (self.photorec_path is None) != (self.photorec_expected_sha256 is None):
+            raise ValueError("PhotoRec path and expected SHA-256 must be configured together")
         if self.deployment_transport == "loopback_http" and self.api_host not in {
             "127.0.0.1",
             "localhost",
@@ -66,6 +84,17 @@ class Settings(BaseSettings):
 
     def scrcpy_controller(self) -> ScrcpyController:
         return ScrcpyController(self.scrcpy_path, self.scrcpy_expected_sha256)
+
+    def photorec_controller(self) -> PhotoRecController:
+        return PhotoRecController(
+            PhotoRecConfiguration(
+                program_path=self.photorec_path,
+                expected_sha256=self.photorec_expected_sha256,
+                timeout_seconds=self.photorec_timeout_seconds,
+                max_output_files=self.photorec_max_output_files,
+                max_output_bytes=self.photorec_max_output_bytes,
+            )
+        )
 
     @property
     def resolved_data_dir(self) -> Path:

@@ -21,7 +21,9 @@ from forensix_api.schemas import (
     EvidenceSourceVerificationResponse,
     EvidenceToolOutputResponse,
     EvidenceWorkingCopyResponse,
+    ExternalRecoveryResponse,
     RecoveryAssessmentResponse,
+    RecoveryCarvingResponse,
     SourceArtifactSearchResponse,
 )
 from forensix_forensic.storage import EvidenceStore
@@ -29,7 +31,9 @@ from forensix_server.auth import AuthenticatedSession
 from forensix_server.config import Settings
 from forensix_server.db import (
     Database,
+    EvidenceExternalRecoveryRunRecord,
     EvidenceRecoveryAssessmentRecord,
+    EvidenceRecoveryCarvingRecord,
     EvidenceSourceArtifactRecord,
     EvidenceSourceInspectionRecord,
     EvidenceSourceRecord,
@@ -37,14 +41,18 @@ from forensix_server.db import (
 from forensix_server.evidence_twin import (
     AleappEvidenceService,
     EvidenceExaminationService,
+    EvidenceExternalRecoveryService,
     EvidenceInspectionService,
     EvidenceRecoveryAssessmentService,
+    EvidenceRecoveryCarvingService,
     EvidenceTwinError,
     EvidenceTwinIntegrityError,
     EvidenceTwinService,
+    external_recovery_result,
     inspection_signature,
     inspection_warnings,
     recovery_assessment_result,
+    recovery_carving_result,
 )
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/evidence-sources", tags=["evidence-sources"])
@@ -297,6 +305,86 @@ def get_evidence_recovery_assessment(
 
 
 @router.post(
+    "/{source_id}/working-copies/{working_copy_id}/recovery-carving",
+    response_model=RecoveryCarvingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def carve_evidence_recovery_candidates(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> RecoveryCarvingResponse:
+    return _recovery_carving_response(
+        EvidenceRecoveryCarvingService().carve(
+            database, authenticated.principal, case_id, source_id, working_copy_id
+        )
+    )
+
+
+@router.get(
+    "/{source_id}/working-copies/{working_copy_id}/recovery-carving",
+    response_model=RecoveryCarvingResponse,
+)
+def get_evidence_recovery_carving(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> RecoveryCarvingResponse:
+    return _recovery_carving_response(
+        EvidenceRecoveryCarvingService().get(
+            database, authenticated.principal, case_id, source_id, working_copy_id
+        )
+    )
+
+
+@router.post(
+    "/{source_id}/working-copies/{working_copy_id}/external-recovery",
+    response_model=ExternalRecoveryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def run_external_recovery(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ExternalRecoveryResponse:
+    return _external_recovery_response(
+        EvidenceExternalRecoveryService().run(
+            database,
+            authenticated.principal,
+            case_id,
+            source_id,
+            working_copy_id,
+            settings.photorec_controller(),
+        )
+    )
+
+
+@router.get(
+    "/{source_id}/working-copies/{working_copy_id}/external-recovery",
+    response_model=ExternalRecoveryResponse,
+)
+def get_external_recovery(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> ExternalRecoveryResponse:
+    return _external_recovery_response(
+        EvidenceExternalRecoveryService().get(
+            database, authenticated.principal, case_id, source_id, working_copy_id
+        )
+    )
+
+
+@router.post(
     "/{source_id}/working-copies/{working_copy_id}/native-parsers",
     response_model=list[EvidenceParserRunResponse],
 )
@@ -487,6 +575,66 @@ def _recovery_response(
         assessment_hash=record.assessment_hash,
         tool_version=record.tool_version,
         assessed_at=record.assessed_at,
+    )
+
+
+def _recovery_carving_response(
+    record: EvidenceRecoveryCarvingRecord,
+) -> RecoveryCarvingResponse:
+    result = recovery_carving_result(record)
+    return RecoveryCarvingResponse(
+        id=record.id,
+        evidence_source_id=record.evidence_source_id,
+        working_copy_id=record.working_copy_id,
+        inspection_id=record.inspection_id,
+        case_id=record.case_id,
+        executed_by=record.executed_by,
+        maturity="experimental",
+        status=record.status,  # type: ignore[arg-type]
+        fragment_count=record.fragment_count,
+        fragments=result.get("fragments", []),
+        input_locators=result.get("input_locators", []),
+        skipped_locators=result.get("skipped_locators", []),
+        source_file_count=result.get("source_file_count", 0),
+        source_total_bytes=result.get("source_total_bytes", 0),
+        wal_fragments_found=result.get("wal_fragments_found", 0),
+        freelist_fragments_found=result.get("freelist_fragments_found", 0),
+        unallocated_fragments_found=result.get("unallocated_fragments_found", 0),
+        duration_seconds=result.get("duration_seconds", 0.0),
+        limitations=result.get("limitations", []),
+        run_hash=record.run_hash,
+        tool_version=record.tool_version,
+        executed_at=record.executed_at,
+    )
+
+
+def _external_recovery_response(
+    record: EvidenceExternalRecoveryRunRecord,
+) -> ExternalRecoveryResponse:
+    result = external_recovery_result(record)
+    return ExternalRecoveryResponse(
+        id=record.id,
+        evidence_source_id=record.evidence_source_id,
+        working_copy_id=record.working_copy_id,
+        inspection_id=record.inspection_id,
+        case_id=record.case_id,
+        executed_by=record.executed_by,
+        tool_id=record.tool_id,
+        maturity="experimental",
+        status=record.status,  # type: ignore[arg-type]
+        recovered_file_count=record.recovered_file_count,
+        output_storage_key=record.output_storage_key,
+        command=result.get("command", []),
+        console_summary=result.get("console_summary", ""),
+        executable_sha256=result.get("executable_sha256"),
+        exit_code=result.get("exit_code"),
+        output_files=result.get("output_files", []),
+        output_total_bytes=result.get("output_total_bytes", 0),
+        version=result.get("version", "unreported"),
+        limitations=result.get("limitations", []),
+        run_hash=record.run_hash,
+        tool_version=record.tool_version,
+        executed_at=record.executed_at,
     )
 
 

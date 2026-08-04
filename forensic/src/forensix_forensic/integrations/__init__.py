@@ -8,6 +8,14 @@ from .aleapp import (
     AleappRunner,
     AleappRunResult,
 )
+from .photorec import (
+    PhotoRecConfiguration,
+    PhotoRecController,
+    PhotoRecDiagnostic,
+    PhotoRecExecution,
+    PhotoRecIntegrationError,
+    PhotoRecOutputFile,
+)
 from .scrcpy import (
     ScrcpyController,
     ScrcpyDiagnostic,
@@ -21,6 +29,12 @@ __all__ = [
     "AleappExecutionError",
     "AleappOutputFile",
     "AleappRunResult",
+    "PhotoRecConfiguration",
+    "PhotoRecController",
+    "PhotoRecDiagnostic",
+    "PhotoRecExecution",
+    "PhotoRecIntegrationError",
+    "PhotoRecOutputFile",
     "AleappRunner",
     "ScrcpyController",
     "ScrcpyDiagnostic",

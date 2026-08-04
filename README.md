@@ -56,7 +56,8 @@ ForensiX will not claim hardware write blocking, physical acquisition, locked-de
 - Deterministic mock ADB scenarios and safe API error envelopes
 - Sealed end-to-end Evidence Twin known-answer validation covering import/chunk/manifest hashes, verified working copies, SQLite detection, contacts/SMS/MMS/calls, normalized timeline, custody/audit chains, and report-output integrity without retaining fixture PII
 - Device-readiness UI with forensic limitations and operator guidance
-- Experimental, metadata-only SQLite/WAL/rollback-journal recovery-readiness assessment on verified Evidence Twin copies, with sealed results and no claim that candidate pages are deleted or recovered records
+- Experimental SQLite/WAL/rollback-journal recovery readiness and bounded fragment scanning on verified Evidence Twin copies, with sealed candidate records and no claim that fragments are proven deleted records
+- Optional, hash-pinned TestDisk/PhotoRec external recovery on verified raw ext4/F2FS Evidence Twin copies, with controlled output, individual hashes, and explicit candidate-only limitations
 - CI for frontend lint/type/test/build and backend Ruff/mypy/Pytest
 
 ## Local setup
@@ -116,6 +117,17 @@ case-linked device assessment, use **Read-only mirror** for passive viewing or *
 control** only after acknowledging that taps and typing change the device. See the
 [workstation setup](docs/WORKSTATION_SETUP.md#optional-live-mirror-and-device-control) guide.
 
+For controlled raw-image research, ForensiX can also invoke a separately installed and hash-pinned
+CGSecurity PhotoRec executable. It is not bundled with ForensiX and is only enabled for verified
+raw ext4/F2FS Evidence Twin working copies:
+
+```powershell
+.\scripts\install-testdisk.ps1
+```
+
+PhotoRec output is a carved candidate set, not proof of deletion; it is never run against a live
+Android device or a sealed master source. See [deleted-data research](docs/DELETED_DATA_RESEARCH.md).
+
 Use `-NoBrowser` for a terminal-only readiness check. Existing listeners on the configured API or
 web ports are reused instead of starting duplicate services.
 
@@ -140,9 +152,10 @@ physical-device release matrix.
 The requirement-by-requirement implementation evidence and remaining external proof are recorded in
 [the Evidence Twin completion audit](docs/EVIDENCE_TWIN_COMPLETION_AUDIT.md).
 
-Verified SQLite databases and safe ZIP/TAR working copies can be checked for recovery candidates
-from the Evidence Twin screen. This experimental probe reads bounded metadata only; it does not
-carve deleted rows or prove deletion. See [deleted-data research](docs/DELETED_DATA_RESEARCH.md).
+Verified SQLite databases and safe ZIP/TAR working copies can be assessed and scanned for bounded
+SQLite fragments from the Evidence Twin screen. The result remains candidate material: it does not
+prove a fragment is a deleted row. Verified raw ext4/F2FS working copies can additionally be sent
+to a separately installed, hash-pinned PhotoRec executable. See [deleted-data research](docs/DELETED_DATA_RESEARCH.md).
 
 Supervisors and administrators can export sealed custody/audit checkpoint packages from a case
 after chain verification succeeds. The package hash must be preserved, signed, or published through

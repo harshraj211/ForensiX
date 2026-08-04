@@ -30,6 +30,9 @@ release/
 # Optional local scrcpy runtime. Install with scripts/install-scrcpy.ps1.
 tools/scrcpy/
 
+# Optional local CGSecurity TestDisk/PhotoRec runtime. Install with scripts/install-testdisk.ps1.
+tools/testdisk/
+
 # Local configuration
 .env
 .env.*

@@ -1460,6 +1460,123 @@ class EvidenceRecoveryAssessmentRecord(Base):
     )
 
 
+class EvidenceRecoveryCarvingRecord(Base):
+    """Immutable experimental byte-fragment scan of a verified working copy.
+
+    The rows intentionally preserve *candidate* output rather than declaring that a record was
+    deleted or that the fragments are admissible recovered evidence.  A later validated parser
+    may review a candidate against the original sealed source and promote a supported finding.
+    """
+
+    __tablename__ = "evidence_recovery_carving_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('candidate_fragments_observed', 'no_candidate_fragments', 'unsupported')",
+            name="ck_evidence_recovery_carving_status",
+        ),
+        CheckConstraint("fragment_count >= 0", name="ck_evidence_recovery_carving_count"),
+        CheckConstraint(
+            "maturity = 'experimental'", name="ck_evidence_recovery_carving_maturity"
+        ),
+        UniqueConstraint("working_copy_id", name="uq_evidence_recovery_carving_working_copy"),
+        UniqueConstraint("run_hash", name="uq_evidence_recovery_carving_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    working_copy_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_working_copies.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    inspection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_source_inspections.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    executed_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    maturity: Mapped[str] = mapped_column(String(16), nullable=False, default="experimental")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    fragment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    run_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    tool_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
+class EvidenceExternalRecoveryRunRecord(Base):
+    """Immutable manifest for an externally run PhotoRec recovery on a working copy."""
+
+    __tablename__ = "evidence_external_recovery_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('completed', 'completed_with_warnings', 'unsupported')",
+            name="ck_evidence_external_recovery_status",
+        ),
+        CheckConstraint(
+            "recovered_file_count >= 0", name="ck_evidence_external_recovery_file_count"
+        ),
+        CheckConstraint(
+            "maturity = 'experimental'", name="ck_evidence_external_recovery_maturity"
+        ),
+        UniqueConstraint(
+            "working_copy_id", "tool_id", name="uq_evidence_external_recovery_working_copy_tool"
+        ),
+        UniqueConstraint("run_hash", name="uq_evidence_external_recovery_hash"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    evidence_source_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_sources.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    working_copy_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_working_copies.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    inspection_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("evidence_source_inspections.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    executed_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    tool_id: Mapped[str] = mapped_column(String(64), nullable=False, default="photorec")
+    maturity: Mapped[str] = mapped_column(String(16), nullable=False, default="experimental")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    recovered_file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_storage_key: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
+    result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    run_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    tool_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+
+
 class EvidenceParserRunRecord(Base):
     """Immutable outcome of one versioned parser against one verified working copy."""
 

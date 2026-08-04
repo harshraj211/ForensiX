@@ -1657,6 +1657,16 @@ describe("Evidence Twin workspace", () => {
           message: "ALEAPP is optional and not configured.",
         }));
       }
+      if (url === "/api/v1/integrations/photorec") {
+        return Promise.resolve(jsonResponse({
+          available: false,
+          status: "missing",
+          executable_path: null,
+          version: null,
+          sha256: null,
+          guidance: ["Install TestDisk/PhotoRec from CGSecurity on this workstation."],
+        }));
+      }
       if (url === "/api/v1/integrations/application-artifacts") {
         return Promise.resolve(jsonResponse([
           {

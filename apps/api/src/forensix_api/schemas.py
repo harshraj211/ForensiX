@@ -884,6 +884,76 @@ class RecoveryAssessmentResponse(BaseModel):
     assessed_at: datetime
 
 
+class RecoveryFragmentResponse(BaseModel):
+    source_file: str
+    offset_bytes: int
+    length_bytes: int
+    fragment_type: str
+    confidence: Literal["high", "medium", "low"]
+    content_preview: str
+    content_sha256: str
+    metadata: dict[str, Any]
+    fragment_hash: str
+
+
+class RecoveryCarvingResponse(BaseModel):
+    id: str
+    evidence_source_id: str
+    working_copy_id: str
+    inspection_id: str
+    case_id: str
+    executed_by: str
+    maturity: Literal["experimental"]
+    status: Literal[
+        "candidate_fragments_observed", "no_candidate_fragments", "unsupported"
+    ]
+    fragment_count: int
+    fragments: list[RecoveryFragmentResponse]
+    input_locators: list[str]
+    skipped_locators: list[str]
+    source_file_count: int
+    source_total_bytes: int
+    wal_fragments_found: int
+    freelist_fragments_found: int
+    unallocated_fragments_found: int
+    duration_seconds: float
+    limitations: list[str]
+    run_hash: str
+    tool_version: str
+    executed_at: datetime
+
+
+class ExternalRecoveryOutputFileResponse(BaseModel):
+    relative_path: str
+    size_bytes: int
+    sha256: str
+
+
+class ExternalRecoveryResponse(BaseModel):
+    id: str
+    evidence_source_id: str
+    working_copy_id: str
+    inspection_id: str
+    case_id: str
+    executed_by: str
+    tool_id: str
+    maturity: Literal["experimental"]
+    status: Literal["completed", "completed_with_warnings", "unsupported"]
+    recovered_file_count: int
+    output_storage_key: str
+    command: list[str]
+    console_summary: str
+    executable_sha256: str | None
+    exit_code: int | None
+    output_files: list[ExternalRecoveryOutputFileResponse]
+    output_total_bytes: int
+    version: str
+    limitations: list[str]
+    run_hash: str
+    tool_version: str
+    executed_at: datetime
+
+
 class EvidenceParserRunRequest(BaseModel):
     parser_ids: list[str] | None = Field(default=None, max_length=20)
 
@@ -948,6 +1018,15 @@ class AleappDiagnosticResponse(BaseModel):
     program_path: str
     observed_sha256: str | None
     message: str
+
+
+class PhotoRecDiagnosticResponse(BaseModel):
+    available: bool
+    status: str
+    executable_path: str | None
+    version: str | None
+    sha256: str | None
+    guidance: list[str]
 
 
 class PhysicalAcquisitionDiagnosticResponse(BaseModel):

@@ -9,6 +9,7 @@ from forensix_api.schemas import (
     AdbDiagnosticResponse,
     AleappDiagnosticResponse,
     ApplicationArtifactSupportResponse,
+    PhotoRecDiagnosticResponse,
     PhysicalAcquisitionDiagnosticResponse,
     ScrcpyDiagnosticResponse,
 )
@@ -40,6 +41,23 @@ def aleapp_diagnostic(
     del authenticated
     return AleappDiagnosticResponse.model_validate(
         AleappEvidenceService().diagnose(settings.aleapp_runner()), from_attributes=True
+    )
+
+
+@router.get("/photorec", response_model=PhotoRecDiagnosticResponse)
+def photorec_diagnostic(
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> PhotoRecDiagnosticResponse:
+    del authenticated
+    diagnostic = settings.photorec_controller().diagnose()
+    return PhotoRecDiagnosticResponse(
+        available=diagnostic.available,
+        status=diagnostic.status,
+        executable_path=diagnostic.executable_path,
+        version=diagnostic.version,
+        sha256=diagnostic.sha256,
+        guidance=list(diagnostic.guidance),
     )
 
 

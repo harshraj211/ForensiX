@@ -48,6 +48,31 @@ control** is a distinct, audited action: taps and keyboard input alter the devic
 forensically read-only. Website preview frames are temporary; use **Capture evidence screenshot**
 when a particular frame must be sealed as case evidence.
 
+### Optional experimental TestDisk/PhotoRec recovery
+
+ForensiX does not bundle TestDisk or PhotoRec. Install the official portable CGSecurity release
+locally when a lawful, verified raw image needs experimental file carving:
+
+```powershell
+.\scripts\install-testdisk.ps1
+```
+
+This puts `photorec_win.exe` under `tools\testdisk`, which Git ignores. The normal launcher
+computes and pins its SHA-256 for that local session. To use a separately managed installation:
+
+```powershell
+.\scripts\start-forensix.ps1 `
+  -AdbPath "C:\path\to\platform-tools\adb.exe" `
+  -PhotoRecPath "C:\trusted-tools\testdisk\photorec_win.exe"
+```
+
+Only the **Evidence Twin** page can invoke it, and only after the source has been sealed, a
+working copy has passed hash verification, and inspection identifies a raw `ext4` or `F2FS`
+image. It never receives a live Android-device path or a sealed master. Output is saved in the
+case-controlled recovery workspace, hashed, audited, and displayed as **candidate material**.
+PhotoRec may not retain original names or directory structure; encryption, overwrite, and flash
+wear-leveling can prevent useful results.
+
 ## Linux
 
 Install Platform-Tools and configure the distribution's Android udev rules. Confirm the current

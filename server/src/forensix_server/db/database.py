@@ -132,6 +132,10 @@ def _legacy_revision(
     if "evidence_sources" in tables:
         if "physical_block_probes" in tables:
             if "key_evidence" in tables:
+                if "evidence_external_recovery_runs" in tables:
+                    return "0038_external_recovery"
+                if "evidence_recovery_carving_runs" in tables:
+                    return "0037_recovery_carving"
                 return "0036_key_evidence"
             if "media_analyses" in tables:
                 return "0035_media_analysis"

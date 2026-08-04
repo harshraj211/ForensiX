@@ -20,7 +20,13 @@ from .inspection import (
     inspection_signature,
     inspection_warnings,
 )
-from .recovery import EvidenceRecoveryAssessmentService, recovery_assessment_result
+from .recovery import (
+    EvidenceRecoveryAssessmentService,
+    EvidenceRecoveryCarvingService,
+    recovery_assessment_result,
+    recovery_carving_result,
+)
+from .external_recovery import EvidenceExternalRecoveryService, external_recovery_result
 from .service import (
     EvidenceTwinError,
     EvidenceTwinIntegrityError,
@@ -44,7 +50,9 @@ __all__ = [
     "DETECTOR_VERSION",
     "EvidenceInspectionService",
     "EvidenceExaminationService",
+    "EvidenceExternalRecoveryService",
     "EvidenceRecoveryAssessmentService",
+    "EvidenceRecoveryCarvingService",
     "InspectionDecision",
     "ParserExecutionResult",
     "SourceArtifactSearchResult",
@@ -52,4 +60,6 @@ __all__ = [
     "inspection_signature",
     "inspection_warnings",
     "recovery_assessment_result",
+    "recovery_carving_result",
+    "external_recovery_result",
 ]
