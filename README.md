@@ -104,6 +104,18 @@ mode, validate the configured ADB executable, and open the device-readiness scre
 .\scripts\start-forensix.ps1 -AdbPath "C:\platform-tools\adb.exe"
 ```
 
+To enable the optional low-latency Android mirror and separately acknowledged controller window,
+install the official local scrcpy runtime once, then start ForensiX normally:
+
+```powershell
+.\scripts\install-scrcpy.ps1
+```
+
+The launcher validates and pins the local scrcpy executable for that server session. Inside a
+case-linked device assessment, use **Read-only mirror** for passive viewing or **Interactive
+control** only after acknowledging that taps and typing change the device. See the
+[workstation setup](docs/WORKSTATION_SETUP.md#optional-live-mirror-and-device-control) guide.
+
 Use `-NoBrowser` for a terminal-only readiness check. Existing listeners on the configured API or
 web ports are reused instead of starting duplicate services.
 

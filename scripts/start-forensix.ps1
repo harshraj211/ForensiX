@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$AdbPath,
+    [string]$ScrcpyPath,
     [ValidateRange(1024, 65535)][int]$ApiPort = 8765,
     [ValidateRange(1024, 65535)][int]$WebPort = 5173,
     [switch]$NoBrowser
@@ -33,6 +34,36 @@ $AdbPath = (Resolve-Path -LiteralPath $AdbPath).Path
 $adbVersion = & $AdbPath version 2>&1
 if ($LASTEXITCODE -ne 0 -or -not ($adbVersion -match "Android Debug Bridge version")) {
     throw "The configured ADB executable did not pass the version check: $AdbPath"
+}
+
+if (-not $ScrcpyPath) {
+    $scrcpyCommand = Get-Command scrcpy.exe -ErrorAction SilentlyContinue
+    if ($scrcpyCommand) {
+        $ScrcpyPath = $scrcpyCommand.Source
+    } else {
+        $localScrcpy = Join-Path $projectRoot "tools\scrcpy\scrcpy.exe"
+        $programFilesScrcpy = Join-Path $env:ProgramFiles "scrcpy\scrcpy.exe"
+        if (Test-Path -LiteralPath $localScrcpy -PathType Leaf) {
+            $ScrcpyPath = $localScrcpy
+        } elseif (Test-Path -LiteralPath $programFilesScrcpy -PathType Leaf) {
+            $ScrcpyPath = $programFilesScrcpy
+        }
+    }
+}
+
+$scrcpyReady = $false
+if ($ScrcpyPath) {
+    if (-not (Test-Path -LiteralPath $ScrcpyPath -PathType Leaf)) {
+        throw "The configured scrcpy executable was not found: $ScrcpyPath"
+    }
+    $ScrcpyPath = (Resolve-Path -LiteralPath $ScrcpyPath).Path
+    $scrcpyVersion = & $ScrcpyPath --version 2>&1
+    if ($LASTEXITCODE -ne 0 -or -not ($scrcpyVersion -match "scrcpy\s+[0-9]+(?:\.[0-9]+){1,3}")) {
+        throw "The configured scrcpy executable did not pass the version check: $ScrcpyPath"
+    }
+    $env:FORENSIX_SCRCPY_PATH = $ScrcpyPath
+    $env:FORENSIX_SCRCPY_EXPECTED_SHA256 = (Get-FileHash -LiteralPath $ScrcpyPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $scrcpyReady = $true
 }
 
 $pnpmCommand = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
@@ -91,6 +122,12 @@ $webUrl = "http://127.0.0.1:$WebPort/devices"
 Write-Host "ForensiX is ready: $webUrl"
 Write-Host "ADB: $AdbPath"
 Write-Host "Authorized Android transports: $authorizedCount"
+if ($scrcpyReady) {
+    Write-Host "scrcpy: $ScrcpyPath"
+    Write-Host "Live mirror: ready (read-only by default; control needs an acknowledgement)"
+} else {
+    Write-Warning "scrcpy was not found. Run .\scripts\install-scrcpy.ps1 to enable live mirror and control."
+}
 Write-Host "Runtime logs: $logDirectory"
 
 if (-not $NoBrowser) {

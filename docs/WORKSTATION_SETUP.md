@@ -22,6 +22,32 @@ validation matrix has been signed off. ADB is not a hardware write blocker.
    .\scripts\start-forensix.ps1 -AdbPath "C:\path\to\platform-tools\adb.exe"
    ```
 
+### Optional live mirror and device control
+
+ForensiX uses the official [Genymobile scrcpy release](https://github.com/Genymobile/scrcpy)
+for a low-latency Android mirror or an explicitly authorized control window. Install the local
+runtime once:
+
+```powershell
+.\scripts\install-scrcpy.ps1
+```
+
+The runtime is saved at `tools\scrcpy\scrcpy.exe`, which is intentionally ignored by Git. The
+normal launcher discovers the executable, verifies its version, calculates a SHA-256 value, and
+pins that value for the current server session. You may supply a different trusted executable:
+
+```powershell
+.\scripts\start-forensix.ps1 `
+  -AdbPath "C:\path\to\platform-tools\adb.exe" `
+  -ScrcpyPath "C:\trusted-tools\scrcpy\scrcpy.exe"
+```
+
+In a case-linked device assessment, tick the live-screen acknowledgement and use **Read-only
+mirror** first. It starts a separate scrcpy window with input injection disabled. **Interactive
+control** is a distinct, audited action: taps and keyboard input alter the device and are never
+forensically read-only. Website preview frames are temporary; use **Capture evidence screenshot**
+when a particular frame must be sealed as case evidence.
+
 ## Linux
 
 Install Platform-Tools and configure the distribution's Android udev rules. Confirm the current

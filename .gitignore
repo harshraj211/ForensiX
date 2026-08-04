@@ -27,6 +27,9 @@ validation-results/
 build/
 release/
 
+# Optional local scrcpy runtime. Install with scripts/install-scrcpy.ps1.
+tools/scrcpy/
+
 # Local configuration
 .env
 .env.*
