@@ -12,6 +12,10 @@ from .examination import (
     ParserExecutionResult,
     SourceArtifactSearchResult,
 )
+from .external_recovery import (
+    EvidenceExternalRecoveryService,
+    external_recovery_result,
+)
 from .inspection import (
     DETECTOR_VERSION,
     EvidenceInspectionService,
@@ -26,7 +30,6 @@ from .recovery import (
     recovery_assessment_result,
     recovery_carving_result,
 )
-from .external_recovery import EvidenceExternalRecoveryService, external_recovery_result
 from .service import (
     EvidenceTwinError,
     EvidenceTwinIntegrityError,

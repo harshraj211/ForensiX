@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { ArrowLeft, LoaderCircle, Search } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
@@ -53,12 +53,6 @@ export function ArtifactSearchPage() {
   const total = results.data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  function submitSearch(event: React.FormEvent) {
-    event.preventDefault();
-    setQuery(rawQuery);
-    setPage(0);
-  }
-
   return (
     <div className="mx-auto max-w-5xl">
       <Link
@@ -78,7 +72,14 @@ export function ArtifactSearchPage() {
         </p>
       </header>
 
-      <form onSubmit={submitSearch} className="mt-6 flex gap-2">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          setQuery(rawQuery);
+          setPage(0);
+        }}
+        className="mt-6 flex gap-2"
+      >
         <div className="relative flex-1">
           <Search
             size={16}

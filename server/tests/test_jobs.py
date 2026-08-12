@@ -196,8 +196,9 @@ def test_job_version_detects_concurrent_state_update(tmp_path: Path) -> None:
 
 
 def test_priority_scheduler_reorders_items_on_low_battery() -> None:
-    from forensix_server.jobs.domain import PriorityScheduler
     from types import SimpleNamespace
+
+    from forensix_server.jobs.domain import PriorityScheduler
 
     # Mock items with relative_path
     i1 = SimpleNamespace(id="1", relative_path="documents/report.pdf")
@@ -206,8 +207,12 @@ def test_priority_scheduler_reorders_items_on_low_battery() -> None:
 
     items = [i1, i2, i3]
 
-    assert [i.id for i in PriorityScheduler.prioritize_inventory_items(items, None)] == ["1", "2", "3"]
-    assert [i.id for i in PriorityScheduler.prioritize_inventory_items(items, 50)] == ["1", "2", "3"]
+    assert [
+        i.id for i in PriorityScheduler.prioritize_inventory_items(items, None)
+    ] == ["1", "2", "3"]
+    assert [
+        i.id for i in PriorityScheduler.prioritize_inventory_items(items, 50)
+    ] == ["1", "2", "3"]
 
     prioritized = PriorityScheduler.prioritize_inventory_items(items, 15)
     assert [i.id for i in prioritized] == ["2", "3", "1"]

@@ -97,12 +97,18 @@ class PriorityScheduler:
 
         def priority_score(item) -> int:
             path = str(item.relative_path).lower()
-            if "device_info" in path or "metadata" in path: return 10
-            if "contacts" in path: return 20
-            if "calllog" in path: return 30
-            if "mmssms" in path or "telephony" in path: return 40
-            if "packages" in path or "inventory" in path: return 50
-            if path.endswith((".jpg", ".jpeg", ".png", ".mp4", ".gif", ".webp")): return 60
+            if "device_info" in path or "metadata" in path:
+                return 10
+            if "contacts" in path:
+                return 20
+            if "calllog" in path:
+                return 30
+            if "mmssms" in path or "telephony" in path:
+                return 40
+            if "packages" in path or "inventory" in path:
+                return 50
+            if path.endswith((".jpg", ".jpeg", ".png", ".mp4", ".gif", ".webp")):
+                return 60
             return 100
 
         return sorted(items, key=lambda i: (priority_score(i), i.relative_path))
