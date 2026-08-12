@@ -32,8 +32,7 @@ from forensix_forensic.evidence_io import (
 )
 from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import Permission, Principal
-from forensix_server.cases import CaseAccessDeniedError
-from forensix_server.cases import CaseService
+from forensix_server.cases import CaseAccessDeniedError, CaseService
 from forensix_server.custody import AuditService, CustodyService
 from forensix_server.db import (
     Database,
@@ -44,7 +43,11 @@ from forensix_server.db import (
 from forensix_server.evidence import TimelineService
 
 from .inspection import EvidenceInspectionService
-from .service import EvidenceTwinError, EvidenceTwinIntegrityError, EvidenceTwinService
+from .service import (
+    EvidenceTwinError,
+    EvidenceTwinIntegrityError,
+    EvidenceTwinService,
+)
 
 
 @dataclass(frozen=True, slots=True)

@@ -125,7 +125,7 @@ export function MediaMapPage() {
             selectedId={selectedId}
             copiedId={copiedId}
             onSelect={setSelectedId}
-            onCopy={copyCoordinates}
+            onCopy={(point) => { void copyCoordinates(point); }}
           />
         </div>
       )}
@@ -147,10 +147,10 @@ function MediaPlot({
   return (
     <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
       <svg
-        viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
+        viewBox={"0 0 " + String(VIEW_WIDTH) + " " + String(VIEW_HEIGHT)}
         className="h-auto w-full"
         role="img"
-        aria-label={`Offline plot of ${points.length} geotagged media locations`}
+        aria-label={"Offline plot of " + String(points.length) + " geotagged media locations"}
       >
         <rect
           x={PADDING / 2}
@@ -180,7 +180,7 @@ function MediaPlot({
         {points.map((point) => {
           const active = point.analysis.id === selectedId;
           return (
-            <g key={point.analysis.id} transform={`translate(${point.x} ${point.y})`}>
+            <g key={point.analysis.id} transform={"translate(" + String(point.x) + " " + String(point.y) + ")"}>
               <circle
                 r={active ? 9 : 6}
                 fill={active ? "rgb(103,232,249)" : "rgba(103,232,249,0.55)"}
@@ -239,7 +239,16 @@ function CoordinateList({
                 <Copy size={12} /> {copiedId === point.analysis.id ? "Copied" : "Copy"}
               </button>
               <a
-                href={`https://www.openstreetmap.org/?mlat=${point.latitude}&mlon=${point.longitude}#map=16/${point.latitude}/${point.longitude}`}
+                href={
+                  "https://www.openstreetmap.org/?mlat="
+                  + String(point.latitude)
+                  + "&mlon="
+                  + String(point.longitude)
+                  + "#map=16/"
+                  + String(point.latitude)
+                  + "/"
+                  + String(point.longitude)
+                }
                 target="_blank"
                 rel="noreferrer noopener"
                 className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-cyan-200"

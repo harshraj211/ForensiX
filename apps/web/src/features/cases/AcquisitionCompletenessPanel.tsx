@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, AlertTriangle, XCircle, FileQuestion, HelpCircle } from "lucide-react";
+import { CheckCircle2, AlertTriangle, XCircle, HelpCircle } from "lucide-react";
 import { getCaseCompleteness } from "../../lib/api";
 import { caseKeys } from "./caseKeys";
 import { CaseError } from "./CasesPage";
@@ -38,7 +38,7 @@ export function AcquisitionCompletenessPanel({ caseId }: { caseId: string }) {
               blocked: { icon: XCircle, color: "text-rose-400", bg: "bg-rose-400/10", border: "border-rose-400/20" },
               failed: { icon: XCircle, color: "text-rose-500", bg: "bg-rose-500/10", border: "border-rose-500/20" },
               not_present: { icon: HelpCircle, color: "text-slate-400", bg: "bg-slate-400/10", border: "border-slate-400/20" },
-            }[item.status] || { icon: FileQuestion, color: "text-slate-400", bg: "bg-slate-400/10", border: "border-slate-400/20" };
+            }[item.status];
             
             const Icon = statusConfig.icon;
             
