@@ -190,8 +190,13 @@ class AleappRunner:
         if self.configuration.python_executable is None:
             prefix = [str(program)]
         else:
-            python = self.configuration.python_executable.expanduser().absolute()
-            if python.is_symlink() or not python.is_file():
+            try:
+                python = self.configuration.python_executable.expanduser().resolve(strict=True)
+            except OSError as error:
+                raise AleappExecutionError(
+                    "The configured Python executable is missing or is not a regular file."
+                ) from error
+            if not python.is_file():
                 raise AleappExecutionError(
                     "The configured Python executable is missing or is not a regular file."
                 )
