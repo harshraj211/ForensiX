@@ -60,8 +60,8 @@ _STORAGE_PATHS: dict[SharedStorageRoot, str] = {
     SharedStorageRoot.EMULATED_PRIMARY: "/storage/emulated/0",
 }
 
-INVENTORY_MAX_DEPTH = 6
-INVENTORY_MAX_ITEMS = 250
+INVENTORY_MAX_DEPTH = 10
+INVENTORY_MAX_ITEMS = 5_000
 MAX_ACQUIRED_FILE_BYTES = 100 * 1024 * 1024
 MAX_ROOTED_BUNDLE_BYTES = 8 * 1024 * 1024 * 1024
 MAX_PHYSICAL_BLOCK_BYTES = 512 * 1024 * 1024 * 1024
@@ -450,13 +450,35 @@ class AdbCommandPolicy:
     @staticmethod
     def inventory_storage_paths(serial: str, root: SharedStorageRoot) -> ApprovedAdbCommand:
         _validate_serial(serial)
-        # This is intentionally a closed, literal command.  `head` terminates
-        # the producer after the approved record cap, preventing a full-device
-        # traversal before the workstation can apply its own parser limits.
+        # Prioritize standard user-content directories so the bounded result
+        # cannot be consumed entirely by app caches under Android/.
+        root_path = _STORAGE_PATHS[root]
+        priority_directories = (
+            ("DCIM", 800),
+            ("Pictures", 400),
+            ("Movies", 400),
+            ("Music", 400),
+            ("Download", 400),
+            ("Downloads", 100),
+            ("Documents", 400),
+            ("Recordings", 200),
+            ("Audiobooks", 100),
+            ("Podcasts", 100),
+        )
+        priority_commands = "; ".join(
+            f"[ ! -d {root_path}/{directory} ] || "
+            f"find {root_path}/{directory} -xdev -maxdepth {INVENTORY_MAX_DEPTH - 1} "
+            f"-type f -exec stat -c '%n:%s:%Y' {{}} + | head -n {item_limit}"
+            for directory, item_limit in priority_directories
+        )
+        prune_expression = " -o ".join(
+            f"-path {root_path}/{directory}" for directory, _ in priority_directories
+        )
         command = (
-            f"find {_STORAGE_PATHS[root]} -xdev -maxdepth {INVENTORY_MAX_DEPTH} "
-            "-type f -exec stat -c '%n:%s:%Y' {} + "
-            f"| head -n {INVENTORY_MAX_ITEMS}"
+            f"{{ {priority_commands}; find {root_path} -xdev "
+            f"-maxdepth {INVENTORY_MAX_DEPTH} \\( {prune_expression} \\) -prune -o "
+            "-type f -exec stat -c '%n:%s:%Y' {} +; "
+            f"}} | head -n {INVENTORY_MAX_ITEMS}"
         )
         return ApprovedAdbCommand(
             AdbOperation.INVENTORY_STORAGE_PATHS,
@@ -466,7 +488,7 @@ class AdbCommandPolicy:
                 "shell",
                 command,
             ),
-            30.0,
+            90.0,
         )
 
     @staticmethod

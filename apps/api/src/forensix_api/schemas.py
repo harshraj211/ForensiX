@@ -203,6 +203,7 @@ class ScreenRecordingSessionResponse(BaseModel):
     started_by: str
     stopped_by: str | None
     evidence_source_id: str | None
+    mp4_storage_key: str | None
     status: Literal["active", "sealed", "failed"]
     process_id: int = Field(ge=1)
     scrcpy_version: str

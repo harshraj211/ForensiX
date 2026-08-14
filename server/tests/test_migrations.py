@@ -208,7 +208,11 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "screen_recording_sessions" in inspector.get_table_names()
     report_columns = {column["name"] for column in inspector.get_columns("reports")}
     assert "redaction_profile" in report_columns
-    assert revision == "0039_screen_recordings"
+    recording_columns = {
+        column["name"] for column in inspector.get_columns("screen_recording_sessions")
+    }
+    assert "mp4_storage_key" in recording_columns
+    assert revision == "0040_screen_recording_mp4"
     database.dispose()
 
 

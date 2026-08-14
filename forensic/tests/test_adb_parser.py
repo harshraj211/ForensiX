@@ -123,6 +123,20 @@ def test_inventory_parser_preserves_validated_stat_metadata() -> None:
     assert entry.timestamp_confidence == "medium"
 
 
+def test_inventory_parser_accepts_modern_nested_app_media_paths() -> None:
+    inventory = parse_storage_inventory(
+        "/sdcard/Android/media/com.example.app/files/media/images/2026/photo.avif:512:1784160000\n",
+        root_id="primary_alias",
+        display_path="/sdcard",
+        max_items=10,
+        max_depth=10,
+    )
+
+    assert [entry.relative_path for entry in inventory.entries] == [
+        "Android/media/com.example.app/files/media/images/2026/photo.avif"
+    ]
+
+
 def test_inventory_parser_skips_malformed_or_out_of_range_stat_records() -> None:
     inventory = parse_storage_inventory(
         "/sdcard/bad.txt:not-a-size:1784160000\n/sdcard/future.txt:10:999999999999999\n",

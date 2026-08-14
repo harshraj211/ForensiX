@@ -8,6 +8,7 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from forensix_forensic.integrations import ScrcpyController, ScrcpyIntegrationError
+from forensix_forensic.storage import EvidenceStore, StoredEvidence
 from forensix_server.auth import Principal
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseInvalidStateError
@@ -89,6 +90,7 @@ class ScreenRecordingService:
                     started_by=principal.user_id,
                     stopped_by=None,
                     evidence_source_id=None,
+                    mp4_storage_key=None,
                     status="active",
                     process_id=launch.process_id,
                     serial_hash=serial_digest,
@@ -174,6 +176,11 @@ class ScreenRecordingService:
                         "Audio and clipboard synchronization were disabled.",
                     ),
                 )
+            companion = self._store_mp4_companion(database, source.sealed_storage_key, destination)
+            if companion.sha256 != source.sha256 or companion.size_bytes != source.size_bytes:
+                raise CaseInvalidStateError(
+                    "The playable MP4 copy did not match the sealed recording evidence."
+                )
         except Exception as error:
             self._mark_failed(database, principal, recording_id, error)
             raise CaseInvalidStateError(
@@ -188,6 +195,7 @@ class ScreenRecordingService:
             record.status = "sealed"
             record.stopped_by = principal.user_id
             record.evidence_source_id = source.id
+            record.mp4_storage_key = companion.storage_key
             record.size_bytes = source.size_bytes
             record.sha256 = source.sha256
             record.stopped_at = stopped_at
@@ -199,13 +207,28 @@ class ScreenRecordingService:
                     safe_detail=(
                         f"session_id={recording_id};device_id={device_id};"
                         f"evidence_source_id={source.id};size_bytes={source.size_bytes};"
-                        f"sha256={source.sha256}"
+                        f"sha256={source.sha256};mp4_storage_key={companion.storage_key}"
                     ),
                 )
             )
             session.flush()
         destination.unlink(missing_ok=True)
         return record
+
+    @staticmethod
+    def _store_mp4_companion(
+        database: Database,
+        sealed_storage_key: str | None,
+        source_path: Path,
+    ) -> StoredEvidence:
+        if not sealed_storage_key or "/" not in sealed_storage_key:
+            raise CaseInvalidStateError("The sealed recording storage key is unavailable.")
+        storage_key = f"{sealed_storage_key.rsplit('/', 1)[0]}/source.mp4"
+        store = EvidenceStore(database.data_dir / "evidence")
+        with source_path.open("rb") as source, store.open_writer(storage_key) as writer:
+            while chunk := source.read(1024 * 1024):
+                writer.write(chunk)
+            return writer.seal()
 
     @staticmethod
     def _recording_path(database: Database, recording_id: str) -> Path:

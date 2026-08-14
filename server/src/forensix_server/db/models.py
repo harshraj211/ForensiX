@@ -366,6 +366,7 @@ class ScreenRecordingSessionRecord(Base):
             name="ck_screen_recording_sessions_size",
         ),
         UniqueConstraint("evidence_source_id", name="uq_screen_recording_sessions_source"),
+        UniqueConstraint("mp4_storage_key", name="uq_screen_recording_sessions_mp4_key"),
         Index(
             "uq_screen_recording_sessions_active_device",
             "device_id",
@@ -395,6 +396,7 @@ class ScreenRecordingSessionRecord(Base):
     evidence_source_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("evidence_sources.id", ondelete="RESTRICT"), nullable=True
     )
+    mp4_storage_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     process_id: Mapped[int] = mapped_column(Integer, nullable=False)
     serial_hash: Mapped[str] = mapped_column(String(64), nullable=False)

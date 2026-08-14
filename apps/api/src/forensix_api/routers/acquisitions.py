@@ -166,7 +166,7 @@ def get_acquisition_inventory(
     authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
     database: Annotated[Database, Depends(get_database)],
     offset: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> AcquisitionInventoryResponse:
     with database.session() as session:
         inventory, items, total = AcquisitionInventoryService().list_items(

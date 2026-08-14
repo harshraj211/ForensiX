@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from forensix_forensic.capabilities import DeviceCapabilitySnapshot
 from forensix_forensic.integrations import ScrcpyLaunchResult, ScrcpyRecordingStopResult
+from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import Principal, RoleName
 from forensix_server.auth.domain import ROLE_PERMISSIONS
 from forensix_server.case_devices import CaseDeviceService
@@ -123,6 +124,7 @@ def test_recording_session_stops_and_seals_as_case_evidence(database: Database) 
     assert started.status == "active"
     assert sealed.status == "sealed"
     assert sealed.evidence_source_id is not None
+    assert sealed.mp4_storage_key is not None
     assert sealed.sha256 is not None and len(sealed.sha256) == 64
     assert controller.destination is not None
     assert not controller.destination.exists()
@@ -131,6 +133,13 @@ def test_recording_session_stops_and_seals_as_case_evidence(database: Database) 
         assert source is not None
         assert source.status == "sealed"
         assert source.source_name.endswith(".mp4")
+        assert source.sealed_storage_key is not None
+        store = EvidenceStore(database.data_dir / "evidence")
+        mp4 = store.resolve(sealed.mp4_storage_key, require_file=True)
+        master = store.resolve(source.sealed_storage_key, require_file=True)
+        assert mp4.read_bytes() == b"forensix-screen-recording"
+        assert mp4.read_bytes() == master.read_bytes()
+        assert store.hash(sealed.mp4_storage_key).hexdigest == sealed.sha256
         events = set(session.scalars(select(CaseEventRecord.event_type)))
         assert "screen_recording_session_started" in events
         assert "screen_recording_sealed" in events

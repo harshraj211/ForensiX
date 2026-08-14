@@ -34,7 +34,6 @@ import {
   runAcquisitionInventory,
   resumeEvidenceFile,
   verifyEvidenceFile,
-  type AcquisitionInventoryItem,
   type AcquisitionJob,
   type AcquisitionModule,
   type AcquisitionPlan,
@@ -42,52 +41,11 @@ import {
   type BulkAcquireResult,
   type EvidenceVerification,
 } from "../../lib/api";
-
-const MEDIA_EXTENSIONS = new Set([
-  "jpg",
-  "jpeg",
-  "png",
-  "gif",
-  "webp",
-  "heic",
-  "heif",
-  "mp4",
-  "mov",
-  "avi",
-  "mkv",
-  "webm",
-  "mp3",
-  "wav",
-  "m4a",
-  "aac",
-  "flac",
-]);
-const DOCUMENT_EXTENSIONS = new Set([
-  "pdf",
-  "doc",
-  "docx",
-  "xls",
-  "xlsx",
-  "ppt",
-  "pptx",
-  "txt",
-  "csv",
-  "md",
-  "rtf",
-  "odt",
-  "ods",
-]);
-
-type InventoryFilter = "all" | "media" | "documents" | "downloads";
-
-function matchesInventoryFilter(item: AcquisitionInventoryItem, filter: InventoryFilter): boolean {
-  if (filter === "all") return true;
-  const extension = (item.extension ?? "").toLowerCase();
-  const path = item.relative_path.toLowerCase();
-  if (filter === "media") return MEDIA_EXTENSIONS.has(extension);
-  if (filter === "documents") return DOCUMENT_EXTENSIONS.has(extension);
-  return path.startsWith("download/") || path.startsWith("downloads/");
-}
+import {
+  itemAllowedByScope,
+  matchesInventoryFilter,
+  type InventoryFilter,
+} from "./inventoryFileTypes";
 
 function isAcquirableStatus(status: string | undefined): boolean {
   return status !== "completed" && status !== "acquiring";
@@ -1145,11 +1103,4 @@ function defaultFilterForScope(scope: AcquisitionScope): InventoryFilter {
   if (scope === "document_files") return "documents";
   if (scope === "downloads_files") return "downloads";
   return "all";
-}
-
-function itemAllowedByScope(item: AcquisitionInventoryItem, scope: AcquisitionScope): boolean {
-  if (scope === "media_files") return matchesInventoryFilter(item, "media");
-  if (scope === "document_files") return matchesInventoryFilter(item, "documents");
-  if (scope === "downloads_files") return matchesInventoryFilter(item, "downloads");
-  return scope !== "metadata_only";
 }

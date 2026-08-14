@@ -1,0 +1,50 @@
+import { describe, expect, it } from "vitest";
+
+import type { AcquisitionInventoryItem } from "../../lib/api";
+import { itemAllowedByScope, matchesInventoryFilter } from "./inventoryFileTypes";
+
+function inventoryItem(relativePath: string, extension: string | null): AcquisitionInventoryItem {
+  return {
+    id: relativePath,
+    ordinal: 1,
+    relative_path: relativePath,
+    path_hash: "hash",
+    extension,
+    size_bytes: 1,
+    modified_time_raw: null,
+    modified_at: null,
+    timestamp_source: null,
+    timestamp_confidence: null,
+  };
+}
+
+describe("inventory file classification", () => {
+  it.each([
+    ["DCIM/Camera/photo.avif", "AVIF"],
+    ["Movies/camera.3gp", "3gp"],
+    ["Recordings/interview.opus", "opus"],
+    ["Pictures/scan.tiff", "tiff"],
+  ])("recognizes media %s", (relativePath, extension) => {
+    expect(matchesInventoryFilter(inventoryItem(relativePath, extension), "media")).toBe(true);
+  });
+
+  it.each([
+    ["Documents/export.json", "json"],
+    ["Download/page.html", "html"],
+    ["Books/manual.epub", "epub"],
+    ["Documents/device.xml", "XML"],
+  ])("recognizes document %s", (relativePath, extension) => {
+    expect(matchesInventoryFilter(inventoryItem(relativePath, extension), "documents")).toBe(true);
+  });
+
+  it("matches download folders case-insensitively", () => {
+    expect(matchesInventoryFilter(inventoryItem("Download/export.bin", "bin"), "downloads")).toBe(true);
+    expect(matchesInventoryFilter(inventoryItem("DOWNLOADS/export.bin", "bin"), "downloads")).toBe(true);
+  });
+
+  it("keeps the scope guard aligned with visible filters", () => {
+    const media = inventoryItem("Movies/clip.3gp", "3gp");
+    expect(itemAllowedByScope(media, "media_files")).toBe(true);
+    expect(itemAllowedByScope(media, "document_files")).toBe(false);
+  });
+});

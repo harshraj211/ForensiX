@@ -1021,7 +1021,7 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
             </button>
             {screenRecording.data?.status === "sealed" && (
               <p className="mt-3 text-xs text-emerald-200">
-                Recording sealed · SHA-256 {screenRecording.data.sha256?.slice(0, 16)}... · source {" "}
+                Recording and MP4 stored · SHA-256 {screenRecording.data.sha256?.slice(0, 16)}... · source {" "}
                 {screenRecording.data.evidence_source_id?.slice(0, 8)}
               </p>
             )}

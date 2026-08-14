@@ -261,20 +261,20 @@ def test_inventory_policy_is_fixed_bounded_and_uses_no_caller_controlled_shell_t
         "FX-DEMO-001", SharedStorageRoot.EMULATED_PRIMARY
     )
 
-    assert command.arguments == (
-        "-s",
-        "FX-DEMO-001",
-        "shell",
-        "find /storage/emulated/0 -xdev -maxdepth 6 -type f "
-        "-exec stat -c '%n:%s:%Y' {} + | head -n 250",
-    )
-    assert command.timeout_seconds == 30.0
-    assert command.arguments[3] == (
-        "find /storage/emulated/0 -xdev -maxdepth 6 -type f "
-        "-exec stat -c '%n:%s:%Y' {} + | head -n 250"
-    )
-    assert "FX-DEMO-001" not in command.arguments[3]
-    assert "pull" not in command.arguments[3]
+    assert command.arguments[:3] == ("-s", "FX-DEMO-001", "shell")
+    shell_command = command.arguments[3]
+    assert shell_command.startswith("{ [ ! -d /storage/emulated/0/DCIM ]")
+    assert "find /storage/emulated/0/DCIM -xdev -maxdepth 9" in shell_command
+    assert "{} + | head -n 800" in shell_command
+    assert "find /storage/emulated/0/Documents -xdev -maxdepth 9" in shell_command
+    assert "{} + | head -n 400" in shell_command
+    assert "find /storage/emulated/0/Podcasts -xdev -maxdepth 9" in shell_command
+    assert "find /storage/emulated/0 -xdev -maxdepth 10" in shell_command
+    assert "-path /storage/emulated/0/DCIM" in shell_command
+    assert shell_command.endswith("} | head -n 5000")
+    assert command.timeout_seconds == 90.0
+    assert "FX-DEMO-001" not in shell_command
+    assert "pull" not in shell_command
 
 
 def test_pull_policy_uses_shell_free_inventory_path_and_absolute_destination(
@@ -324,7 +324,14 @@ def test_package_apk_pull_rejects_non_package_manager_paths(
 
 @pytest.mark.parametrize(
     "relative_path",
-    ["", "/absolute.jpg", "../escape.jpg", "DCIM//file.jpg", "a/b/c/d/e/f/g.jpg", "bad\nname"],
+    [
+        "",
+        "/absolute.jpg",
+        "../escape.jpg",
+        "DCIM//file.jpg",
+        "a/b/c/d/e/f/g/h/i/j/k.jpg",
+        "bad\nname",
+    ],
 )
 def test_pull_policy_rejects_paths_outside_inventory_policy(
     tmp_path: Path, relative_path: str
@@ -401,8 +408,8 @@ async def test_system_inventory_parses_paths_without_running_path_derived_comman
         "Download/report.pdf",
     ]
     assert len(runner.calls) == 1
-    assert runner.calls[0][0][3].startswith("find /sdcard ")
-    assert runner.calls[0][0][3].endswith("| head -n 250")
+    assert runner.calls[0][0][3].startswith("{ [ ! -d /sdcard/DCIM ]")
+    assert runner.calls[0][0][3].endswith("} | head -n 5000")
     assert inventory.entries[0].size_bytes == 128
     assert inventory.entries[0].modified_time_raw == "1784160000"
     assert inventory.entries[0].modified_at is not None

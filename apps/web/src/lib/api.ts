@@ -224,6 +224,7 @@ export interface ScreenRecordingSession {
   started_by: string;
   stopped_by: string | null;
   evidence_source_id: string | null;
+  mp4_storage_key: string | null;
   status: "active" | "sealed" | "failed";
   process_id: number;
   scrcpy_version: string;
@@ -1846,11 +1847,12 @@ export async function getAcquisitionInventory(
   jobId: string,
 ): Promise<AcquisitionInventory> {
   const base = `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/inventory`;
-  const first = await apiRequest<AcquisitionInventory>(`${base}?offset=0&limit=100`);
+  const pageSize = 500;
+  const first = await apiRequest<AcquisitionInventory>(`${base}?offset=0&limit=${String(pageSize)}`);
   const items = [...first.items];
   while (items.length < first.total) {
     const page = await apiRequest<AcquisitionInventory>(
-      `${base}?offset=${String(items.length)}&limit=100`,
+      `${base}?offset=${String(items.length)}&limit=${String(pageSize)}`,
     );
     if (page.items.length === 0) break;
     items.push(...page.items);
