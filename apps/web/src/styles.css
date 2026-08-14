@@ -1,13 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: dark;
   font-family:
     "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  background: #02070d;
+  background: #050505;
 }
 
 html {
@@ -18,18 +17,17 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background:
-    radial-gradient(circle at top left, rgba(34, 211, 238, 0.08), transparent 24%),
-    linear-gradient(180deg, #02070d 0%, #06111b 40%, #02070d 100%);
+  background: #050505;
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-cyan-300) 30%, transparent);
+  background: #1d1e1d;
   color: white;
 }
 
 * {
-  scrollbar-color: rgb(51 65 85) transparent;
+  box-sizing: border-box;
+  scrollbar-color: #999b97 transparent;
 }
 
 button,
@@ -37,4 +35,231 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  border-radius: 4px;
+}
+
+:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
+/* Public site: retain the composition while replacing the cyber-neon palette. */
+.landing-refresh {
+  color-scheme: dark;
+  background: #050505;
+}
+
+.landing-refresh > .pointer-events-none.fixed {
+  display: none;
+}
+
+.landing-refresh [class*="text-cyan-"],
+.landing-refresh [class*="text-sky-"] {
+  color: #d8dad6 !important;
+}
+
+.landing-refresh [class*="border-cyan-"] {
+  border-color: rgb(255 255 255 / 0.16) !important;
+}
+
+.landing-refresh [class*="bg-cyan-"] {
+  background-color: rgb(255 255 255 / 0.055) !important;
+}
+
+.landing-refresh a[class*="bg-cyan-"] {
+  background: #f4f4f1 !important;
+  color: #0a0a0a !important;
+  box-shadow: none !important;
+}
+
+.landing-refresh [class*="bg-gradient-"],
+.landing-refresh [class*="bg-[radial-gradient"],
+.landing-refresh [class*="bg-[linear-gradient"] {
+  background-image: none !important;
+}
+
+.landing-refresh [class*="bg-clip-text"] {
+  background: none !important;
+  color: #f5f5f3 !important;
+}
+
+.landing-refresh [class*="bg-[#"],
+.landing-refresh [class*="bg-[rgba"] {
+  background-color: #0c0d0c !important;
+}
+
+.landing-refresh svg stop {
+  stop-color: #a0a39e !important;
+}
+
+.landing-refresh svg circle[stroke*="34,211"],
+.landing-refresh svg path[stroke^="url("] {
+  stroke: #8f938d !important;
+}
+
+.landing-refresh .glow-card,
+.landing-refresh [class*="shadow-["] {
+  box-shadow: none !important;
+}
+
+.landing-refresh .card-hover:hover {
+  box-shadow: none;
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Authenticated product: light evidence sheet inside black workstation chrome. */
+.workstation-shell {
+  color-scheme: light;
+}
+
+.workstation-content {
+  color: #1b1c1b;
+}
+
+.workstation-content [class*="text-white"] {
+  color: #111211 !important;
+}
+
+.workstation-content [class*="text-slate-100"],
+.workstation-content [class*="text-slate-200"] {
+  color: #242624 !important;
+}
+
+.workstation-content [class*="text-slate-300"] {
+  color: #424542 !important;
+}
+
+.workstation-content [class*="text-slate-400"] {
+  color: #5e625e !important;
+}
+
+.workstation-content [class*="text-slate-500"] {
+  color: #6f736f !important;
+}
+
+.workstation-content [class*="text-slate-600"],
+.workstation-content [class*="text-slate-700"] {
+  color: #777b77 !important;
+}
+
+.workstation-content [class*="text-cyan-"] {
+  color: #246c44 !important;
+}
+
+.workstation-content [class*="text-emerald-"] {
+  color: #17713f !important;
+}
+
+.workstation-content [class*="text-amber-"] {
+  color: #8a5700 !important;
+}
+
+.workstation-content [class*="text-rose-"] {
+  color: #a52a39 !important;
+}
+
+.workstation-content [class*="text-fuchsia-"] {
+  color: #654a68 !important;
+}
+
+.workstation-content [class*="border-white"],
+.workstation-content [class*="border-cyan-"] {
+  border-color: #d4d6d1 !important;
+}
+
+.workstation-content [class*="border-emerald-"] {
+  border-color: #a8cfb7 !important;
+}
+
+.workstation-content [class*="border-amber-"] {
+  border-color: #d9c79e !important;
+}
+
+.workstation-content [class*="border-rose-"] {
+  border-color: #deb4ba !important;
+}
+
+.workstation-content [class*="bg-white"] {
+  background-color: #fff !important;
+}
+
+.workstation-content [class*="bg-black"] {
+  background-color: #f0f1ee !important;
+}
+
+.workstation-content section[class*="bg-cyan-"],
+.workstation-content div[class*="bg-cyan-"],
+.workstation-content form[class*="bg-cyan-"] {
+  background-color: #eef1ec !important;
+}
+
+.workstation-content section[class*="bg-emerald-"],
+.workstation-content div[class*="bg-emerald-"] {
+  background-color: #eef7f1 !important;
+}
+
+.workstation-content section[class*="bg-amber-"],
+.workstation-content div[class*="bg-amber-"] {
+  background-color: #faf6ea !important;
+}
+
+.workstation-content section[class*="bg-rose-"],
+.workstation-content div[class*="bg-rose-"] {
+  background-color: #fbf0f1 !important;
+}
+
+.workstation-content button[class*="bg-cyan-"],
+.workstation-content a[class*="bg-cyan-"] {
+  border-color: #111211 !important;
+  background: #111211 !important;
+  color: white !important;
+  box-shadow: none !important;
+}
+
+.workstation-content input,
+.workstation-content select,
+.workstation-content textarea {
+  border-color: #c8cbc5 !important;
+  background: white !important;
+  color: #161716 !important;
+}
+
+.workstation-content [class*="rounded-2xl"],
+.workstation-content [class*="rounded-3xl"] {
+  border-radius: 6px !important;
+}
+
+.workstation-content [class*="shadow-["],
+.workstation-content [class*="shadow-2xl"] {
+  box-shadow: none !important;
+}
+
+.workstation-content pre {
+  border: 1px solid #d4d6d1;
+  background: #eceeeb !important;
+  color: #2d302d !important;
+}
+
+@media (max-width: 1023px) {
+  .workstation-content {
+    min-height: calc(100vh - 68px);
+  }
 }
