@@ -122,19 +122,19 @@ function CaseCard({ item }: { item: CaseRecord }) {
   return (
     <Link
       to={`/cases/${item.id}`}
-      className="rounded-xl border border-white/8 bg-white/[0.025] p-5 transition hover:border-cyan-300/20 hover:bg-cyan-300/[0.035]"
+      className="rounded-md border border-neutral-300 bg-white p-5 transition hover:border-neutral-500 hover:bg-neutral-50"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-mono text-xs text-cyan-300/70">{item.case_number}</p>
-          <h2 className="mt-2 text-lg font-semibold text-white">{item.title}</h2>
+          <p className="font-mono text-xs font-medium text-[#246c44]">{item.case_number}</p>
+          <h2 className="mt-2 text-lg font-semibold text-neutral-950">{item.title}</h2>
         </div>
         <StatusBadge status={item.status} />
       </div>
-      <p className="mt-4 line-clamp-2 text-sm leading-6 text-slate-500">
+      <p className="mt-4 line-clamp-2 text-sm leading-6 text-neutral-700">
         {item.description ?? "No case description has been recorded."}
       </p>
-      <p className="mt-4 text-xs text-slate-600">
+      <p className="mt-4 text-xs text-neutral-600">
         Updated {new Date(item.updated_at).toLocaleString()}
       </p>
     </Link>
