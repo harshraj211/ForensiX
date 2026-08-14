@@ -202,12 +202,12 @@ export function DeviceDetectionPage() {
             )}
             {adbDiagnostic.isError && <p className="mt-3 text-xs text-rose-200">ADB diagnostics could not be loaded.</p>}
           </div>
-          <div className="rounded-xl border border-amber-300/16 bg-amber-300/5 p-5">
+          <div className="rounded-md border border-[#d8c28d] bg-[#fbf5e6] p-5 text-[#674100]">
             <div className="flex gap-3">
-              <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0 text-amber-300" size={18} />
+              <AlertTriangle aria-hidden="true" className="mt-0.5 shrink-0 text-[#8a5700]" size={18} />
               <div>
-                <h2 className="text-sm font-semibold text-amber-100">Forensic limitation</h2>
-                <p className="mt-2 text-sm leading-6 text-amber-100/65">
+                <h2 className="text-sm font-semibold text-[#674100]">Forensic limitation</h2>
+                <p className="mt-2 text-sm leading-6 text-[#76541b]">
                   ADB is not a hardware write blocker. Detection and later logical operations can
                   create unavoidable device-side effects; ForensiX records and reports them.
                 </p>
