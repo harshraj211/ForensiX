@@ -289,8 +289,8 @@ class TimelineService:
             )
         )
         for media in analyses:
-            artifact = session.get(ArtifactRecord, media.artifact_id)
-            if artifact is None:
+            media_artifact = session.get(ArtifactRecord, media.artifact_id)
+            if media_artifact is None:
                 continue
             exists = session.scalar(
                 select(TimelineEventRecord.id).where(
@@ -298,7 +298,7 @@ class TimelineService:
                     TimelineEventRecord.timestamp_type == MEDIA_CAPTURE_TIMESTAMP_TYPE,
                 )
             )
-            self.materialize_media_capture(session, artifact, media)
+            self.materialize_media_capture(session, media_artifact, media)
             created += exists is None
         return created
 

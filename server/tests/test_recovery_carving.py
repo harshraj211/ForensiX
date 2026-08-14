@@ -79,8 +79,7 @@ def test_fragment_scan_is_bounded_immutable_and_audited(tmp_path: Path) -> None:
         assert result["fragments"]
         assert "not verified deleted records" in result["limitations"][0]
         assert any(
-            "deleted chat lead" in fragment["content_preview"]
-            for fragment in result["fragments"]
+            "deleted chat lead" in fragment["content_preview"] for fragment in result["fragments"]
         )
         with database.session() as session:
             rows = list(session.scalars(select(EvidenceRecoveryCarvingRecord)))

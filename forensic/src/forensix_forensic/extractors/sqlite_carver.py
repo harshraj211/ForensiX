@@ -44,9 +44,7 @@ MESSAGE_TYPE_SYSTEM = 8
 
 # Patterns commonly found in WhatsApp message payloads.
 # These help identify potential message fragments in raw binary data.
-_TEXT_UTF8_PATTERN = re.compile(
-    rb"(?:(?:\xe2\x80[\x80-\x9f]|[\x20-\x7e\xc0-\xfd]){4,200})"
-)
+_TEXT_UTF8_PATTERN = re.compile(rb"(?:(?:\xe2\x80[\x80-\x9f]|[\x20-\x7e\xc0-\xfd]){4,200})")
 _PHONE_PATTERN = re.compile(rb"\+?\d{7,15}")
 _URL_PATTERN = re.compile(rb"https?://[\x20-\x7e]{10,200}")
 
@@ -167,8 +165,7 @@ class SQLiteCarver:
                 "UTF-8 text runs may be false positives from other application data.",
                 "WAL frames may contain current (non-deleted) data interspersed "
                 "with deleted content.",
-                "Freelist pages are reuse candidates; content may have been "
-                "partially overwritten.",
+                "Freelist pages are reuse candidates; content may have been partially overwritten.",
             ),
         )
 
@@ -198,7 +195,6 @@ class SQLiteCarver:
         offset = wal_header_size
         frame_index = 0
         while offset + frame_size <= len(data) and len(fragments) < budget:
-
             page_data = data[offset + 24 : offset + 24 + page_size]
 
             # Scan the page data for message-like content.
@@ -314,19 +310,21 @@ class SQLiteCarver:
             content_hash = hashlib.sha256(text_bytes).hexdigest()
             confidence = self._classify_confidence(text)
 
-            fragments.append(CarvedFragment(
-                source_file=path.name,
-                offset_bytes=match.start(),
-                length_bytes=len(text_bytes),
-                fragment_type="utf8_text_run",
-                confidence=confidence,
-                content_preview=text[:200],
-                content_sha256=content_hash,
-                metadata={
-                    "encoding": "utf-8",
-                    "text_length": len(text),
-                },
-            ))
+            fragments.append(
+                CarvedFragment(
+                    source_file=path.name,
+                    offset_bytes=match.start(),
+                    length_bytes=len(text_bytes),
+                    fragment_type="utf8_text_run",
+                    confidence=confidence,
+                    content_preview=text[:200],
+                    content_sha256=content_hash,
+                    metadata={
+                        "encoding": "utf-8",
+                        "text_length": len(text),
+                    },
+                )
+            )
 
         # Scan for phone numbers.
         for match in _PHONE_PATTERN.finditer(data):
@@ -334,16 +332,18 @@ class SQLiteCarver:
                 break
             phone_bytes = match.group()
             content_hash = hashlib.sha256(phone_bytes).hexdigest()
-            fragments.append(CarvedFragment(
-                source_file=path.name,
-                offset_bytes=match.start(),
-                length_bytes=len(phone_bytes),
-                fragment_type="phone_number",
-                confidence="medium",
-                content_preview=phone_bytes.decode("latin-1", errors="replace"),
-                content_sha256=content_hash,
-                metadata={"pattern": "phone_number"},
-            ))
+            fragments.append(
+                CarvedFragment(
+                    source_file=path.name,
+                    offset_bytes=match.start(),
+                    length_bytes=len(phone_bytes),
+                    fragment_type="phone_number",
+                    confidence="medium",
+                    content_preview=phone_bytes.decode("latin-1", errors="replace"),
+                    content_sha256=content_hash,
+                    metadata={"pattern": "phone_number"},
+                )
+            )
 
         # Scan for URLs.
         for match in _URL_PATTERN.finditer(data):
@@ -351,16 +351,18 @@ class SQLiteCarver:
                 break
             url_bytes = match.group()
             content_hash = hashlib.sha256(url_bytes).hexdigest()
-            fragments.append(CarvedFragment(
-                source_file=path.name,
-                offset_bytes=match.start(),
-                length_bytes=len(url_bytes),
-                fragment_type="url",
-                confidence="medium",
-                content_preview=url_bytes.decode("ascii", errors="replace"),
-                content_sha256=content_hash,
-                metadata={"pattern": "url"},
-            ))
+            fragments.append(
+                CarvedFragment(
+                    source_file=path.name,
+                    offset_bytes=match.start(),
+                    length_bytes=len(url_bytes),
+                    fragment_type="url",
+                    confidence="medium",
+                    content_preview=url_bytes.decode("ascii", errors="replace"),
+                    content_sha256=content_hash,
+                    metadata={"pattern": "url"},
+                )
+            )
 
         return fragments
 
@@ -390,20 +392,22 @@ class SQLiteCarver:
             content_hash = hashlib.sha256(text_bytes).hexdigest()
             confidence = self._classify_confidence(text)
 
-            fragments.append(CarvedFragment(
-                source_file=source_name,
-                offset_bytes=base_offset + match.start(),
-                length_bytes=len(text_bytes),
-                fragment_type=f"{region_type}_text",
-                confidence=confidence,
-                content_preview=text[:200],
-                content_sha256=content_hash,
-                metadata={
-                    "region_type": region_type,
-                    "encoding": "utf-8",
-                    "text_length": len(text),
-                },
-            ))
+            fragments.append(
+                CarvedFragment(
+                    source_file=source_name,
+                    offset_bytes=base_offset + match.start(),
+                    length_bytes=len(text_bytes),
+                    fragment_type=f"{region_type}_text",
+                    confidence=confidence,
+                    content_preview=text[:200],
+                    content_sha256=content_hash,
+                    metadata={
+                        "region_type": region_type,
+                        "encoding": "utf-8",
+                        "text_length": len(text),
+                    },
+                )
+            )
         return fragments
 
     @staticmethod
@@ -459,7 +463,13 @@ class SQLiteCarver:
         if re.fullmatch(r"https?://[\x20-\x7e]{10,200}", stripped):
             return "medium"
         # Messages with common WhatsApp patterns get high confidence.
-        if any(marker in stripped for marker in ("@s.whatsapp.net", "WhatsApp",)):
+        if any(
+            marker in stripped
+            for marker in (
+                "@s.whatsapp.net",
+                "WhatsApp",
+            )
+        ):
             return "high"
         # Messages with mixed alphanumeric content are medium.
         has_alpha = any(c.isalpha() for c in stripped)

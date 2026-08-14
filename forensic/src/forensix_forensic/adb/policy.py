@@ -357,9 +357,13 @@ class AdbCommandPolicy:
         return ApprovedAdbCommand(
             AdbOperation.BACKUP_PACKAGE,
             (
-                "-s", serial,
-                "backup", "-f", str(dest),
-                "-noapk", package_name,
+                "-s",
+                serial,
+                "backup",
+                "-f",
+                str(dest),
+                "-noapk",
+                package_name,
             ),
             ADB_BACKUP_TIMEOUT_SECONDS,
         )
@@ -478,10 +482,9 @@ def _validate_inventory_relative_path(relative_path: str) -> None:
 # ---------------------------------------------------------------------------
 
 _APK_PATH_CHARS = frozenset(
-    "abcdefghijklmnopqrstuvwxyz"
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    "0123456789._-/\\: "
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/\\: "
 )
+
 
 def _validate_apk_path(apk_path: str) -> None:
     """Validate an APK file path for the install-package operation."""
@@ -496,6 +499,7 @@ def _validate_apk_path(apk_path: str) -> None:
 def _validate_package_name(package_name: str) -> None:
     """Validate an Android package name (e.g. com.whatsapp)."""
     import re
+
     if not package_name or len(package_name) > 255:
         raise ValueError("Package name must contain between 1 and 255 characters")
     if not re.fullmatch(r"[a-zA-Z0-9._]+", package_name):
@@ -517,9 +521,24 @@ def _validate_root_command(command: str) -> None:
     if "\x00" in command or "\r" in command or "\n" in command:
         raise ValueError("Root command contains a prohibited control character")
     allowed_prefixes = (
-        "cat ", "cp ", "chmod ", "chown ", "ls ", "stat ", "dd ",
-        "tar ", "dbtool ", "sqlite3 ", "sha256sum ", "md5sum ",
-        "am ", "pm ", "input ", "getprop ", "setprop ", "id ",
+        "cat ",
+        "cp ",
+        "chmod ",
+        "chown ",
+        "ls ",
+        "stat ",
+        "dd ",
+        "tar ",
+        "dbtool ",
+        "sqlite3 ",
+        "sha256sum ",
+        "md5sum ",
+        "am ",
+        "pm ",
+        "input ",
+        "getprop ",
+        "setprop ",
+        "id ",
     )
     normalized = command.strip()
     if not any(normalized.startswith(prefix) for prefix in allowed_prefixes):

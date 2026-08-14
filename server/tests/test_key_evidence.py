@@ -78,9 +78,11 @@ def test_parsed_source_artifact_can_be_curated_and_removed(
     working_copy = EvidenceTwinService().create_working_copy(
         database, principal, case_id, source.id
     )
-    parsed = EvidenceExaminationService().run_native_parsers(
-        database, principal, case_id, source.id, working_copy.id
-    )[0].artifacts[0]
+    parsed = (
+        EvidenceExaminationService()
+        .run_native_parsers(database, principal, case_id, source.id, working_copy.id)[0]
+        .artifacts[0]
+    )
 
     with database.session() as session:
         finding = KeyEvidenceService().promote(

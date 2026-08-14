@@ -904,9 +904,7 @@ class RecoveryCarvingResponse(BaseModel):
     case_id: str
     executed_by: str
     maturity: Literal["experimental"]
-    status: Literal[
-        "candidate_fragments_observed", "no_candidate_fragments", "unsupported"
-    ]
+    status: Literal["candidate_fragments_observed", "no_candidate_fragments", "unsupported"]
     fragment_count: int
     fragments: list[RecoveryFragmentResponse]
     input_locators: list[str]

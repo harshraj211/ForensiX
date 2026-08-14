@@ -25,15 +25,25 @@ class DeviceCapabilityAssessor:
             raise AdbDeviceNotAuthorizedError(transport.state.value)
 
         properties = await self._adb_client.get_properties(serial)
-        
+
         try:
             battery_info = await self._adb_client.get_battery(serial)
             battery_level_str = battery_info.get("level")
-            battery_level = int(battery_level_str) if battery_level_str and battery_level_str.isdigit() else None
-            
-            # Map Android BatteryManager constants for status if available (e.g., 2=charging, 3=discharging, 4=not charging, 5=full)
+            battery_level = (
+                int(battery_level_str)
+                if battery_level_str and battery_level_str.isdigit()
+                else None
+            )
+
+            # Map the Android BatteryManager status constants when the value is available.
             status_val = battery_info.get("status")
-            status_map = {"1": "unknown", "2": "charging", "3": "discharging", "4": "not charging", "5": "full"}
+            status_map = {
+                "1": "unknown",
+                "2": "charging",
+                "3": "discharging",
+                "4": "not charging",
+                "5": "full",
+            }
             battery_status = status_map.get(status_val, status_val) if status_val else None
         except Exception:
             battery_level = None

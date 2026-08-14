@@ -85,14 +85,18 @@ def test_storyboard_links_key_evidence_timeline_and_explicit_entities(
         case_id,
         source.id,
     )
-    parsed = EvidenceExaminationService().run_native_parsers(
-        database,
-        principal,
-        case_id,
-        source.id,
-        working_copy.id,
-        parser_ids=("android.telephony.sms",),
-    )[0].artifacts[0]
+    parsed = (
+        EvidenceExaminationService()
+        .run_native_parsers(
+            database,
+            principal,
+            case_id,
+            source.id,
+            working_copy.id,
+            parser_ids=("android.telephony.sms",),
+        )[0]
+        .artifacts[0]
+    )
     with database.session() as session:
         finding = KeyEvidenceService().promote(
             session,
@@ -125,8 +129,7 @@ def test_storyboard_links_key_evidence_timeline_and_explicit_entities(
     assert storyboard.findings[0].timeline_event_ids == (storyboard.moments[0].id,)
     assert "phone: +15550001111" in storyboard.findings[0].related_entities
     assert any(
-        lead.entity_type == "phone" and lead.label == "+15550001111"
-        for lead in storyboard.leads
+        lead.entity_type == "phone" and lead.label == "+15550001111" for lead in storyboard.leads
     )
     assert storyboard.moments[0].key_evidence_linked is True
     assert storyboard.moments[0].finding_ids == (finding.id,)

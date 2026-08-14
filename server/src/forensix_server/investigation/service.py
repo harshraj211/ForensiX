@@ -396,8 +396,7 @@ def _attention_items(
                 severity="info",
                 title="Case is in a review state",
                 detail=(
-                    "Collection actions are restricted until an authorized user reopens "
-                    "the case."
+                    "Collection actions are restricted until an authorized user reopens the case."
                 ),
             )
         )

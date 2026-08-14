@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -39,7 +40,7 @@ SIGNAL_PREFS_FILENAME = "TextSecurePreferences.xml"
 _PASSPHRASE_PATTERNS = (
     re.compile(r'name="pref_key_database_passphrase"[^>]*value="([^"]+)"'),
     re.compile(r'name="sqlcipher_key"[^>]*value="([^"]+)"'),
-    re.compile(r'>([0-9a-fA-F]{64,128})<'),
+    re.compile(r">([0-9a-fA-F]{64,128})<"),
 )
 
 
@@ -124,9 +125,7 @@ class SignalRootedExtractor:
             # Step 2: copy shared preferences
             # ------------------------------------------------------------------
             await self._log(timeline, "STEP", "Copying Signal shared preferences")
-            prefs_cmd = (
-                f"cat '{SIGNAL_PREFS_REMOTE}/{SIGNAL_PREFS_FILENAME}'"
-            )
+            prefs_cmd = f"cat '{SIGNAL_PREFS_REMOTE}/{SIGNAL_PREFS_FILENAME}'"
             prefs_content = await self._adb.root_exec(serial, prefs_cmd)
             prefs_path.write_text(prefs_content, encoding="utf-8")
             prefs_hash = await asyncio.to_thread(self._hash_file, prefs_path)
@@ -139,9 +138,7 @@ class SignalRootedExtractor:
                     case_id=case_id,
                 )
             )
-            await self._log(
-                timeline, "STEP", f"Preferences saved: {prefs_path.name}"
-            )
+            await self._log(timeline, "STEP", f"Preferences saved: {prefs_path.name}")
 
             # ------------------------------------------------------------------
             # Step 3: copy the SQLCipher database
@@ -178,11 +175,13 @@ class SignalRootedExtractor:
                         )
                     )
                 except Exception:
-                    pass  # WAL/SHM may not exist
+                    await self._log(
+                        timeline,
+                        "INFO",
+                        f"Optional Signal database sidecar {suffix} was not available.",
+                    )
 
-            await self._log(
-                timeline, "STEP", f"Database saved: {db_path.name}"
-            )
+            await self._log(timeline, "STEP", f"Database saved: {db_path.name}")
 
             # ------------------------------------------------------------------
             # Step 4: extract the passphrase from preferences
@@ -191,15 +190,12 @@ class SignalRootedExtractor:
             passphrase = self._extract_passphrase(prefs_content)
             if passphrase:
                 passphrase_hash = sha256(passphrase.encode("utf-8")).hexdigest()
-                await self._log(
-                    timeline, "STEP", "Passphrase extracted from preferences"
-                )
+                await self._log(timeline, "STEP", "Passphrase extracted from preferences")
             else:
                 await self._log(
                     timeline,
                     "WARN",
-                    "No passphrase found in Signal preferences; "
-                    "decryption will not be attempted.",
+                    "No passphrase found in Signal preferences; decryption will not be attempted.",
                 )
 
             # ------------------------------------------------------------------
@@ -276,16 +272,12 @@ class SignalRootedExtractor:
             if match:
                 candidate = match.group(1).strip()
                 # Validate it looks like a hex passphrase
-                if len(candidate) >= 32 and all(
-                    c in "0123456789abcdefABCDEF" for c in candidate
-                ):
+                if len(candidate) >= 32 and all(c in "0123456789abcdefABCDEF" for c in candidate):
                     return candidate.lower()
         return None
 
     @staticmethod
-    def _decrypt_sqlcipher(
-        db_path: Path, passphrase: str, dest_dir: Path
-    ) -> Path | None:
+    def _decrypt_sqlcipher(db_path: Path, passphrase: str, dest_dir: Path) -> Path | None:
         """Decrypt a SQLCipher database using the extracted passphrase.
 
         Returns the decrypted file path on success, ``None`` on failure.
@@ -293,7 +285,7 @@ class SignalRootedExtractor:
         try:
             # Try pysqlcipher3 first (preferred for SQLCipher 4).
             try:
-                from pysqlcipher3 import dbapi2 as sqlcipher
+                from pysqlcipher3 import dbapi2 as sqlcipher  # type: ignore[import-not-found]
 
                 conn = sqlcipher.connect(str(db_path))
                 conn.execute(f"PRAGMA key = \"x'{passphrase}'\"")
@@ -311,10 +303,14 @@ class SignalRootedExtractor:
             # Fallback: try sqlcipher CLI tool.
             import subprocess
 
+            sqlcipher_path = shutil.which("sqlcipher")
+            if sqlcipher_path is None:
+                return None
+
             out_path = dest_dir / "signal_decrypted.db"
             result = subprocess.run(  # noqa: S603
                 [
-                    "sqlcipher",
+                    sqlcipher_path,
                     str(db_path),
                     f"PRAGMA key = \"x'{passphrase}'\";",
                     ".dump",
@@ -338,11 +334,11 @@ class SignalRootedExtractor:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    async def _log(
-        self, timeline: list[dict[str, str]], level: str, message: str
-    ) -> None:
-        timeline.append({
-            "timestamp": datetime.now(UTC).isoformat(),
-            "level": level,
-            "message": message,
-        })
+    async def _log(self, timeline: list[dict[str, str]], level: str, message: str) -> None:
+        timeline.append(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": level,
+                "message": message,
+            }
+        )

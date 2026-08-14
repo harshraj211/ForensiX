@@ -120,9 +120,7 @@ class AdbClient(Protocol):
 
     async def uninstall_package(self, serial: str, package_name: str) -> bool: ...
 
-    async def push_file(
-        self, serial: str, local_path: Path, remote_path: str
-    ) -> bool: ...
+    async def push_file(self, serial: str, local_path: Path, remote_path: str) -> bool: ...
 
     async def root_exec(self, serial: str, command: str) -> str: ...
 
@@ -155,6 +153,7 @@ class SystemAdbClient:
 
     async def get_battery(self, serial: str) -> dict[str, str]:
         from .parser import parse_dumpsys_battery
+
         result = await self._run(AdbCommandPolicy.get_battery(serial))
         if result.exit_code != 0:
             raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
@@ -444,9 +443,7 @@ class SystemAdbClient:
         combined = " ".join((result.stdout, result.stderr)).lower()
         return result.exit_code == 0 or "success" in combined
 
-    async def push_file(
-        self, serial: str, local_path: Path, remote_path: str
-    ) -> bool:
+    async def push_file(self, serial: str, local_path: Path, remote_path: str) -> bool:
         """Push a local file to the device filesystem."""
         result = await self._run(AdbCommandPolicy.push_file(serial, local_path, remote_path))
         combined = " ".join((result.stdout, result.stderr)).lower()

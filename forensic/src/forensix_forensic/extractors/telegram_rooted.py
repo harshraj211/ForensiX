@@ -138,9 +138,7 @@ class TelegramRootedExtractor:
                     cat_cmd = f"cat '{remote}'"
                     content = await self._adb.root_exec(serial, cat_cmd)
                     if content:
-                        dest.write_text(
-                            content, encoding="utf-8", errors="surrogateescape"
-                        )
+                        dest.write_text(content, encoding="utf-8", errors="surrogateescape")
                         file_hash = await asyncio.to_thread(self._hash_file, dest)
                         file_size = dest.stat().st_size
                         db_total_size += file_size
@@ -180,9 +178,7 @@ class TelegramRootedExtractor:
             try:
                 ls_cmd = f"ls '{prefs_dir}'"
                 ls_output = await self._adb.root_exec(serial, ls_cmd)
-                pref_files = [
-                    f.strip() for f in ls_output.strip().split("\n") if f.strip()
-                ]
+                pref_files = [f.strip() for f in ls_output.strip().split("\n") if f.strip()]
                 for pref_file in pref_files[:10]:
                     remote = f"{prefs_dir}/{pref_file}"
                     dest = dest_dir / f"prefs_{pref_file}"
@@ -190,9 +186,7 @@ class TelegramRootedExtractor:
                         cat_cmd = f"cat '{remote}'"
                         content = await self._adb.root_exec(serial, cat_cmd)
                         if content:
-                            dest.write_text(
-                                content, encoding="utf-8", errors="surrogateescape"
-                            )
+                            dest.write_text(content, encoding="utf-8", errors="surrogateescape")
                             pref_hash = await asyncio.to_thread(self._hash_file, dest)
                             await self._manifest.add_entry(
                                 ManifestEntry(
@@ -204,9 +198,17 @@ class TelegramRootedExtractor:
                                 )
                             )
                     except Exception:
-                        pass
+                        await self._log(
+                            timeline,
+                            "WARN",
+                            "A Telegram shared-preferences file could not be copied.",
+                        )
             except Exception:
-                pass
+                await self._log(
+                    timeline,
+                    "WARN",
+                    "The Telegram shared-preferences directory could not be listed.",
+                )
 
             success = True
 
@@ -243,9 +245,7 @@ class TelegramRootedExtractor:
         for pkg_id, display in TELEGRAM_PACKAGES:
             if pkg_id in packages:
                 return pkg_id, display
-        raise RuntimeError(
-            "No recognised Telegram package found on this device."
-        )
+        raise RuntimeError("No recognised Telegram package found on this device.")
 
     @staticmethod
     def _hash_file(path: Path) -> str:
@@ -255,11 +255,11 @@ class TelegramRootedExtractor:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    async def _log(
-        self, timeline: list[dict[str, str]], level: str, message: str
-    ) -> None:
-        timeline.append({
-            "timestamp": datetime.now(UTC).isoformat(),
-            "level": level,
-            "message": message,
-        })
+    async def _log(self, timeline: list[dict[str, str]], level: str, message: str) -> None:
+        timeline.append(
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "level": level,
+                "message": message,
+            }
+        )

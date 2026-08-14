@@ -185,6 +185,7 @@ class StreamingManifestCollector:
 # Audit-trail helpers
 # ---------------------------------------------------------------------------
 
+
 def _read_previous_audit_hash(work_dir: Path) -> str:
     """Read the hash of the most recent audit-trail entry."""
     audit_path = work_dir / AUDIT_TRAIL_FILENAME

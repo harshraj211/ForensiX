@@ -1,6 +1,14 @@
 """Explicit state graph for durable local jobs."""
 
 from enum import StrEnum
+from typing import Protocol, TypeVar
+
+
+class PrioritizableInventoryItem(Protocol):
+    relative_path: str
+
+
+InventoryItemT = TypeVar("InventoryItemT", bound=PrioritizableInventoryItem)
 
 
 class JobType(StrEnum):
@@ -91,11 +99,13 @@ class PriorityScheduler:
     """Reorders acquisition tasks based on device capability (e.g., low battery)."""
 
     @staticmethod
-    def prioritize_inventory_items(items: list, battery_level: int | None) -> list:
+    def prioritize_inventory_items(
+        items: list[InventoryItemT], battery_level: int | None
+    ) -> list[InventoryItemT]:
         if battery_level is None or battery_level >= 20:
             return items
 
-        def priority_score(item) -> int:
+        def priority_score(item: InventoryItemT) -> int:
             path = str(item.relative_path).lower()
             if "device_info" in path or "metadata" in path:
                 return 10

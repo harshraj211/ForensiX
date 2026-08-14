@@ -137,16 +137,12 @@ class InvestigationStoryboardService:
             (item.target_type, item.target_id): item for item in key_evidence.items
         }
         event_findings: dict[str, tuple[str, ...]] = {}
-        finding_timeline_ids: dict[str, list[str]] = {
-            item.id: [] for item in key_evidence.items
-        }
+        finding_timeline_ids: dict[str, list[str]] = {item.id: [] for item in key_evidence.items}
         for event in timeline.items:
             if isinstance(event, TimelineEventRecord):
                 finding = finding_by_target.get(("artifact", event.artifact_id))
             else:
-                finding = finding_by_target.get(
-                    ("source_artifact", event.source_artifact_id)
-                )
+                finding = finding_by_target.get(("source_artifact", event.source_artifact_id))
             finding_ids = (finding.id,) if finding else ()
             event_findings[event.id] = finding_ids
             if finding:
@@ -283,10 +279,7 @@ def _relationship_leads(
     finding_nodes: dict[str, str] = {}
     for finding in findings:
         for node in graph.nodes:
-            if (
-                finding.target_type == "artifact"
-                and node.artifact_id == finding.target_id
-            ) or (
+            if (finding.target_type == "artifact" and node.artifact_id == finding.target_id) or (
                 finding.target_type == "source_artifact"
                 and node.source_artifact_id == finding.target_id
             ):
@@ -317,9 +310,7 @@ def _relationship_leads(
         finding_id_set = entry["finding_ids"]
         if isinstance(finding_id_set, set):
             finding_id_set.add(finding_id)
-        finding_entities.setdefault(finding_id, set()).add(
-            f"{other.node_type}: {other.label}"
-        )
+        finding_entities.setdefault(finding_id, set()).add(f"{other.node_type}: {other.label}")
     leads = [
         StoryboardLead(
             id=str(value["node_id"]),
@@ -350,8 +341,7 @@ def _sections(findings: list[KeyEvidenceItem]) -> tuple[StoryboardSection, ...]:
                 id=category,
                 title=f"{category.replace('_', ' ').title()} evidence",
                 summary=(
-                    f"{len(items)} examiner-curated finding(s), including "
-                    f"{priority_text} item(s)."
+                    f"{len(items)} examiner-curated finding(s), including {priority_text} item(s)."
                 ),
                 finding_ids=tuple(item.id for item in items),
                 critical_count=critical,

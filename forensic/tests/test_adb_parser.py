@@ -62,7 +62,10 @@ def test_parse_properties_and_packages() -> None:
 
 def test_parse_dumpsys_battery() -> None:
     from forensix_forensic.adb.parser import parse_dumpsys_battery
-    output = "Current Battery Service state:\n  AC powered: false\n  USB powered: true\n  level: 15\n"
+
+    output = (
+        "Current Battery Service state:\n  AC powered: false\n  USB powered: true\n  level: 15\n"
+    )
     result = parse_dumpsys_battery(output)
     assert result.get("level") == "15"
     assert result.get("AC powered") == "false"

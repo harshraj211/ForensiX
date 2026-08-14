@@ -138,9 +138,7 @@ class KeyEvidenceService:
             if target_type == "artifact"
             else KeyEvidenceRecord.source_artifact_id
         )
-        record = session.scalar(
-            select(KeyEvidenceRecord).where(target_column == target_id)
-        )
+        record = session.scalar(select(KeyEvidenceRecord).where(target_column == target_id))
         now = datetime.now(UTC)
         normalized_reason = _optional_text(reason, 2000)
         if record is None:
@@ -217,6 +215,7 @@ class KeyEvidenceService:
         target_type: KeyEvidenceTargetType,
         target_id: str,
     ) -> ArtifactRecord | EvidenceSourceArtifactRecord:
+        target: ArtifactRecord | EvidenceSourceArtifactRecord | None
         if target_type == "artifact":
             target = session.get(ArtifactRecord, target_id)
         else:
@@ -234,6 +233,7 @@ class KeyEvidenceService:
         tags: list[str] = []
         note_count = 0
         latest_note: str | None = None
+        event_time: datetime | None
         if isinstance(target, ArtifactRecord):
             tags = list(
                 session.scalars(

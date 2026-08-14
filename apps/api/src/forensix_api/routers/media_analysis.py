@@ -77,9 +77,7 @@ def analyze_artifact(
     authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
     database: Annotated[Database, Depends(get_database)],
 ) -> MediaAnalysisResponse:
-    record = MediaAnalysisService().analyze(
-        database, authenticated.principal, case_id, artifact_id
-    )
+    record = MediaAnalysisService().analyze(database, authenticated.principal, case_id, artifact_id)
     return _analysis_response(record)
 
 
@@ -115,9 +113,7 @@ def find_similar(
 
 def _analysis_response(record: MediaAnalysisRecord) -> MediaAnalysisResponse:
     media_kind = cast(Literal["image", "video", "audio"], record.media_kind)
-    analysis_status = cast(
-        Literal["analyzed", "unsupported", "rejected", "failed"], record.status
-    )
+    analysis_status = cast(Literal["analyzed", "unsupported", "rejected", "failed"], record.status)
     ocr_status = cast(
         Literal["not_attempted", "completed", "unavailable", "empty"], record.ocr_status
     )

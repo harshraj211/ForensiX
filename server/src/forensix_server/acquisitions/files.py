@@ -32,6 +32,7 @@ from forensix_server.db import (
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     AcquisitionPlanRecord,
+    CaseDeviceAssessmentRecord,
     CaseDeviceRecord,
     CaseEventRecord,
     Database,
@@ -139,7 +140,9 @@ class AcquisitionFileService:
     ) -> BulkAcquireResult:
         """Acquire multiple inventory items sequentially with per-item outcomes."""
         ordered_ids = self._normalize_batch_item_ids(item_ids)
-        ordered_ids = self._validate_batch_membership(database, principal, case_id, job_id, ordered_ids)
+        ordered_ids = self._validate_batch_membership(
+            database, principal, case_id, job_id, ordered_ids
+        )
         batch_id = str(uuid4())
         self._record_batch_event(
             database,
@@ -576,6 +579,7 @@ class AcquisitionFileService:
                 battery_level = None
 
             from forensix_server.jobs.domain import PriorityScheduler
+
             sorted_items = PriorityScheduler.prioritize_inventory_items(items, battery_level)
             return [item.id for item in sorted_items]
 

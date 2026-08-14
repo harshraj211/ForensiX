@@ -85,9 +85,7 @@ def upgrade() -> None:
     )
     for column in _INDEXED_COLUMNS:
         op.create_index(f"ix_media_analyses_{column}", "media_analyses", [column])
-    op.create_index(
-        "ix_media_analyses_case_kind", "media_analyses", ["case_id", "media_kind"]
-    )
+    op.create_index("ix_media_analyses_case_kind", "media_analyses", ["case_id", "media_kind"])
     op.create_index(
         "ix_media_analyses_perceptual", "media_analyses", ["case_id", "perceptual_hash"]
     )

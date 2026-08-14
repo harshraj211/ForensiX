@@ -53,9 +53,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("run_hash", name="uq_evidence_recovery_carving_hash"),
-        sa.UniqueConstraint(
-            "working_copy_id", name="uq_evidence_recovery_carving_working_copy"
-        ),
+        sa.UniqueConstraint("working_copy_id", name="uq_evidence_recovery_carving_working_copy"),
     )
     for column in (
         "case_id",

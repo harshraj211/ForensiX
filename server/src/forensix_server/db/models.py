@@ -1475,9 +1475,7 @@ class EvidenceRecoveryCarvingRecord(Base):
             name="ck_evidence_recovery_carving_status",
         ),
         CheckConstraint("fragment_count >= 0", name="ck_evidence_recovery_carving_count"),
-        CheckConstraint(
-            "maturity = 'experimental'", name="ck_evidence_recovery_carving_maturity"
-        ),
+        CheckConstraint("maturity = 'experimental'", name="ck_evidence_recovery_carving_maturity"),
         UniqueConstraint("working_copy_id", name="uq_evidence_recovery_carving_working_copy"),
         UniqueConstraint("run_hash", name="uq_evidence_recovery_carving_hash"),
     )
@@ -1530,9 +1528,7 @@ class EvidenceExternalRecoveryRunRecord(Base):
         CheckConstraint(
             "recovered_file_count >= 0", name="ck_evidence_external_recovery_file_count"
         ),
-        CheckConstraint(
-            "maturity = 'experimental'", name="ck_evidence_external_recovery_maturity"
-        ),
+        CheckConstraint("maturity = 'experimental'", name="ck_evidence_external_recovery_maturity"),
         UniqueConstraint(
             "working_copy_id", "tool_id", name="uq_evidence_external_recovery_working_copy_tool"
         ),
@@ -2083,12 +2079,8 @@ class MediaAnalysisRecord(Base):
             "ocr_status IN ('not_attempted', 'completed', 'unavailable', 'empty')",
             name="ck_media_analyses_ocr_status",
         ),
-        CheckConstraint(
-            "width IS NULL OR width >= 0", name="ck_media_analyses_width"
-        ),
-        CheckConstraint(
-            "height IS NULL OR height >= 0", name="ck_media_analyses_height"
-        ),
+        CheckConstraint("width IS NULL OR width >= 0", name="ck_media_analyses_width"),
+        CheckConstraint("height IS NULL OR height >= 0", name="ck_media_analyses_height"),
         UniqueConstraint("artifact_id", name="uq_media_analyses_artifact"),
         UniqueConstraint("analysis_hash", name="uq_media_analyses_hash"),
         Index("ix_media_analyses_case_kind", "case_id", "media_kind"),

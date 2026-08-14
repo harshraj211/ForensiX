@@ -369,15 +369,11 @@ class EvidenceExaminationService:
             raise EvidenceTwinError("The artifact status filter is unsupported.")
         normalized_query = (query or "").strip()
         if len(normalized_query) > MAX_SEARCH_QUERY_LENGTH:
-            raise EvidenceTwinError(
-                "The artifact search query cannot exceed 256 characters."
-            )
+            raise EvidenceTwinError("The artifact search query cannot exceed 256 characters.")
         with database.session() as session:
             CaseService().get(session, principal, case_id)
             if not principal.can(Permission.EVIDENCE_ANALYZE):
-                raise CaseAccessDeniedError(
-                    "The current user cannot analyze case evidence."
-                )
+                raise CaseAccessDeniedError("The current user cannot analyze case evidence.")
             conditions = [EvidenceSourceArtifactRecord.case_id == case_id]
             if category:
                 conditions.append(EvidenceSourceArtifactRecord.category == category)

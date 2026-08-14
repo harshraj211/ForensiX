@@ -1,7 +1,7 @@
 """Case-wide key-evidence curation across both artifact families."""
 
 from dataclasses import asdict
-from typing import Annotated, Literal, cast
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
@@ -18,9 +18,7 @@ from forensix_api.schemas import (
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.db import Database
 from forensix_server.evidence import (
-    KeyEvidencePriority,
     KeyEvidenceService,
-    KeyEvidenceTargetType,
 )
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/key-evidence", tags=["key-evidence"])
@@ -41,7 +39,7 @@ def list_key_evidence(
             authenticated.principal,
             case_id,
             query=query,
-            priority=cast(KeyEvidencePriority | None, priority),
+            priority=priority,
             category=category,
         )
         return KeyEvidenceListResponse(
@@ -68,9 +66,9 @@ def promote_key_evidence(
             session,
             authenticated.principal,
             case_id,
-            target_type=cast(KeyEvidenceTargetType, request.target_type),
+            target_type=request.target_type,
             target_id=request.target_id,
-            priority=cast(KeyEvidencePriority, request.priority),
+            priority=request.priority,
             reason=request.reason,
         )
         return KeyEvidenceItemResponse(**asdict(item))

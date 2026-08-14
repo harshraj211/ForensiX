@@ -29,6 +29,7 @@ router = APIRouter(
 # Request / Response schemas
 # ---------------------------------------------------------------------------
 
+
 class WhatsAppDowngradeRequest(BaseModel):
     """Request body for the WhatsApp downgrade-attack extraction."""
 
@@ -184,6 +185,7 @@ class ExtractionManifestResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post(
     "/whatsapp-downgrade",

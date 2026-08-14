@@ -427,14 +427,18 @@ def get_case_completeness(
     with database.session() as session:
         CaseService().get(session, authenticated.principal, case_id)
 
-        query = select(
-            AcquiredEvidenceFileRecord.status,
-            AcquiredEvidenceFileRecord.error_message,
-            AcquisitionInventoryItemRecord.relative_path,
-        ).join(
-            AcquisitionInventoryItemRecord,
-            AcquiredEvidenceFileRecord.inventory_item_id == AcquisitionInventoryItemRecord.id,
-        ).where(AcquiredEvidenceFileRecord.case_id == case_id)
+        query = (
+            select(
+                AcquiredEvidenceFileRecord.status,
+                AcquiredEvidenceFileRecord.error_message,
+                AcquisitionInventoryItemRecord.relative_path,
+            )
+            .join(
+                AcquisitionInventoryItemRecord,
+                AcquiredEvidenceFileRecord.inventory_item_id == AcquisitionInventoryItemRecord.id,
+            )
+            .where(AcquiredEvidenceFileRecord.case_id == case_id)
+        )
 
         results = session.execute(query).all()
 

@@ -8,7 +8,6 @@ from pathlib import Path
 from forensix_forensic.adb import (
     AdbBinaryResolver,
     AdbClient,
-    AdbClient,
     SubprocessAdbRunner,
     SystemAdbClient,
 )

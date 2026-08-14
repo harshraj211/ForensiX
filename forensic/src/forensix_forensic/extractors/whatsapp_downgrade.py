@@ -35,9 +35,7 @@ from .streaming_manifest import ManifestEntry, StreamingManifestCollector
 
 # The vulnerable WhatsApp version that still allows ADB backup.
 VULNERABLE_VERSION_CODE = "2.11.431"
-VULNERABLE_APK_BASE_URL = (
-    "https://web.archive.org/web/2023/https://www.whatsapp.com/android/"
-)
+VULNERABLE_APK_BASE_URL = "https://web.archive.org/web/2023/https://www.whatsapp.com/android/"
 
 WHATSAPP_PACKAGE = "com.whatsapp"
 MSGSTORE_DB_NAME = "msgstore.db"
@@ -144,9 +142,7 @@ class WhatsAppDowngradeExtractor:
             # Step 3: issue ``adb backup`` and capture the ``.ab`` file
             # ------------------------------------------------------------------
             await self._log(timeline, "STEP", "Issuing ADB backup command")
-            backup_result = await self._adb.backup_package(
-                serial, WHATSAPP_PACKAGE, backup_path
-            )
+            backup_result = await self._adb.backup_package(serial, WHATSAPP_PACKAGE, backup_path)
             await self._log(
                 timeline,
                 "STEP",
@@ -176,8 +172,7 @@ class WhatsAppDowngradeExtractor:
                     await self._log(
                         timeline,
                         "WARN",
-                        "Could not reinstall original version; "
-                        "operator must restore manually.",
+                        "Could not reinstall original version; operator must restore manually.",
                     )
                 else:
                     await self._log(timeline, "STEP", "Original WhatsApp version reinstalled")
@@ -473,9 +468,7 @@ class WhatsAppDowngradeExtractor:
                 digest.update(chunk)
         return digest.hexdigest()
 
-    async def _log(
-        self, timeline: list[dict[str, str]], level: str, message: str
-    ) -> None:
+    async def _log(self, timeline: list[dict[str, str]], level: str, message: str) -> None:
         entry = {
             "timestamp": datetime.now(UTC).isoformat(),
             "level": level,

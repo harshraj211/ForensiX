@@ -392,10 +392,7 @@ class EvidenceRecoveryCarvingService:
             elif detected_type == "sqlite":
                 candidate = assess_sqlite_recovery_file(source_path, "working_copy")
                 source_size = source_path.stat().st_size
-                if (
-                    candidate.source_kind != "unknown"
-                    and source_size <= MAX_CARVING_INPUT_BYTES
-                ):
+                if candidate.source_kind != "unknown" and source_size <= MAX_CARVING_INPUT_BYTES:
                     inputs.append(_CarvingInput(source_path, "working_copy"))
                 elif source_size > MAX_CARVING_INPUT_BYTES:
                     skipped.append("working_copy")
@@ -410,9 +407,8 @@ class EvidenceRecoveryCarvingService:
         finally:
             if workspace is not None:
                 expected_parent = (data_dir / "tmp").resolve()
-                if (
-                    workspace.parent == expected_parent
-                    and workspace.name.startswith("recovery-carve-")
+                if workspace.parent == expected_parent and workspace.name.startswith(
+                    "recovery-carve-"
                 ):
                     shutil.rmtree(workspace, ignore_errors=True)
 

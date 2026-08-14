@@ -207,12 +207,16 @@ def test_priority_scheduler_reorders_items_on_low_battery() -> None:
 
     items = [i1, i2, i3]
 
-    assert [
-        i.id for i in PriorityScheduler.prioritize_inventory_items(items, None)
-    ] == ["1", "2", "3"]
-    assert [
-        i.id for i in PriorityScheduler.prioritize_inventory_items(items, 50)
-    ] == ["1", "2", "3"]
+    assert [i.id for i in PriorityScheduler.prioritize_inventory_items(items, None)] == [
+        "1",
+        "2",
+        "3",
+    ]
+    assert [i.id for i in PriorityScheduler.prioritize_inventory_items(items, 50)] == [
+        "1",
+        "2",
+        "3",
+    ]
 
     prioritized = PriorityScheduler.prioritize_inventory_items(items, 15)
     assert [i.id for i in prioritized] == ["2", "3", "1"]

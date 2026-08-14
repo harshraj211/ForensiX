@@ -39,6 +39,7 @@ MAX_WORKER_OUTPUT_BYTES = 64 * 1024
 ANALYZABLE_CATEGORIES = frozenset({"image"})
 CREATE_NO_WINDOW = cast(int, getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
+
 class MediaAnalysisError(CaseInvalidStateError):
     code = "MEDIA_ANALYSIS_INVALID"
 
@@ -95,9 +96,7 @@ class MediaAnalysisService:
             session.scalars(
                 select(MediaAnalysisRecord)
                 .where(*conditions)
-                .order_by(
-                    MediaAnalysisRecord.analyzed_at.desc(), MediaAnalysisRecord.id.desc()
-                )
+                .order_by(MediaAnalysisRecord.analyzed_at.desc(), MediaAnalysisRecord.id.desc())
                 .offset(offset)
                 .limit(limit)
             )
@@ -150,9 +149,7 @@ class MediaAnalysisService:
         with database.session() as session:
             artifact = self._writable_artifact(session, principal, case_id, artifact_id)
             existing = session.scalar(
-                select(MediaAnalysisRecord).where(
-                    MediaAnalysisRecord.artifact_id == artifact_id
-                )
+                select(MediaAnalysisRecord).where(MediaAnalysisRecord.artifact_id == artifact_id)
             )
             if existing is not None:
                 return existing
@@ -243,9 +240,7 @@ class MediaAnalysisService:
         with database.session() as session:
             artifact = self._writable_artifact(session, principal, case_id, artifact_id)
             existing = session.scalar(
-                select(MediaAnalysisRecord).where(
-                    MediaAnalysisRecord.artifact_id == artifact_id
-                )
+                select(MediaAnalysisRecord).where(MediaAnalysisRecord.artifact_id == artifact_id)
             )
             if existing is not None:
                 return existing

@@ -48,6 +48,7 @@ SAFE_EXIF_TAGS = frozenset(
 Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 warnings.simplefilter("error", Image.DecompressionBombWarning)
 
+
 class MediaAnalysisRejectedError(RuntimeError):
     """A stable, safe rejection intended for the parent process."""
 
@@ -103,9 +104,7 @@ def extract_exif(image: Image.Image) -> dict[str, Any]:
         result["exif"] = safe_exif
         result["camera_make"] = safe_exif.get("Make")
         result["camera_model"] = safe_exif.get("Model")
-        result["captured_at_raw"] = (
-            safe_exif.get("DateTimeOriginal") or safe_exif.get("DateTime")
-        )
+        result["captured_at_raw"] = safe_exif.get("DateTimeOriginal") or safe_exif.get("DateTime")
     try:
         gps = exif.get_ifd(ExifTags.IFD.GPSInfo)
     except (AttributeError, KeyError, OSError, TypeError, ValueError):
@@ -148,7 +147,7 @@ def attempt_ocr(image: Image.Image) -> dict[str, Any]:
     and no text is produced. This keeps the pipeline honest about its capabilities.
     """
     try:
-        import pytesseract  # type: ignore[import-untyped]
+        import pytesseract  # type: ignore[import-not-found]
     except Exception:
         return {"ocr_status": "unavailable", "ocr_engine": None, "ocr_text": None}
     try:
@@ -189,9 +188,7 @@ def classify(image: Image.Image, exif: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
     if exif.get("gps_present"):
-        labels.append(
-            {"label": "geotagged", "confidence": 0.9, "basis": "exif_gps_ifd_present"}
-        )
+        labels.append({"label": "geotagged", "confidence": 0.9, "basis": "exif_gps_ifd_present"})
     if ratio and (ratio >= 1.7 or ratio <= 0.6):
         labels.append(
             {
