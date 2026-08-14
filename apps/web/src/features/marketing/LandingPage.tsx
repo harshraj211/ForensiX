@@ -45,7 +45,7 @@ const arch = ["Android Device","ADB Layer","Acquisition Engine","Evidence Store"
 
 export function LandingPage() {
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-[#02070d] text-slate-100">
+    <div className="landing-refresh relative min-h-screen overflow-x-hidden bg-black text-neutral-100">
       <style>{STYLE}</style>
 
       {/* Background layers */}
