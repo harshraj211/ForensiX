@@ -23,6 +23,15 @@ class ApiErrorResponse(BaseModel):
     error: ApiErrorDetail
 
 
+class AiNarrativeResponse(BaseModel):
+    """Response from the Groq AI case narrative endpoint."""
+
+    narrative: str
+    model: str
+    generated_at: str
+    evidence_item_count: int
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok", "ready", "not_ready"]
     version: str

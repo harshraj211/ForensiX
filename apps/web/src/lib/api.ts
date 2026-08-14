@@ -246,6 +246,20 @@ export interface CommandCenterSummary {
   }>;
 }
 
+export interface ApkAnalysisResult {
+  package_name: string;
+  version_name: string;
+  version_code: string;
+  min_sdk_version: string;
+  target_sdk_version: string;
+  permissions: string[];
+  activities: string[];
+  services: string[];
+  receivers: string[];
+  providers: string[];
+  certificates: any[];
+}
+
 export interface CustodyEvent {
   id: string;
   case_id: string;
@@ -924,6 +938,21 @@ export interface KeyEvidenceList {
   category_facets: Record<string, number>;
 }
 
+export interface InvestigationStoryboard {
+  case_id: string;
+  findings: StoryboardFinding[];
+  gaps: StoryboardGap[];
+  priority_counts: Record<string, number>;
+  category_facets: Record<string, number>;
+}
+
+export interface AiNarrative {
+  narrative: string;
+  model: string;
+  generated_at: string;
+  evidence_item_count: number;
+}
+
 export interface StoryboardMetrics {
   key_findings: number;
   critical_findings: number;
@@ -949,6 +978,7 @@ export interface StoryboardFinding {
   source_locator: string;
   integrity_hash: string;
   parser_id: string;
+  parser_version: string;
   timeline_event_ids: string[];
   related_entities: string[];
 }
@@ -1331,8 +1361,54 @@ export function getCommandCenter(caseId: string): Promise<CommandCenterSummary> 
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/command-center`);
 }
 
-export function getInvestigationStoryboard(caseId: string): Promise<InvestigationStoryboard> {
-  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/storyboard`);
+export async function getInvestigationStoryboard(caseId: string): Promise<InvestigationStoryboard> {
+  const response = await fetch(`${API_BASE}/cases/${caseId}/storyboard`, {
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) throw await createApiError(response);
+  return response.json();
+}
+
+export async function generateCaseNarrative(caseId: string): Promise<AiNarrative> {
+  const response = await fetch(`${API_BASE}/cases/${caseId}/ai/narrative`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+  if (!response.ok) throw await createApiError(response);
+  return response.json();
+}
+
+export async function analyzeApk(caseId: string, file: File): Promise<ApkAnalysisResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  const headers = getAuthHeaders();
+  // Remove content-type so fetch boundary is set correctly
+  delete headers["Content-Type"];
+  
+  const response = await fetch(`${API_BASE}/cases/${caseId}/apk/analyze`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!response.ok) throw await createApiError(response);
+  return response.json();
+}
+
+export async function importTakeout(caseId: string, file: File): Promise<{imported_events: number}> {
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  const headers = getAuthHeaders();
+  delete headers["Content-Type"];
+  
+  const response = await fetch(`${API_BASE}/cases/${caseId}/takeout/import`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!response.ok) throw await createApiError(response);
+  return response.json();
 }
 
 export function listCustodyEvents(caseId: string): Promise<CustodyEvent[]> {

@@ -1,6 +1,14 @@
 """Versioned parsers for Android databases obtained through lawful elevated access."""
 
-from .applications import MetaMessageParser, TelegramMessageParser, WhatsAppMessageParser
+from .applications import (
+    DiscordMessageParser,
+    GmailMessageParser,
+    MetaMessageParser,
+    SnapchatMessageParser,
+    TelegramMessageParser,
+    TikTokMessageParser,
+    WhatsAppMessageParser,
+)
 from .common import AndroidArtifactParserError
 from .communications import AndroidCallLogParser, AndroidMmsParser, AndroidSmsParser
 from .contacts import AndroidContactsParser
@@ -18,7 +26,12 @@ from .system import (
     AndroidLocationParser,
     AndroidNotesParser,
     AndroidNotificationParser,
+    AppUsageStatsParser,
     ChromeHistoryParser,
+    EdgeHistoryParser,
+    FirefoxHistoryParser,
+    GoogleMapsSearchParser,
+    SamsungBrowserHistoryParser,
 )
 
 __all__ = [
@@ -30,8 +43,17 @@ __all__ = [
     "AndroidWifiConfigParser",
     "AndroidMmsParser",
     "AndroidSmsParser",
+    "AppUsageStatsParser",
+    "DiscordMessageParser",
+    "EdgeHistoryParser",
+    "FirefoxHistoryParser",
+    "GmailMessageParser",
+    "GoogleMapsSearchParser",
     "MetaMessageParser",
+    "SamsungBrowserHistoryParser",
+    "SnapchatMessageParser",
     "TelegramMessageParser",
+    "TikTokMessageParser",
     "WhatsAppMessageParser",
     "ApplicationArtifactSupport",
     "application_artifact_support",

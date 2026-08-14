@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = Field(default=8765, ge=1024, le=65535)
     deployment_transport: Literal["loopback_http", "https"] = "loopback_http"
+    groq_api_key: str | None = Field(default=None, min_length=20, max_length=256)
     session_ttl_minutes: int = Field(default=480, ge=15, le=1440)
     login_max_failures: int = Field(default=5, ge=3, le=20)
     login_lockout_minutes: int = Field(default=15, ge=1, le=1440)
@@ -58,6 +59,8 @@ class Settings(BaseSettings):
         ge=1024 * 1024,
         le=MAX_PHYSICAL_BLOCK_BYTES,
     )
+    vault_encryption_key: str | None = Field(default=None, min_length=32, max_length=100)
+    vault_storage_path: Path | None = None
 
     @field_validator("allowed_origins")
     @classmethod
@@ -122,3 +125,10 @@ class Settings(BaseSettings):
                 timeout_seconds=self.aleapp_timeout_seconds,
             )
         )
+
+    @property
+    def resolved_vault_path(self) -> Path:
+        if self.vault_storage_path:
+            return self.vault_storage_path.expanduser().resolve()
+        return self.resolved_data_dir / "vault"
+

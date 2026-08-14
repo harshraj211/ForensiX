@@ -26,6 +26,7 @@ import {
 } from "../../lib/api";
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { AiNarrativePanel } from "./AiNarrativePanel";
 
 export function InvestigationStoryboardPage() {
   const { caseId = "" } = useParams();
