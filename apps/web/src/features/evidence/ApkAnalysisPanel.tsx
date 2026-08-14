@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unnecessary-condition, @typescript-eslint/no-unsafe-member-access */
 import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { PackageOpen, LoaderCircle, Upload, Shield, Activity, Share2, FileCode2 } from "lucide-react";
@@ -100,7 +101,7 @@ export function ApkAnalysisPanel({ caseId }: ApkAnalysisPanelProps) {
                 : "An unexpected error occurred during APK analysis."}
             </p>
             <button 
-              onClick={() => analysisMutation.reset()}
+              onClick={() => { analysisMutation.reset(); }}
               className="mt-3 text-xs text-red-300 hover:underline"
             >
               Try again

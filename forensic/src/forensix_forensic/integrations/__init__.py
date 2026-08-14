@@ -21,6 +21,7 @@ from .scrcpy import (
     ScrcpyDiagnostic,
     ScrcpyIntegrationError,
     ScrcpyLaunchResult,
+    ScrcpyRecordingStopResult,
 )
 
 __all__ = [
@@ -40,4 +41,5 @@ __all__ = [
     "ScrcpyDiagnostic",
     "ScrcpyIntegrationError",
     "ScrcpyLaunchResult",
+    "ScrcpyRecordingStopResult",
 ]

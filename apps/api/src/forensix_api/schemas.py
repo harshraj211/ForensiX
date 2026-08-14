@@ -6,7 +6,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from forensix_forensic.adb.models import DeviceState, SharedStorageRootProbe
-from forensix_forensic.capabilities.models import CapabilityDecision
+from forensix_forensic.capabilities.models import (
+    AcquisitionReadiness,
+    CapabilityDecision,
+    LockedDeviceReadiness,
+    TemporaryRootReadiness,
+)
 from forensix_server.acquisitions import AcquisitionModule, AcquisitionScope
 from forensix_server.cases import CaseAccessLevel, CaseStatus
 from forensix_server.jobs import JobState
@@ -99,6 +104,47 @@ class DeviceAssessmentRequest(BaseModel):
     case_id: str | None = Field(default=None, min_length=36, max_length=36)
 
 
+class LockedDeviceAssessmentRequest(BaseModel):
+    case_id: str = Field(min_length=36, max_length=36)
+    manufacturer: str | None = Field(default=None, max_length=255)
+    model: str | None = Field(default=None, max_length=255)
+    android_release: str | None = Field(default=None, max_length=64)
+    android_api: int | None = Field(default=None, ge=1, le=10_000)
+    security_patch: str | None = Field(default=None, max_length=32)
+    chipset_model: str | None = Field(default=None, max_length=128)
+    chipset_family: Literal[
+        "qualcomm",
+        "mediatek",
+        "samsung_exynos",
+        "google_tensor",
+        "unisoc",
+        "kirin",
+        "rockchip",
+        "unknown",
+    ]
+    encryption_type: Literal["file_based", "full_disk", "unencrypted", "unknown"]
+    credential_known: bool = False
+    legal_authority_acknowledged: Literal[True]
+
+
+class LockedDeviceAssessmentResponse(BaseModel):
+    case_id: str
+    assessed_at: datetime
+    readiness: LockedDeviceReadiness
+
+
+class LockedDeviceResearchProfileResponse(BaseModel):
+    profile_id: str
+    display_name: str
+    chipset_family: str
+    chipset_models: list[str]
+    reference_android_range: str
+    encryption_scope: list[str]
+    forensix_status: Literal["lab_candidate", "external_provider_only"]
+    safe_capabilities: list[str]
+    source_urls: list[str]
+
+
 class ProviderCollectionRequest(BaseModel):
     case_id: str = Field(min_length=36, max_length=36)
     case_device_id: str = Field(min_length=36, max_length=36)
@@ -132,6 +178,41 @@ class ScrcpyLaunchResponse(BaseModel):
     version: str
     executable_sha256: str
     side_effects: list[str]
+
+
+class ScreenRecordingStartRequest(BaseModel):
+    case_id: str = Field(min_length=36, max_length=36)
+    case_device_id: str = Field(min_length=36, max_length=36)
+    serial: str = Field(min_length=1, max_length=255)
+    interaction_acknowledged: Literal[True]
+    recording_acknowledged: Literal[True]
+
+
+class ScreenRecordingStopRequest(BaseModel):
+    case_id: str = Field(min_length=36, max_length=36)
+    case_device_id: str = Field(min_length=36, max_length=36)
+    serial: str = Field(min_length=1, max_length=255)
+
+
+class ScreenRecordingSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    case_id: str
+    device_id: str
+    started_by: str
+    stopped_by: str | None
+    evidence_source_id: str | None
+    status: Literal["active", "sealed", "failed"]
+    process_id: int = Field(ge=1)
+    scrcpy_version: str
+    executable_sha256: str
+    size_bytes: int | None
+    sha256: str | None
+    error_code: str | None
+    error_message: str | None
+    started_at: datetime
+    stopped_at: datetime | None
 
 
 class WebsiteLivePreviewRequest(BaseModel):
@@ -173,8 +254,16 @@ class RootAccessProbeResponse(BaseModel):
 class RootedCaptureRequest(BaseModel):
     serial: str = Field(min_length=1, max_length=255)
     root_probe_id: str = Field(min_length=36, max_length=36)
-    profile: Literal["android_providers", "android_system", "android_apps"]
+    profile: Literal["android_providers", "android_system", "android_apps", "android_userdata"]
     side_effects_acknowledged: Literal[True]
+
+
+class TemporaryRootCaptureRequest(BaseModel):
+    serial: str = Field(min_length=1, max_length=255)
+    profile: Literal["android_providers", "android_system", "android_apps", "android_userdata"]
+    legal_authority_acknowledged: Literal[True]
+    device_modification_acknowledged: Literal[True]
+    cleanup_reboot_acknowledged: Literal[True]
 
 
 class PhysicalBlockProbeRequest(BaseModel):
@@ -222,6 +311,37 @@ class DeviceCapabilityAssessmentResponse(BaseModel):
     security_patch: str | None
     package_count: int
     storage_roots: list[SharedStorageRootProbe] = Field(default_factory=list)
+    acquisition_readiness: AcquisitionReadiness = Field(
+        default_factory=lambda: AcquisitionReadiness(
+            encryption_type="unknown",
+            credential_storage_state="unknown",
+            chipset_family="unknown",
+            filesystem_status="root_and_unlock_verification_required",
+            explanation="This older assessment did not record acquisition readiness.",
+        )
+    )
+    temporary_root_readiness: TemporaryRootReadiness = Field(
+        default_factory=lambda: TemporaryRootReadiness(
+            eligibility_status="unknown",
+            provider_status="not_configured",
+            reference_android_range="4.0-10.0",
+            reference_max_security_patch="2019-10-31",
+            research_profile_id=None,
+            explanation="This older assessment did not evaluate temporary-root eligibility.",
+        )
+    )
+    locked_device_readiness: LockedDeviceReadiness = Field(
+        default_factory=lambda: LockedDeviceReadiness(
+            support_status="unknown",
+            operating_mode="metadata_only",
+            reference_android_range="5-13",
+            profile_status="no_validated_profile",
+            destructive_guessing_blocked=True,
+            supported_actions=("Record device identifiers and observed boot state",),
+            prohibited_actions=("Automated passcode entry on the device",),
+            explanation="This older assessment did not evaluate locked-device readiness.",
+        )
+    )
     capabilities: dict[str, CapabilityDecision]
     warnings: list[str]
     assessor_version: str
@@ -258,6 +378,37 @@ class CaseDeviceAssessmentResponse(BaseModel):
     security_patch: str | None
     package_count: int
     storage_roots: list[SharedStorageRootProbe] = Field(default_factory=list)
+    acquisition_readiness: AcquisitionReadiness = Field(
+        default_factory=lambda: AcquisitionReadiness(
+            encryption_type="unknown",
+            credential_storage_state="unknown",
+            chipset_family="unknown",
+            filesystem_status="root_and_unlock_verification_required",
+            explanation="This older assessment did not record acquisition readiness.",
+        )
+    )
+    temporary_root_readiness: TemporaryRootReadiness = Field(
+        default_factory=lambda: TemporaryRootReadiness(
+            eligibility_status="unknown",
+            provider_status="not_configured",
+            reference_android_range="4.0-10.0",
+            reference_max_security_patch="2019-10-31",
+            research_profile_id=None,
+            explanation="This older assessment did not evaluate temporary-root eligibility.",
+        )
+    )
+    locked_device_readiness: LockedDeviceReadiness = Field(
+        default_factory=lambda: LockedDeviceReadiness(
+            support_status="unknown",
+            operating_mode="metadata_only",
+            reference_android_range="5-13",
+            profile_status="no_validated_profile",
+            destructive_guessing_blocked=True,
+            supported_actions=("Record device identifiers and observed boot state",),
+            prohibited_actions=("Automated passcode entry on the device",),
+            explanation="This older assessment did not evaluate locked-device readiness.",
+        )
+    )
     capabilities: dict[str, CapabilityDecision]
     warnings: list[str]
     assessor_version: str

@@ -22,10 +22,16 @@ from forensix_api.schemas import (
     DeviceDetectionResponse,
     DeviceTransportResponse,
     EvidenceSourceResponse,
+    LockedDeviceAssessmentRequest,
+    LockedDeviceAssessmentResponse,
+    LockedDeviceResearchProfileResponse,
     ProviderCollectionRequest,
     ProviderCollectionResponse,
     ScrcpyLaunchRequest,
     ScrcpyLaunchResponse,
+    ScreenRecordingSessionResponse,
+    ScreenRecordingStartRequest,
+    ScreenRecordingStopRequest,
     WebsiteLivePreviewRequest,
     WebsiteLivePreviewResponse,
 )
@@ -34,7 +40,11 @@ from forensix_forensic.adb import (
     ContentProviderAccessStatus,
     ContentProviderProfile,
 )
-from forensix_forensic.capabilities import DeviceCapabilityAssessor
+from forensix_forensic.capabilities import (
+    LOCKED_DEVICE_RESEARCH_PROFILES,
+    DeviceCapabilityAssessor,
+    assess_locked_device,
+)
 from forensix_server.auth import AuthenticatedSession, Permission
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseAccessDeniedError, CaseInvalidStateError
@@ -46,6 +56,7 @@ from forensix_server.db import (
     DeviceDetectionRun,
 )
 from forensix_server.evidence_twin import EvidenceTwinService
+from forensix_server.screen_recordings import ScreenRecordingService
 
 from .evidence_sources import source_response
 
@@ -167,6 +178,63 @@ async def assess_device(
         case_device_id=case_device_id,
         **snapshot.model_dump(),
     )
+
+
+@router.post(
+    "/locked-device/assess",
+    response_model=LockedDeviceAssessmentResponse,
+    summary="Classify a locked Android device without attempting its passcode",
+)
+def assess_locked_android_device(
+    request: LockedDeviceAssessmentRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+    database: Annotated[Database, Depends(get_database)],
+) -> LockedDeviceAssessmentResponse:
+    with database.session() as session:
+        CaseDeviceService().ensure_operable(session, authenticated.principal, request.case_id)
+        readiness = assess_locked_device(
+            android_api=request.android_api,
+            android_release=request.android_release,
+            manufacturer=request.manufacturer,
+            model=request.model,
+            chipset_family=request.chipset_family,
+            chipset_model=request.chipset_model,
+            encryption_type=request.encryption_type,
+            security_patch=request.security_patch,
+            credential_known=request.credential_known,
+        )
+        session.add(
+            CaseEventRecord(
+                case_id=request.case_id,
+                actor_id=authenticated.principal.user_id,
+                event_type="locked_device_assessed",
+                safe_detail=(
+                    f"android_api={request.android_api};chipset={request.chipset_family};"
+                    f"mode={readiness.operating_mode};status={readiness.support_status};"
+                    "passcode_attempted=false"
+                ),
+            )
+        )
+    return LockedDeviceAssessmentResponse(
+        case_id=request.case_id,
+        assessed_at=datetime.now(UTC),
+        readiness=readiness,
+    )
+
+
+@router.get(
+    "/locked-device/research-profiles",
+    response_model=list[LockedDeviceResearchProfileResponse],
+    summary="List non-operational locked-device research coverage",
+)
+def list_locked_device_research_profiles(
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+) -> list[LockedDeviceResearchProfileResponse]:
+    del authenticated
+    return [
+        LockedDeviceResearchProfileResponse.model_validate(profile, from_attributes=True)
+        for profile in LOCKED_DEVICE_RESEARCH_PROFILES
+    ]
 
 
 @router.post(
@@ -424,6 +492,72 @@ async def launch_live_screen(
             )
         )
     return ScrcpyLaunchResponse.model_validate(result, from_attributes=True)
+
+
+@router.get(
+    "/live-screen/recordings",
+    response_model=list[ScreenRecordingSessionResponse],
+)
+def list_screen_recordings(
+    case_id: Annotated[str, Query(min_length=36, max_length=36)],
+    case_device_id: Annotated[str, Query(min_length=36, max_length=36)],
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+    database: Annotated[Database, Depends(get_database)],
+) -> list[ScreenRecordingSessionResponse]:
+    records = ScreenRecordingService().list(
+        database,
+        authenticated.principal,
+        case_id,
+        case_device_id,
+    )
+    return [ScreenRecordingSessionResponse.model_validate(record) for record in records]
+
+
+@router.post(
+    "/live-screen/recordings",
+    response_model=ScreenRecordingSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_screen_recording(
+    request: ScreenRecordingStartRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ScreenRecordingSessionResponse:
+    record = await asyncio.to_thread(
+        ScreenRecordingService().start,
+        database,
+        authenticated.principal,
+        settings.scrcpy_controller(),
+        request.case_id,
+        request.case_device_id,
+        request.serial,
+    )
+    return ScreenRecordingSessionResponse.model_validate(record)
+
+
+@router.post(
+    "/live-screen/recordings/{recording_id}/stop",
+    response_model=ScreenRecordingSessionResponse,
+)
+async def stop_screen_recording(
+    recording_id: str,
+    request: ScreenRecordingStopRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_device_operator)],
+    database: Annotated[Database, Depends(get_database)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ScreenRecordingSessionResponse:
+    record = await asyncio.to_thread(
+        ScreenRecordingService().stop_and_seal,
+        database,
+        authenticated.principal,
+        settings.scrcpy_controller(),
+        recording_id,
+        request.case_id,
+        request.case_device_id,
+        request.serial,
+    )
+    return ScreenRecordingSessionResponse.model_validate(record)
 
 
 def _validate_case_device_serial(

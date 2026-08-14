@@ -1,5 +1,5 @@
 """APK static analysis module."""
 
-from .analyzer import ApkAnalyzer, ApkAnalysisResult
+from .analyzer import ApkAnalysisResult, ApkAnalyzer
 
 __all__ = ["ApkAnalyzer", "ApkAnalysisResult"]

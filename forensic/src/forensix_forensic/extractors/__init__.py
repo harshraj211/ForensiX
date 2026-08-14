@@ -1,5 +1,13 @@
 """Lawful forensic extraction services for non-rooted and rooted Android devices."""
 
+from .apk_downgrade import (
+    APK_DOWNGRADE_PROFILES,
+    ApkDowngradeExtractor,
+    ApkDowngradeProfile,
+    ApkDowngradeResult,
+    PreservedApk,
+    get_apk_downgrade_profile,
+)
 from .signal_rooted import SignalExtractionResult, SignalRootedExtractor
 from .sqlite_carver import CarvedFragment, CarvingResult, SQLiteCarver
 from .streaming_manifest import ExtractionManifest, ManifestEntry, StreamingManifestCollector
@@ -8,9 +16,14 @@ from .whatsapp_downgrade import WhatsAppDowngradeExtractor, WhatsAppDowngradeRes
 
 __all__ = [
     "CarvedFragment",
+    "APK_DOWNGRADE_PROFILES",
+    "ApkDowngradeExtractor",
+    "ApkDowngradeProfile",
+    "ApkDowngradeResult",
     "CarvingResult",
     "ExtractionManifest",
     "ManifestEntry",
+    "PreservedApk",
     "SignalExtractionResult",
     "SignalRootedExtractor",
     "SQLiteCarver",
@@ -19,4 +32,5 @@ __all__ = [
     "TelegramRootedExtractor",
     "WhatsAppDowngradeExtractor",
     "WhatsAppDowngradeResult",
+    "get_apk_downgrade_profile",
 ]

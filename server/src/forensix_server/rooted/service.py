@@ -11,12 +11,19 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from forensix_forensic.adb import (
+    MAX_ROOTED_BUNDLE_BYTES,
     AdbClient,
     AdbCommandPolicy,
     DeviceState,
     PhysicalBlockProfile,
     RootedCollectionProfile,
 )
+from forensix_forensic.capabilities.temporary_root import get_temporary_root_profile
+from forensix_forensic.capabilities.temporary_root_provider import (
+    HashPinnedTemporaryRootProvider,
+    TemporaryRootProviderPackage,
+)
+from forensix_forensic.capabilities.temporary_root_workflow import TemporaryRootWorkflow
 from forensix_server.auth import Principal
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseInvalidStateError
@@ -194,6 +201,11 @@ class RootedDeviceService:
                 "The selected case device is not present as an authorized ADB transport."
             )
 
+        if profile is RootedCollectionProfile.ANDROID_USERDATA:
+            properties = await adb_client.get_properties(serial)
+            disk_usage = await asyncio.to_thread(shutil.disk_usage, database.data_dir)
+            _require_userdata_snapshot_ready(properties, disk_usage.free)
+
         temporary_path = await asyncio.to_thread(_new_rooted_temporary_path, database.data_dir)
         try:
             captured = await adb_client.capture_rooted_bundle(serial, profile, temporary_path)
@@ -243,6 +255,105 @@ class RootedDeviceService:
             )
             session.flush()
         return source
+
+    async def capture_with_temporary_root(
+        self,
+        database: Database,
+        adb_client: AdbClient,
+        settings: Settings,
+        principal: Principal,
+        case_id: str,
+        device_id: str,
+        *,
+        serial: str,
+        profile: RootedCollectionProfile,
+        legal_authority_acknowledged: bool,
+        device_modification_acknowledged: bool,
+        cleanup_reboot_acknowledged: bool,
+    ) -> EvidenceSourceRecord:
+        if not settings.enable_temporary_root:
+            raise RootedDeviceError("Temporary-root execution is disabled by configuration.")
+        if not all(
+            (
+                legal_authority_acknowledged,
+                device_modification_acknowledged,
+                cleanup_reboot_acknowledged,
+            )
+        ):
+            raise RootedDeviceError(
+                "Legal authority, device modification, and cleanup/reboot must be acknowledged."
+            )
+        with database.session() as session:
+            CaseDeviceService().ensure_operable(session, principal, case_id)
+            device = CaseDeviceService().get_device(session, principal, case_id, device_id)
+            if sha256(serial.encode("utf-8")).hexdigest() != device.serial_hash:
+                raise RootedDeviceError(
+                    "The supplied transport does not match the selected case device."
+                )
+        if (
+            settings.temporary_root_profile_id is None
+            or settings.temporary_root_provider_path is None
+            or settings.temporary_root_provider_sha256 is None
+        ):
+            raise RootedDeviceError("No hash-pinned temporary-root provider is configured.")
+        registered_profile = get_temporary_root_profile(settings.temporary_root_profile_id)
+        if registered_profile is None:
+            raise RootedDeviceError(
+                "The configured temporary-root profile is not present in the validated registry."
+            )
+        package = TemporaryRootProviderPackage(
+            profile=registered_profile,
+            executable_path=settings.temporary_root_provider_path,
+            executable_sha256=settings.temporary_root_provider_sha256,
+        )
+        provider = HashPinnedTemporaryRootProvider(
+            package,
+            settings.temporary_root_provider_path.expanduser().resolve().parent,
+        )
+
+        async def acquire() -> EvidenceSourceRecord:
+            proof = await self.probe_access(
+                database,
+                adb_client,
+                principal,
+                case_id,
+                device_id,
+                serial=serial,
+            )
+            return await self.capture_provider_bundle(
+                database,
+                adb_client,
+                principal,
+                case_id,
+                device_id,
+                serial=serial,
+                probe_id=proof.id,
+                profile=profile,
+                side_effects_acknowledged=True,
+            )
+
+        result = await TemporaryRootWorkflow().run(adb_client, provider, serial, acquire)
+        now = datetime.now(UTC)
+        with database.session() as session:
+            AuditService().append(
+                session,
+                case_id=case_id,
+                actor_id=principal.user_id,
+                event_type="temporary_root_capture_completed",
+                object_type="evidence_source",
+                object_id=result.acquisition_result.id,
+                detail={
+                    "cleanup_verified": result.cleanup_verified,
+                    "device_id": device_id,
+                    "evidence_source_sha256": result.acquisition_result.sha256,
+                    "profile": profile.value,
+                    "provider_profile_id": result.profile_id,
+                    "provider_sha256": result.provider_sha256,
+                },
+                created_at=now,
+            )
+            session.flush()
+        return result.acquisition_result
 
     async def probe_physical_block(
         self,
@@ -488,6 +599,9 @@ def _seal_rooted_path(
                 RootedCollectionProfile.ANDROID_PROVIDERS: "Rooted Android provider bundle",
                 RootedCollectionProfile.ANDROID_SYSTEM: ("Rooted Android system-artifact bundle"),
                 RootedCollectionProfile.ANDROID_APPS: ("Rooted Android private-application bundle"),
+                RootedCollectionProfile.ANDROID_USERDATA: (
+                    "Rooted Android user-data filesystem snapshot"
+                ),
             }[profile],
             declared_size_bytes=size_bytes,
             profile=profile.value,
@@ -533,6 +647,19 @@ def _remove_temporary(path: Path) -> None:
     except OSError:
         # The sealed master is authoritative; cleanup failure is reported by workstation logs.
         return
+
+
+def _require_userdata_snapshot_ready(properties: dict[str, str], free_bytes: int) -> None:
+    credential_state = properties.get("sys.user.0.ce_available", "").strip().lower()
+    if credential_state not in {"1", "true", "yes"}:
+        raise RootedDeviceError(
+            "Android did not confirm that credential-encrypted user storage is unlocked."
+        )
+    required_free = MAX_ROOTED_BUNDLE_BYTES * 2 + MINIMUM_FREE_BYTES
+    if free_bytes < required_free:
+        raise RootedDeviceError(
+            "The workstation needs at least 17 GiB free for the broad user-data snapshot."
+        )
 
 
 def _require_physical_enabled(settings: Settings) -> None:

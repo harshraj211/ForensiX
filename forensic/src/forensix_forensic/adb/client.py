@@ -38,6 +38,7 @@ from .policy import (
     INVENTORY_MAX_ITEMS,
     MAX_ACQUIRED_FILE_BYTES,
     MAX_BACKUP_FILE_BYTES,
+    MAX_PACKAGE_APK_BYTES,
     MAX_PHYSICAL_BLOCK_BYTES,
     MAX_ROOTED_BUNDLE_BYTES,
     MAX_SCREENSHOT_BYTES,
@@ -117,6 +118,14 @@ class AdbClient(Protocol):
     ) -> BackupResult: ...
 
     async def install_package(self, serial: str, apk_path: str) -> bool: ...
+
+    async def install_packages(self, serial: str, apk_paths: tuple[str, ...]) -> bool: ...
+
+    async def list_package_apks(self, serial: str, package_name: str) -> tuple[str, ...]: ...
+
+    async def pull_package_apk(
+        self, serial: str, remote_path: str, destination: Path
+    ) -> PulledFileResult: ...
 
     async def uninstall_package(self, serial: str, package_name: str) -> bool: ...
 
@@ -436,6 +445,50 @@ class SystemAdbClient:
         result = await self._run(AdbCommandPolicy.install_package(serial, apk_path))
         combined = " ".join((result.stdout, result.stderr)).lower()
         return result.exit_code == 0 or "success" in combined
+
+    async def install_packages(self, serial: str, apk_paths: tuple[str, ...]) -> bool:
+        """Install a base APK and all split APKs atomically."""
+        result = await self._run(AdbCommandPolicy.install_packages(serial, apk_paths))
+        combined = " ".join((result.stdout, result.stderr)).lower()
+        return result.exit_code == 0 or "success" in combined
+
+    async def list_package_apks(self, serial: str, package_name: str) -> tuple[str, ...]:
+        """Return validated installed APK paths reported by ``pm path``."""
+        result = await self._run(AdbCommandPolicy.list_package_apks(serial, package_name))
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        paths = tuple(
+            line.removeprefix("package:").strip()
+            for line in result.stdout.splitlines()
+            if line.startswith("package:") and line.removeprefix("package:").strip()
+        )
+        if not paths:
+            raise AdbCommandError(result.exit_code, "Package manager returned no APK paths.")
+        for path in paths:
+            AdbCommandPolicy.pull_package_apk(serial, path, Path("package.apk"))
+        return paths
+
+    async def pull_package_apk(
+        self, serial: str, remote_path: str, destination: Path
+    ) -> PulledFileResult:
+        """Copy one installed APK with a bounded local file size."""
+        command = AdbCommandPolicy.pull_package_apk(serial, remote_path, destination)
+        result = await self._runner.run_to_file(
+            command.arguments,
+            destination,
+            timeout_seconds=command.timeout_seconds,
+            max_file_bytes=MAX_PACKAGE_APK_BYTES,
+        )
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        size_bytes = await asyncio.to_thread(_regular_file_size, destination)
+        if size_bytes is None or size_bytes == 0:
+            raise AdbCommandError(result.exit_code, "ADB pull produced an empty APK file.")
+        return PulledFileResult(
+            root_id="installed_package",
+            relative_path=remote_path,
+            size_bytes=size_bytes,
+        )
 
     async def uninstall_package(self, serial: str, package_name: str) -> bool:
         """Uninstall a package while keeping its data."""

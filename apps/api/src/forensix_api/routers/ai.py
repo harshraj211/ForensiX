@@ -1,6 +1,5 @@
 """AI-powered case narrative generation via Groq Cloud API."""
 
-from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from forensix_api.dependencies import get_authenticated_session, get_database, get_settings
 from forensix_api.schemas import AiNarrativeResponse
 from forensix_server.auth import AuthenticatedSession
+from forensix_server.cases import CaseService
 from forensix_server.config import Settings
 from forensix_server.db import Database
 from forensix_server.evidence import KeyEvidenceService, TimelineService
 from forensix_server.investigation.ai_narrative import GroqNarrativeService
-from forensix_server.cases import CaseService
 
 router = APIRouter(prefix="/api/v1/cases", tags=["ai"])
 

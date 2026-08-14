@@ -22,14 +22,11 @@ class CaseUcoExporter:
         self.session = session
         self.principal = principal
         self.case_id = case_id
-        # Will raise if access denied
         self.case = CaseService().get(session, principal, case_id)
 
     def export(self) -> dict:
         """Generate a complete CASE/UCO JSON-LD document."""
         graph = []
-
-        # 1. Identity (The investigator)
         investigator_id = _uco_uuid()
         graph.append(
             {
@@ -38,8 +35,6 @@ class CaseUcoExporter:
                 "uco-core:name": self.principal.username,
             }
         )
-
-        # 2. Investigation (The case)
         investigation_id = _uco_uuid()
         graph.append(
             {
@@ -51,12 +46,9 @@ class CaseUcoExporter:
                 "case-investigation:investigator": {"@id": investigator_id},
             }
         )
-
-        # 3. Artifacts (Digital Evidence)
         artifacts = (
             self.session.query(ArtifactRecord).filter(ArtifactRecord.case_id == self.case_id).all()
         )
-
         artifact_map = {}
         for artifact in artifacts:
             file_id = _uco_uuid()
@@ -75,31 +67,23 @@ class CaseUcoExporter:
                     },
                 }
             )
-
-        # 4. Timeline Events (Actions/Observations)
         events = (
             self.session.query(TimelineEventRecord)
             .filter(TimelineEventRecord.case_id == self.case_id)
             .all()
         )
-
         for event in events:
-            event_id = _uco_uuid()
-            observable_id = artifact_map.get(event.artifact_id)
-
             event_node = {
-                "@id": event_id,
+                "@id": _uco_uuid(),
                 "@type": "uco-observable:ObservableAction",
                 "uco-core:description": event.summary,
                 "uco-observable:startTime": event.event_time.isoformat(),
                 "uco-observable:actionStatus": "Completed",
             }
+            observable_id = artifact_map.get(event.artifact_id)
             if observable_id:
                 event_node["uco-observable:object"] = {"@id": observable_id}
-
             graph.append(event_node)
-
-        # Build JSON-LD envelope
         return {
             "@context": {
                 "case-investigation": "https://ontology.caseontology.org/case/investigation/",

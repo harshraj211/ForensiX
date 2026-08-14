@@ -4,6 +4,8 @@ These adapters never acquire private data and never decrypt databases. They run 
 against a verified working copy whose archive path identifies the expected application.
 """
 
+# ruff: noqa: E501, SIM103
+
 from collections.abc import Mapping
 
 from forensix_forensic.evidence_io import (
@@ -198,6 +200,7 @@ class MetaMessageParser:
             metadata=compact_metadata({**row, "application": self.app_id}),
         )
 
+
 def meta_message_parsers() -> tuple[MetaMessageParser, ...]:
     return (
         MetaMessageParser("messenger", "Messenger", ("com.facebook.orca", "messenger")),
@@ -250,7 +253,8 @@ class SnapchatMessageParser:
             category="communication",
             subtype="snapchat_message",
             title="Snapchat chat message",
-            summary=body or (f"Snapchat media: {media}" if media else "Snapchat message unavailable"),
+            summary=body
+            or (f"Snapchat media: {media}" if media else "Snapchat message unavailable"),
             event_time=android_timestamp(row.get("createdAt")),
             source_locator=f"{context.input_locator}#Chat:{identifier}",
             status="active",
@@ -280,6 +284,7 @@ class DiscordMessageParser:
         columns = require_columns(reader, "messages", {"id", "timestamp"})
         if "channel_id" not in columns and "author_id" not in columns:
             from .common import AndroidArtifactParserError
+
             raise AndroidArtifactParserError(
                 "Discord messages table missing channel_id and author_id; schema unrecognised."
             )
@@ -342,8 +347,12 @@ class TikTokMessageParser:
             *(
                 optional_column(columns, name)
                 for name in (
-                    "content", "sender_uid", "receiver_uid", "conversation_id",
-                    "read_status", "msg_type",
+                    "content",
+                    "sender_uid",
+                    "receiver_uid",
+                    "conversation_id",
+                    "read_status",
+                    "msg_type",
                 )
             ),
         ]
@@ -395,6 +404,7 @@ class GmailMessageParser:
         columns = require_columns(reader, "messages", {"_id", "dateSentMs"})
         if not {"fromAddress", "subject", "snippet", "toAddresses"}.intersection(columns):
             from .common import AndroidArtifactParserError
+
             raise AndroidArtifactParserError(
                 "Gmail messages table missing expected email columns; schema unrecognised."
             )
@@ -404,8 +414,14 @@ class GmailMessageParser:
             *(
                 optional_column(columns, name)
                 for name in (
-                    "fromAddress", "toAddresses", "subject", "snippet",
-                    "read", "starred", "deleted", "labelIds",
+                    "fromAddress",
+                    "toAddresses",
+                    "subject",
+                    "snippet",
+                    "read",
+                    "starred",
+                    "deleted",
+                    "labelIds",
                 )
             ),
         ]

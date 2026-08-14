@@ -75,6 +75,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
         "reports",
         "report_outputs",
         "report_review_events",
+        "screen_recording_sessions",
         "system_events",
         "user_roles",
         "users",
@@ -144,6 +145,7 @@ def test_phase0_migration_upgrades_and_downgrades(tmp_path: Path) -> None:
     assert "reports" not in downgraded_tables
     assert "report_outputs" not in downgraded_tables
     assert "report_review_events" not in downgraded_tables
+    assert "screen_recording_sessions" not in downgraded_tables
     downgraded_engine.dispose()
 
 
@@ -203,9 +205,10 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
     assert "evidence_recovery_assessments" in inspector.get_table_names()
     assert "evidence_recovery_carving_runs" in inspector.get_table_names()
     assert "evidence_external_recovery_runs" in inspector.get_table_names()
+    assert "screen_recording_sessions" in inspector.get_table_names()
     report_columns = {column["name"] for column in inspector.get_columns("reports")}
     assert "redaction_profile" in report_columns
-    assert revision == "0038_external_recovery"
+    assert revision == "0039_screen_recordings"
     database.dispose()
 
 

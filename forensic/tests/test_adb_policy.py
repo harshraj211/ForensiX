@@ -225,6 +225,22 @@ def test_rooted_app_bundle_policy_uses_only_fixed_private_app_paths() -> None:
     assert "tar -cf -" in shell_text
 
 
+def test_rooted_userdata_policy_uses_fixed_broad_paths_and_extended_timeout() -> None:
+    command = AdbCommandPolicy.capture_rooted_bundle(
+        "FX-DEMO-001", RootedCollectionProfile.ANDROID_USERDATA
+    )
+
+    shell_text = command.arguments[5]
+    assert command.arguments[:5] == ("-s", "FX-DEMO-001", "exec-out", "su", "-c")
+    assert command.timeout_seconds == 3600.0
+    assert "/data/user/0" in shell_text
+    assert "/data/user_de/0" in shell_text
+    assert "/data/system" in shell_text
+    assert "/data/misc" in shell_text
+    assert "/data/media/0" in shell_text
+    assert "tar -cf -" in shell_text
+
+
 def test_physical_block_policy_is_fixed_and_has_no_caller_path() -> None:
     probe = AdbCommandPolicy.probe_physical_block(
         "FX-DEMO-001", PhysicalBlockProfile.USERDATA_BY_NAME
@@ -277,6 +293,33 @@ def test_pull_policy_uses_shell_free_inventory_path_and_absolute_destination(
     assert command.arguments[4] == str(destination.absolute())
     assert "shell" not in command.arguments
     assert command.timeout_seconds == 120.0
+
+
+def test_package_apk_policy_supports_safe_split_restore(tmp_path: Path) -> None:
+    paths = (str(tmp_path / "base.apk"), str(tmp_path / "split_config.en.apk"))
+    install = AdbCommandPolicy.install_packages("FX-DEMO-001", paths)
+    listed = AdbCommandPolicy.list_package_apks("FX-DEMO-001", "com.whatsapp")
+    pulled = AdbCommandPolicy.pull_package_apk(
+        "FX-DEMO-001",
+        "/data/app/~~token/com.whatsapp-token/base.apk",
+        tmp_path / "original.apk",
+    )
+
+    assert install.arguments[2:5] == ("install-multiple", "-r", "-d")
+    assert install.arguments[-2:] == paths
+    assert listed.arguments[-3:] == ("pm", "path", "com.whatsapp")
+    assert pulled.arguments[2] == "pull"
+
+
+@pytest.mark.parametrize(
+    "remote_path",
+    ["/sdcard/fake.apk", "/data/app/../data/local/tmp/fake.apk", "/data/app/not-an-apk"],
+)
+def test_package_apk_pull_rejects_non_package_manager_paths(
+    tmp_path: Path, remote_path: str
+) -> None:
+    with pytest.raises(ValueError):
+        AdbCommandPolicy.pull_package_apk("FX-DEMO-001", remote_path, tmp_path / "original.apk")
 
 
 @pytest.mark.parametrize(

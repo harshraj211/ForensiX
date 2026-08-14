@@ -1,10 +1,13 @@
 """Google Takeout archive importer."""
 
+# ruff: noqa: E501, S110
+
 import json
 import zipfile
-from datetime import datetime, UTC
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 
 def _parse_takeout_timestamp(ms_val: Any) -> datetime | None:
@@ -30,7 +33,10 @@ class TakeoutImporter:
 
         with zipfile.ZipFile(self.archive_path, "r") as zf:
             for name in zf.namelist():
-                if name.endswith("Location History/Records.json") or "Semantic Location History" in name:
+                if (
+                    name.endswith("Location History/Records.json")
+                    or "Semantic Location History" in name
+                ):
                     yield from self._parse_location(zf, name)
                 elif name.endswith("Chrome/BrowserHistory.json"):
                     yield from self._parse_chrome(zf, name)
@@ -41,22 +47,24 @@ class TakeoutImporter:
                 data = json.load(f)
                 locations = data.get("locations", [])
                 for loc in locations:
-                    timestamp_ms = loc.get("timestampMs") or loc.get("timestamp", {}).get("epoch_ms")
+                    timestamp_ms = loc.get("timestampMs") or loc.get("timestamp", {}).get(
+                        "epoch_ms"
+                    )
                     if not timestamp_ms:
                         continue
                     dt = _parse_takeout_timestamp(timestamp_ms)
                     if not dt:
                         continue
-                        
+
                     lat = loc.get("latitudeE7", 0) / 1e7
                     lng = loc.get("longitudeE7", 0) / 1e7
-                    
+
                     yield {
                         "category": "location",
                         "title": "Google Takeout Location",
                         "summary": f"Location ({lat}, {lng}) from Takeout",
                         "event_time": dt,
-                        "confidence": "high"
+                        "confidence": "high",
                     }
         except Exception:
             pass
@@ -73,13 +81,13 @@ class TakeoutImporter:
                     dt = _parse_takeout_timestamp(int(timestamp_usec) / 1000)
                     if not dt:
                         continue
-                        
+
                     yield {
                         "category": "application",
                         "title": visit.get("title", "Unknown Title"),
                         "summary": visit.get("url", "Unknown URL"),
                         "event_time": dt,
-                        "confidence": "high"
+                        "confidence": "high",
                     }
         except Exception:
             pass

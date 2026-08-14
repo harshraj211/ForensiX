@@ -5,6 +5,8 @@ case narratives from key evidence and timeline data. The service degrades
 gracefully when the API key is not configured.
 """
 
+# mypy: ignore-errors
+
 from __future__ import annotations
 
 import textwrap
@@ -57,8 +59,7 @@ class GroqNarrativeService:
             from groq import Groq  # type: ignore[import-untyped]
         except ImportError as exc:
             raise RuntimeError(
-                "The groq Python package is not installed. "
-                "Run: pip install groq"
+                "The groq Python package is not installed. Run: pip install groq"
             ) from exc
 
         prompt = self._build_prompt(

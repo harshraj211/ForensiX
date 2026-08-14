@@ -57,3 +57,20 @@ def test_settings_require_complete_photorec_pin(tmp_path: Path) -> None:
     )
 
     assert settings.photorec_controller().diagnose().available
+
+
+def test_settings_require_complete_temporary_root_pin(tmp_path: Path) -> None:
+    provider = tmp_path / "provider.exe"
+
+    with pytest.raises(ValidationError, match="Temporary-root profile"):
+        Settings(temporary_root_provider_path=provider)
+
+    settings = Settings(
+        enable_temporary_root=True,
+        temporary_root_profile_id="controlled-profile",
+        temporary_root_provider_path=provider,
+        temporary_root_provider_sha256="a" * 64,
+    )
+
+    assert settings.enable_temporary_root is True
+    assert settings.temporary_root_profile_id == "controlled-profile"

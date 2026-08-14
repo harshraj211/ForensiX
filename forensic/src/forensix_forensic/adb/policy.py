@@ -23,6 +23,9 @@ class AdbOperation(StrEnum):
     CAPTURE_SCREENSHOT = "capture_screenshot"
     GET_BATTERY = "get_battery"
     INSTALL_PACKAGE = "install_package"
+    INSTALL_PACKAGES = "install_packages"
+    LIST_PACKAGE_APKS = "list_package_apks"
+    PULL_PACKAGE_APK = "pull_package_apk"
     UNINSTALL_PACKAGE = "uninstall_package"
     PUSH_FILE = "push_file"
     BACKUP_PACKAGE = "backup_package"
@@ -39,6 +42,7 @@ class RootedCollectionProfile(StrEnum):
     ANDROID_PROVIDERS = "android_providers"
     ANDROID_SYSTEM = "android_system"
     ANDROID_APPS = "android_apps"
+    ANDROID_USERDATA = "android_userdata"
 
 
 class PhysicalBlockProfile(StrEnum):
@@ -59,12 +63,13 @@ _STORAGE_PATHS: dict[SharedStorageRoot, str] = {
 INVENTORY_MAX_DEPTH = 6
 INVENTORY_MAX_ITEMS = 250
 MAX_ACQUIRED_FILE_BYTES = 100 * 1024 * 1024
-MAX_ROOTED_BUNDLE_BYTES = 1024 * 1024 * 1024
+MAX_ROOTED_BUNDLE_BYTES = 8 * 1024 * 1024 * 1024
 MAX_PHYSICAL_BLOCK_BYTES = 512 * 1024 * 1024 * 1024
 CONTENT_PROVIDER_MAX_RECORDS = 500
 MAX_SCREENSHOT_BYTES = 50 * 1024 * 1024
 MAX_PUSH_FILE_BYTES = 200 * 1024 * 1024
 MAX_BACKUP_FILE_BYTES = 256 * 1024 * 1024
+MAX_PACKAGE_APK_BYTES = 1024 * 1024 * 1024
 ADB_BACKUP_TIMEOUT_SECONDS = 300.0
 ADB_INSTALL_TIMEOUT_SECONDS = 120.0
 
@@ -106,6 +111,13 @@ _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
         "/data/user/0/com.facebook.katana/databases",
         "/data/user/0/com.instagram.android/databases",
         "/data/user/0/com.snapchat.android/databases",
+    ),
+    RootedCollectionProfile.ANDROID_USERDATA: (
+        "/data/user/0",
+        "/data/user_de/0",
+        "/data/system",
+        "/data/misc",
+        "/data/media/0",
     ),
 }
 
@@ -273,7 +285,7 @@ class AdbCommandPolicy:
         return ApprovedAdbCommand(
             AdbOperation.CAPTURE_ROOTED_BUNDLE,
             ("-s", serial, "exec-out", "su", "-c", command),
-            600.0,
+            3600.0 if profile is RootedCollectionProfile.ANDROID_USERDATA else 600.0,
         )
 
     @staticmethod
@@ -319,6 +331,45 @@ class AdbCommandPolicy:
             AdbOperation.INSTALL_PACKAGE,
             ("-s", serial, "install", "-r", "-d", apk_path),
             ADB_INSTALL_TIMEOUT_SECONDS,
+        )
+
+    @staticmethod
+    def install_packages(serial: str, apk_paths: tuple[str, ...]) -> ApprovedAdbCommand:
+        """Restore a base APK and its split APKs in one package-manager transaction."""
+        _validate_serial(serial)
+        if not apk_paths or len(apk_paths) > 64:
+            raise ValueError("APK restore must contain between 1 and 64 files")
+        for apk_path in apk_paths:
+            _validate_apk_path(apk_path)
+        return ApprovedAdbCommand(
+            AdbOperation.INSTALL_PACKAGES,
+            ("-s", serial, "install-multiple", "-r", "-d", *apk_paths),
+            ADB_INSTALL_TIMEOUT_SECONDS,
+        )
+
+    @staticmethod
+    def list_package_apks(serial: str, package_name: str) -> ApprovedAdbCommand:
+        """List installed base and split APK paths for one validated package."""
+        _validate_serial(serial)
+        _validate_package_name(package_name)
+        return ApprovedAdbCommand(
+            AdbOperation.LIST_PACKAGE_APKS,
+            ("-s", serial, "shell", "pm", "path", package_name),
+            15.0,
+        )
+
+    @staticmethod
+    def pull_package_apk(serial: str, remote_path: str, destination: Path) -> ApprovedAdbCommand:
+        """Copy one package-manager-reported APK to the workstation."""
+        _validate_serial(serial)
+        _validate_installed_apk_path(remote_path)
+        destination = destination.absolute()
+        if any(character in str(destination) for character in ("\x00", "\r", "\n")):
+            raise ValueError("APK pull destination must be a safe absolute local path")
+        return ApprovedAdbCommand(
+            AdbOperation.PULL_PACKAGE_APK,
+            ("-s", serial, "pull", remote_path, str(destination)),
+            180.0,
         )
 
     @staticmethod
@@ -494,6 +545,20 @@ def _validate_apk_path(apk_path: str) -> None:
         raise ValueError("APK path contains a prohibited control character")
     if not apk_path.lower().endswith(".apk"):
         raise ValueError("APK path must end with .apk")
+
+
+def _validate_installed_apk_path(remote_path: str) -> None:
+    """Accept only APK locations returned by Android's package manager."""
+    if not remote_path or len(remote_path) > 2048:
+        raise ValueError("Installed APK path must contain between 1 and 2048 characters")
+    if any(ord(character) < 32 or ord(character) == 127 for character in remote_path):
+        raise ValueError("Installed APK path contains a prohibited control character")
+    path = PurePosixPath(remote_path)
+    allowed = remote_path.startswith("/data/app/") or (
+        remote_path.startswith("/mnt/expand/") and "/app/" in remote_path
+    )
+    if not allowed or not remote_path.lower().endswith(".apk") or ".." in path.parts:
+        raise ValueError("Installed APK path is outside package-manager storage")
 
 
 def _validate_package_name(package_name: str) -> None:

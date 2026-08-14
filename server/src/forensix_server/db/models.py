@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -347,6 +348,67 @@ class CaseDeviceRecord(Base):
     )
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class ScreenRecordingSessionRecord(Base):
+    """Auditable lifecycle for one interactive scrcpy examination recording."""
+
+    __tablename__ = "screen_recording_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'sealed', 'failed')",
+            name="ck_screen_recording_sessions_status",
+        ),
+        CheckConstraint("process_id >= 1", name="ck_screen_recording_sessions_process_id"),
+        CheckConstraint(
+            "size_bytes IS NULL OR size_bytes >= 1",
+            name="ck_screen_recording_sessions_size",
+        ),
+        UniqueConstraint("evidence_source_id", name="uq_screen_recording_sessions_source"),
+        Index(
+            "uq_screen_recording_sessions_active_device",
+            "device_id",
+            unique=True,
+            sqlite_where=text("status = 'active'"),
+        ),
+        Index(
+            "ix_screen_recording_sessions_case_started",
+            "case_id",
+            "started_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("case_devices.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    started_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    stopped_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    evidence_source_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("evidence_sources.id", ondelete="RESTRICT"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    process_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    serial_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    scrcpy_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    executable_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+    stopped_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
     )
 
 

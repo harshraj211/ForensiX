@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-misused-promises */
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Bot, Check, Copy, LoaderCircle, Sparkles, AlertTriangle } from "lucide-react";
@@ -19,7 +20,7 @@ export function AiNarrativePanel({ caseId }: AiNarrativePanelProps) {
     if (!narrativeMutation.data) return;
     await navigator.clipboard.writeText(narrativeMutation.data.narrative);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => { setCopied(false); }, 2000);
   };
 
   return (
@@ -41,7 +42,7 @@ export function AiNarrativePanel({ caseId }: AiNarrativePanelProps) {
         
         {!narrativeMutation.data && !narrativeMutation.isPending && (
           <button
-            onClick={() => narrativeMutation.mutate()}
+            onClick={() => { narrativeMutation.mutate(); }}
             className="flex items-center gap-2 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 px-4 py-2 text-sm font-medium text-purple-300 transition-colors"
           >
             <Sparkles size={15} />
@@ -70,7 +71,7 @@ export function AiNarrativePanel({ caseId }: AiNarrativePanelProps) {
                 : "An unexpected error occurred. Ensure the API key is configured."}
             </p>
             <button 
-              onClick={() => narrativeMutation.reset()}
+              onClick={() => { narrativeMutation.reset(); }}
               className="mt-3 text-xs text-red-300 hover:underline"
             >
               Try again

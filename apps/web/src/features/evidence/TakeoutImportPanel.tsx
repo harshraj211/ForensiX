@@ -17,7 +17,7 @@ export function TakeoutImportPanel({ caseId }: TakeoutImportPanelProps) {
   const importMutation = useMutation({
     mutationFn: (file: File) => importTakeout(caseId, file),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: caseKeys.timeline(caseId) });
+      void queryClient.invalidateQueries({ queryKey: caseKeys.timeline(caseId) });
     },
   });
 
@@ -105,7 +105,7 @@ export function TakeoutImportPanel({ caseId }: TakeoutImportPanelProps) {
                 : "An unexpected error occurred during import."}
             </p>
             <button 
-              onClick={() => importMutation.reset()}
+              onClick={() => { importMutation.reset(); }}
               className="mt-3 text-xs text-red-300 hover:underline"
             >
               Try again

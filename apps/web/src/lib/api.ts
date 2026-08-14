@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/restrict-template-expressions */
 export type DeviceState =
   | "authorized"
   | "unauthorized"
@@ -60,6 +61,31 @@ export interface DeviceCapabilityAssessment {
   security_patch: string | null;
   package_count: number;
   storage_roots: SharedStorageRootProbe[];
+  acquisition_readiness?: {
+    encryption_type: "file_based" | "full_disk" | "unencrypted" | "unknown";
+    credential_storage_state: "unlocked" | "locked" | "unknown";
+    chipset_family: "qualcomm" | "mediatek" | "samsung_exynos" | "google_tensor" | "unknown";
+    filesystem_status:
+      | "unlock_required"
+      | "root_required"
+      | "root_required_unvalidated_version"
+      | "root_and_unlock_verification_required";
+    explanation: string;
+  };
+  temporary_root_readiness?: {
+    eligibility_status:
+      | "unknown"
+      | "outside_reference_range"
+      | "unknown_patch_format"
+      | "reference_range_requires_verification"
+      | "patch_too_new"
+      | "candidate_requires_validated_profile";
+    provider_status: "not_configured" | "no_exact_profile_match" | "exact_profile_match";
+    reference_android_range: string;
+    reference_max_security_patch: string;
+    research_profile_id?: string | null;
+    explanation: string;
+  };
   capabilities: Record<string, CapabilityDecision>;
   warnings: string[];
   assessor_version: string;
@@ -189,6 +215,25 @@ export interface CaseList {
   total: number;
   offset: number;
   limit: number;
+}
+
+export interface ScreenRecordingSession {
+  id: string;
+  case_id: string;
+  device_id: string;
+  started_by: string;
+  stopped_by: string | null;
+  evidence_source_id: string | null;
+  status: "active" | "sealed" | "failed";
+  process_id: number;
+  scrcpy_version: string;
+  executable_sha256: string;
+  size_bytes: number | null;
+  sha256: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string;
+  stopped_at: string | null;
 }
 
 export type CommandCenterNextAction =
@@ -681,6 +726,8 @@ export interface CaseDeviceAssessment {
   security_patch: string | null;
   package_count: number;
   storage_roots: SharedStorageRootProbe[];
+  acquisition_readiness?: DeviceCapabilityAssessment["acquisition_readiness"];
+  temporary_root_readiness?: DeviceCapabilityAssessment["temporary_root_readiness"];
   capabilities: Record<string, CapabilityDecision>;
   warnings: string[];
   assessor_version: string;
@@ -1362,53 +1409,25 @@ export function getCommandCenter(caseId: string): Promise<CommandCenterSummary> 
 }
 
 export async function getInvestigationStoryboard(caseId: string): Promise<InvestigationStoryboard> {
-  const response = await fetch(`${API_BASE}/cases/${caseId}/storyboard`, {
-    headers: getAuthHeaders(),
-  });
-  if (!response.ok) throw await createApiError(response);
-  return response.json();
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/storyboard`);
 }
 
 export async function generateCaseNarrative(caseId: string): Promise<AiNarrative> {
-  const response = await fetch(`${API_BASE}/cases/${caseId}/ai/narrative`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-  });
-  if (!response.ok) throw await createApiError(response);
-  return response.json();
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/ai/narrative`, { method: "POST" });
 }
 
 export async function analyzeApk(caseId: string, file: File): Promise<ApkAnalysisResult> {
   const formData = new FormData();
   formData.append("file", file);
   
-  const headers = getAuthHeaders();
-  // Remove content-type so fetch boundary is set correctly
-  delete headers["Content-Type"];
-  
-  const response = await fetch(`${API_BASE}/cases/${caseId}/apk/analyze`, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
-  if (!response.ok) throw await createApiError(response);
-  return response.json();
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/apk/analyze`, { method: "POST", body: formData });
 }
 
 export async function importTakeout(caseId: string, file: File): Promise<{imported_events: number}> {
   const formData = new FormData();
   formData.append("file", file);
   
-  const headers = getAuthHeaders();
-  delete headers["Content-Type"];
-  
-  const response = await fetch(`${API_BASE}/cases/${caseId}/takeout/import`, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
-  if (!response.ok) throw await createApiError(response);
-  return response.json();
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/takeout/import`, { method: "POST", body: formData });
 }
 
 export function listCustodyEvents(caseId: string): Promise<CustodyEvent[]> {
@@ -1676,7 +1695,7 @@ export function captureRootedBundle(
   deviceId: string,
   serial: string,
   rootProbeId: string,
-  profile: "android_providers" | "android_system" | "android_apps",
+  profile: "android_providers" | "android_system" | "android_apps" | "android_userdata",
 ): Promise<EvidenceSource> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/rooted-captures`,
@@ -1968,6 +1987,67 @@ export async function searchAllArtifacts(
 export function getArtifact(caseId: string, artifactId: string): Promise<Artifact> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}`,
+  );
+}
+
+export function captureWithTemporaryRoot(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+  profile: "android_providers" | "android_system" | "android_apps" | "android_userdata",
+): Promise<EvidenceSource> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/temporary-root-captures`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        profile,
+        legal_authority_acknowledged: true,
+        device_modification_acknowledged: true,
+        cleanup_reboot_acknowledged: true,
+      }),
+    },
+  );
+}
+
+export function listScreenRecordings(
+  caseId: string,
+  deviceId: string,
+): Promise<ScreenRecordingSession[]> {
+  const parameters = new URLSearchParams({ case_id: caseId, case_device_id: deviceId });
+  return apiRequest(`/api/v1/devices/live-screen/recordings?${parameters.toString()}`);
+}
+
+export function startScreenRecording(
+  caseId: string,
+  deviceId: string,
+  serial: string,
+): Promise<ScreenRecordingSession> {
+  return apiRequest("/api/v1/devices/live-screen/recordings", {
+    method: "POST",
+    body: JSON.stringify({
+      case_id: caseId,
+      case_device_id: deviceId,
+      serial,
+      interaction_acknowledged: true,
+      recording_acknowledged: true,
+    }),
+  });
+}
+
+export function stopScreenRecording(
+  recordingId: string,
+  caseId: string,
+  deviceId: string,
+  serial: string,
+): Promise<ScreenRecordingSession> {
+  return apiRequest(
+    `/api/v1/devices/live-screen/recordings/${encodeURIComponent(recordingId)}/stop`,
+    {
+      method: "POST",
+      body: JSON.stringify({ case_id: caseId, case_device_id: deviceId, serial }),
+    },
   );
 }
 

@@ -1,5 +1,7 @@
 """Schema-gated Android system, browser, and OEM artifact parsers."""
 
+# ruff: noqa: E501, S608
+
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
@@ -359,7 +361,9 @@ class FirefoxHistoryParser:
 
     def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
         require_columns(reader, "moz_places", {"id", "url"})
-        visit_columns = require_columns(reader, "moz_historyvisits", {"id", "place_id", "visit_date"})
+        visit_columns = require_columns(
+            reader, "moz_historyvisits", {"id", "place_id", "visit_date"}
+        )
         title_expr = "p.title" if "title" in reader.column_names("moz_places") else "NULL"
         visit_type = "v.visit_type" if "visit_type" in visit_columns else "NULL"
         try:

@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
@@ -51,6 +52,48 @@ def test_scrcpy_digest_mismatch_prevents_launch(tmp_path: Path) -> None:
     assert controller.diagnose().status == "digest_mismatch"
     with pytest.raises(ScrcpyIntegrationError):
         controller.launch("FX-DEMO-001", control=True)
+
+
+def test_scrcpy_recording_is_scoped_and_stopped_by_registered_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "scrcpy.exe"
+    executable.write_bytes(b"controlled scrcpy fixture")
+    destination = tmp_path / "recording.mp4"
+    calls: list[list[str]] = []
+    process = SimpleNamespace(
+        pid=5252,
+        poll=lambda: None,
+        terminate=lambda: None,
+        wait=lambda timeout: 0,
+        kill=lambda: None,
+    )
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            [], 0, stdout="scrcpy 4.1\n", stderr=""
+        ),
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "Popen",
+        lambda arguments, **kwargs: calls.append(arguments) or process,
+    )
+    recording_id = str(uuid4())
+    controller = ScrcpyController(executable)
+
+    launch = controller.start_recording(recording_id, "FX-DEMO-001", destination)
+    stopped = controller.stop_recording(recording_id, expected_process_id=launch.process_id)
+
+    assert calls[0][calls[0].index("--record") + 1] == str(destination.resolve())
+    assert "--no-control" not in calls[0]
+    assert stopped.process_id == 5252
+    assert stopped.exit_code == 0
+    assert stopped.already_exited is False
+    with pytest.raises(ScrcpyIntegrationError, match="not active"):
+        controller.stop_recording(recording_id, expected_process_id=5252)
 
 
 @pytest.mark.parametrize("serial", ["", "bad serial", "bad\nserial"])

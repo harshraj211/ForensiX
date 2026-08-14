@@ -119,6 +119,7 @@ def create_app(
     app.include_router(exports.router)
     app.include_router(rooted.router)
     app.include_router(rooted.capture_router)
+    app.include_router(rooted.temporary_root_capture_router)
     app.include_router(rooted.physical_probe_router)
     app.include_router(rooted.physical_capture_router)
     app.include_router(extraction.router)

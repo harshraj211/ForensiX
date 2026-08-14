@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Clock3, LoaderCircle, Calendar as CalendarIcon, Filter } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
-import { getCase, getTimeline, TimelineEvent } from "../../lib/api";
+import { getCase, getTimeline } from "../../lib/api";
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
 
@@ -14,7 +14,7 @@ function toDateString(isoString: string) {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return `${String(year)}-${month}-${day}`;
 }
 
 export function TimelinePage() {
@@ -112,6 +112,9 @@ export function TimelinePage() {
         <p className="mt-3 text-sm leading-6 text-slate-400">
           Deterministic timestamp claims linked to their source artifacts.
         </p>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          No missing device-side timestamps are inferred.
+        </p>
       </header>
 
       {timeline.isPending && <p role="status" className="mt-8 flex items-center gap-2 text-sm text-slate-500"><LoaderCircle size={16} className="animate-spin" /> Building timeline view...</p>}
@@ -127,7 +130,7 @@ export function TimelinePage() {
             </h2>
             {selectedDate && (
               <button 
-                onClick={() => setSelectedDate(null)}
+                onClick={() => { setSelectedDate(null); }}
                 className="text-xs text-cyan-400 hover:underline"
               >
                 Clear date filter
@@ -138,7 +141,7 @@ export function TimelinePage() {
           <div className="overflow-x-auto pb-4 custom-scrollbar">
             <div className="min-w-max">
               <div className="grid grid-flow-col gap-1" style={{ gridTemplateRows: 'repeat(7, 1fr)' }}>
-                {heatmap.days.map((day, i) => {
+                {heatmap.days.map((day) => {
                   let intensity = 0;
                   if (day.count > 0) {
                     intensity = Math.max(0.2, day.count / heatmap.maxCount);
@@ -148,11 +151,11 @@ export function TimelinePage() {
                   return (
                     <button
                       key={day.date}
-                      onClick={() => setSelectedDate(isSelected ? null : day.date)}
-                      title={`${day.label}: ${day.count} events`}
+                      onClick={() => { setSelectedDate(isSelected ? null : day.date); }}
+                      title={`${day.label}: ${String(day.count)} events`}
                       className={`h-3 w-3 rounded-[2px] transition-all hover:ring-1 hover:ring-white/50 ${isSelected ? 'ring-2 ring-cyan-400 z-10 scale-125' : ''}`}
                       style={{
-                        backgroundColor: day.count > 0 ? `rgba(34, 211, 238, ${intensity})` : 'rgba(255, 255, 255, 0.05)',
+                        backgroundColor: day.count > 0 ? `rgba(34, 211, 238, ${String(intensity)})` : 'rgba(255, 255, 255, 0.05)',
                       }}
                     />
                   );
@@ -167,7 +170,7 @@ export function TimelinePage() {
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <Filter size={14} className="text-slate-500 mr-2" />
           <button
-            onClick={() => setSelectedCategory(null)}
+            onClick={() => { setSelectedCategory(null); }}
             className={`rounded-full border px-3 py-1 text-xs transition-colors ${!selectedCategory ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300' : 'border-white/10 text-slate-400 hover:border-white/20'}`}
           >
             All
@@ -175,10 +178,10 @@ export function TimelinePage() {
           {Object.entries(timeline.data.category_facets).map(([cat, count]) => (
             <button
               key={cat}
-              onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
+              onClick={() => { setSelectedCategory(selectedCategory === cat ? null : cat); }}
               className={`rounded-full border px-3 py-1 text-xs transition-colors ${selectedCategory === cat ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300' : 'border-white/10 text-slate-400 hover:border-white/20'}`}
             >
-              {cat} <span className="ml-1 opacity-50">{count}</span>
+              {cat} <span className="ml-1 opacity-50">{String(count)}</span>
             </button>
           ))}
         </div>

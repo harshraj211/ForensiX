@@ -7,6 +7,7 @@ through a controlled, operator-acknowledged API.
 from __future__ import annotations
 
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
 
@@ -63,6 +64,49 @@ class WhatsAppDowngradeResponse(BaseModel):
     decrypted_database_path: str | None
     key_file_path: str | None
     database_file_path: str | None
+    timeline: list[ExtractionTimelineEntry]
+    duration_seconds: float
+    success: bool
+    error_message: str | None
+
+
+class ApkDowngradeRequest(BaseModel):
+    """Request a failure-safe downgrade acquisition for one approved app profile."""
+
+    serial: str = Field(min_length=1, max_length=255)
+    operator_id: str = Field(min_length=1, max_length=255)
+    profile_id: str = Field(min_length=1, max_length=64)
+    downgrade_apk_paths: list[str] = Field(min_length=1, max_length=64)
+    expected_sha256: list[str] = Field(min_length=1, max_length=64)
+    downgrade_acknowledged: bool = Field(
+        description="Operator explicitly authorizes temporary package replacement.",
+    )
+
+
+class PreservedApkResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_path: str
+    local_path: str
+    sha256: str
+    size_bytes: int
+
+
+class ApkDowngradeResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    extraction_id: str
+    profile_id: str
+    package_name: str
+    android_release: str
+    android_api: int
+    original_version: str | None
+    downgrade_version: str | None
+    backup_path: str | None
+    backup_file_size_bytes: int
+    backup_sha256: str
+    preserved_apks: list[PreservedApkResponse]
+    restored: bool
     timeline: list[ExtractionTimelineEntry]
     duration_seconds: float
     success: bool
@@ -185,6 +229,75 @@ class ExtractionManifestResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/apk-downgrade",
+    response_model=ApkDowngradeResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Android 5-13 app extraction via failure-safe APK downgrade",
+    description=(
+        "Targets a closed application profile on Android API 21-33. The service verifies "
+        "examiner-supplied APK hashes, preserves the installed base and split APKs, captures "
+        "an ADB backup, and restores the exact original package set in failure-safe cleanup."
+    ),
+)
+async def apk_downgrade_extract(
+    case_id: str,
+    request: ApkDowngradeRequest,
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+    _authenticated: Annotated[object, Depends(require_device_operator)],
+) -> ApkDowngradeResponse:
+    from fastapi import HTTPException
+
+    if not request.downgrade_acknowledged:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Operator must acknowledge temporary package replacement risks.",
+        )
+    if len(request.downgrade_apk_paths) != len(request.expected_sha256):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Each downgrade APK must have one matching SHA-256 value.",
+        )
+
+    from forensix_forensic.extractors import ApkDowngradeExtractor
+
+    work_dir = Path(tempfile.mkdtemp(prefix="forensix_apk_downgrade_"))
+    extractor = ApkDowngradeExtractor(adb_client, work_dir)
+    try:
+        result = await extractor.extract(
+            request.serial,
+            profile_id=request.profile_id,
+            downgrade_apk_paths=tuple(Path(path) for path in request.downgrade_apk_paths),
+            expected_sha256=tuple(request.expected_sha256),
+            case_id=case_id,
+            operator_id=request.operator_id,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
+        ) from error
+
+    return ApkDowngradeResponse(
+        extraction_id=result.extraction_id,
+        profile_id=result.profile_id,
+        package_name=result.package_name,
+        android_release=result.android_release,
+        android_api=result.android_api,
+        original_version=result.original_version,
+        downgrade_version=result.downgrade_version,
+        backup_path=result.backup_path,
+        backup_file_size_bytes=result.backup_file_size_bytes,
+        backup_sha256=result.backup_sha256,
+        preserved_apks=[PreservedApkResponse(**asdict(item)) for item in result.preserved_apks],
+        restored=result.restored,
+        timeline=[ExtractionTimelineEntry(**entry) for entry in result.timeline],
+        duration_seconds=result.duration_seconds,
+        success=result.success,
+        error_message=result.error_message,
+    )
 
 
 @router.post(

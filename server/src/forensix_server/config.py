@@ -54,6 +54,10 @@ class Settings(BaseSettings):
         le=1 * 1024 * 1024 * 1024 * 1024,
     )
     enable_experimental_physical_acquisition: bool = False
+    enable_temporary_root: bool = False
+    temporary_root_profile_id: str | None = Field(default=None, min_length=1, max_length=128)
+    temporary_root_provider_path: Path | None = None
+    temporary_root_provider_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     max_physical_acquisition_bytes: int = Field(
         default=128 * 1024 * 1024 * 1024,
         ge=1024 * 1024,
@@ -77,6 +81,17 @@ class Settings(BaseSettings):
             raise ValueError("ALEAPP program path and expected SHA-256 must be configured together")
         if (self.photorec_path is None) != (self.photorec_expected_sha256 is None):
             raise ValueError("PhotoRec path and expected SHA-256 must be configured together")
+        temporary_root_values = (
+            self.temporary_root_profile_id,
+            self.temporary_root_provider_path,
+            self.temporary_root_provider_sha256,
+        )
+        if any(value is not None for value in temporary_root_values) and not all(
+            value is not None for value in temporary_root_values
+        ):
+            raise ValueError(
+                "Temporary-root profile, provider path, and SHA-256 must be configured together"
+            )
         if self.deployment_transport == "loopback_http" and self.api_host not in {
             "127.0.0.1",
             "localhost",
@@ -131,4 +146,3 @@ class Settings(BaseSettings):
         if self.vault_storage_path:
             return self.vault_storage_path.expanduser().resolve()
         return self.resolved_data_dir / "vault"
-

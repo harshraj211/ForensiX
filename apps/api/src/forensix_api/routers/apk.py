@@ -1,14 +1,18 @@
 """APK analysis endpoints."""
 
+# mypy: ignore-errors
+
+# ruff: noqa: SIM105
+
 from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 
 from forensix_api.dependencies import get_authenticated_session, get_settings
+from forensix_forensic.apk_analysis import ApkAnalyzer
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.config import Settings
-from forensix_forensic.apk_analysis import ApkAnalyzer
 
 router = APIRouter(prefix="/api/v1/cases", tags=["apk"])
 

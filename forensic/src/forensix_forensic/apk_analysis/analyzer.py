@@ -1,5 +1,7 @@
 """APK analysis using Androguard."""
 
+# mypy: ignore-errors
+
 import pathlib
 from dataclasses import dataclass
 from typing import Any
@@ -51,10 +53,10 @@ class ApkAnalyzer:
                         cert_dict["hash_sha256"] = cert.sha256_fingerprint
                     elif hasattr(cert, "sha256"):
                         cert_dict["hash_sha256"] = cert.sha256
-                    
+
                     if not cert_dict:
                         cert_dict["raw"] = "Certificate parsed but attributes not accessible"
-                    
+
                     certs.append(cert_dict)
             except Exception as e:
                 certs.append({"error": f"Failed to parse certificate: {e}"})

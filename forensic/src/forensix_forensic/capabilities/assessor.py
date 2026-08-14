@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from typing import Any
 
 from forensix_forensic.adb import (
     AdbClient,
@@ -9,7 +10,23 @@ from forensix_forensic.adb import (
     DeviceState,
 )
 
-from .models import CapabilityDecision, CapabilityStatus, DeviceCapabilitySnapshot
+from .locked_device import assess_locked_device
+from .models import (
+    AcquisitionReadiness,
+    CapabilityDecision,
+    CapabilityStatus,
+    DeviceCapabilitySnapshot,
+    TemporaryRootReadiness,
+)
+from .temporary_root import (
+    TEMPORARY_ROOT_PROFILES,
+    find_temporary_root_profile,
+    find_temporary_root_research_candidate,
+)
+
+_TEMPORARY_ROOT_MIN_ANDROID = 4
+_TEMPORARY_ROOT_MAX_ANDROID = 10
+_TEMPORARY_ROOT_MAX_SECURITY_PATCH = date(2019, 10, 31)
 
 
 class DeviceCapabilityAssessor:
@@ -56,6 +73,18 @@ class DeviceCapabilityAssessor:
             for profile in ContentProviderProfile
         }
         sdk_level = _parse_sdk_level(properties.get("ro.build.version.sdk"))
+        acquisition_readiness = _acquisition_readiness(properties, sdk_level)
+        temporary_root_readiness = _temporary_root_readiness(properties)
+        locked_device_readiness = assess_locked_device(
+            android_api=sdk_level,
+            android_release=properties.get("ro.build.version.release"),
+            manufacturer=properties.get("ro.product.manufacturer"),
+            model=properties.get("ro.product.model"),
+            chipset_family=acquisition_readiness.chipset_family,
+            chipset_model=properties.get("ro.soc.model"),
+            encryption_type=acquisition_readiness.encryption_type,
+            security_patch=properties.get("ro.build.version.security_patch"),
+        )
         accessible_roots = tuple(root for root in storage_roots if root.readable)
         shared_file_decision = (
             _supported(
@@ -142,6 +171,9 @@ class DeviceCapabilityAssessor:
             storage_roots=storage_roots,
             battery_level=battery_level,
             battery_status=battery_status,
+            acquisition_readiness=acquisition_readiness,
+            temporary_root_readiness=temporary_root_readiness,
+            locked_device_readiness=locked_device_readiness,
             capabilities=capabilities,
             warnings=(
                 "Private application data is not accessible on this non-rooted logical transport.",
@@ -161,6 +193,184 @@ def _parse_sdk_level(value: str | None) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def _temporary_root_readiness(properties: dict[str, str]) -> TemporaryRootReadiness:
+    android_version = properties.get("ro.build.version.release")
+    security_patch = properties.get("ro.build.version.security_patch")
+    android_major = _parse_android_major(android_version)
+    patch_date = _parse_security_patch(security_patch)
+    matched_profile = find_temporary_root_profile(properties)
+    research_candidate = find_temporary_root_research_candidate(properties)
+    provider_status = (
+        "exact_profile_match"
+        if matched_profile is not None
+        else "no_exact_profile_match"
+        if TEMPORARY_ROOT_PROFILES
+        else "not_configured"
+    )
+    common: dict[str, Any] = {
+        "provider_status": provider_status,
+        "reference_android_range": "4.0-10.0",
+        "reference_max_security_patch": _TEMPORARY_ROOT_MAX_SECURITY_PATCH.isoformat(),
+        "research_profile_id": research_candidate.candidate_id if research_candidate else None,
+    }
+
+    if android_major is None:
+        return TemporaryRootReadiness(
+            eligibility_status="unknown",
+            explanation=(
+                "Android release could not be determined. A model, firmware, chipset, build "
+                "fingerprint, and security-patch match is required before any temporary-root "
+                "provider can be considered."
+            ),
+            **common,
+        )
+    if not _TEMPORARY_ROOT_MIN_ANDROID <= android_major <= _TEMPORARY_ROOT_MAX_ANDROID:
+        return TemporaryRootReadiness(
+            eligibility_status="outside_reference_range",
+            explanation=(
+                f"Android {android_version} is outside the published Android 4.0-10.0 "
+                "temporary-root reference range. No validated provider is configured."
+            ),
+            **common,
+        )
+    if security_patch and patch_date is None:
+        return TemporaryRootReadiness(
+            eligibility_status="unknown_patch_format",
+            explanation=(
+                f"Android {android_version} is within the reference version range, but the "
+                "reported security patch could not be interpreted. Exact firmware and exploit-"
+                "profile validation is still required."
+            ),
+            **common,
+        )
+    if patch_date is None:
+        return TemporaryRootReadiness(
+            eligibility_status="reference_range_requires_verification",
+            explanation=(
+                f"Android {android_version} is within the reference version range, but no "
+                "security-patch date was reported. Exact model, chipset, firmware, and a "
+                "validated exploit profile are required."
+            ),
+            **common,
+        )
+    if patch_date > _TEMPORARY_ROOT_MAX_SECURITY_PATCH:
+        return TemporaryRootReadiness(
+            eligibility_status="patch_too_new",
+            explanation=(
+                f"The {patch_date.isoformat()} security patch is newer than the October 2019 "
+                "temporary-root reference limit. No validated provider is configured."
+            ),
+            **common,
+        )
+    return TemporaryRootReadiness(
+        eligibility_status="candidate_requires_validated_profile",
+        explanation=(
+            f"Android {android_version} with security patch {patch_date.isoformat()} falls within "
+            "the published version-and-patch reference range. This is only an eligibility hint: "
+            "the exact model, chipset, firmware, and build fingerprint must match a validated "
+            "provider before temporary root can run."
+        ),
+        **common,
+    )
+
+
+def _parse_android_major(value: str | None) -> int | None:
+    if value is None:
+        return None
+    major = value.strip().split(".", maxsplit=1)[0]
+    return int(major) if major.isdigit() else None
+
+
+def _parse_security_patch(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        return None
+
+
+def _acquisition_readiness(
+    properties: dict[str, str], sdk_level: int | None
+) -> AcquisitionReadiness:
+    crypto_type = properties.get("ro.crypto.type", "").strip().lower()
+    crypto_state = properties.get("ro.crypto.state", "").strip().lower()
+    encryption_type = (
+        "file_based"
+        if crypto_type == "file"
+        else "full_disk"
+        if crypto_type == "block"
+        else "unencrypted"
+        if crypto_state in {"unencrypted", "unsupported"}
+        else "unknown"
+    )
+    credential_property = properties.get("sys.user.0.ce_available", "").strip().lower()
+    credential_storage_state = (
+        "unlocked"
+        if credential_property in {"1", "true", "yes"}
+        else "locked"
+        if credential_property in {"0", "false", "no"}
+        else "unknown"
+    )
+    platform = " ".join(
+        (
+            properties.get("ro.board.platform", ""),
+            properties.get("ro.hardware", ""),
+            properties.get("ro.soc.manufacturer", ""),
+        )
+    ).lower()
+    chipset_family = (
+        "qualcomm"
+        if any(
+            marker in platform for marker in ("qualcomm", "qcom", "msm", "sdm", "sm6", "sm7", "sm8")
+        )
+        else "mediatek"
+        if any(marker in platform for marker in ("mediatek", "mtk", "mt67", "mt68", "mt69"))
+        else "samsung_exynos"
+        if "exynos" in platform
+        else "google_tensor"
+        if "tensor" in platform
+        else "unisoc"
+        if any(marker in platform for marker in ("unisoc", "spreadtrum", "ums", "sc98"))
+        else "kirin"
+        if any(marker in platform for marker in ("kirin", "hi3660", "hi3670"))
+        else "rockchip"
+        if any(marker in platform for marker in ("rockchip", "rk3562"))
+        else "unknown"
+    )
+    if credential_storage_state == "locked":
+        filesystem_status = "unlock_required"
+        explanation = (
+            "Credential-encrypted user storage is locked. Unlock the device before any "
+            "root-assisted plaintext filesystem snapshot."
+        )
+    elif credential_storage_state == "unlocked" and sdk_level is not None and 28 <= sdk_level <= 34:
+        filesystem_status = "root_required"
+        explanation = (
+            "Credential storage is unlocked on Android 9-14. A fresh authorized root proof is "
+            "still required to access private application and system paths."
+        )
+    elif credential_storage_state == "unlocked":
+        filesystem_status = "root_required_unvalidated_version"
+        explanation = (
+            "Credential storage is unlocked, but this Android version is outside the validated "
+            "Android 9-14 range; root-assisted collection may be incomplete."
+        )
+    else:
+        filesystem_status = "root_and_unlock_verification_required"
+        explanation = (
+            "Android did not expose a reliable credential-storage state. Confirm the device is "
+            "unlocked and obtain a fresh authorized root proof before filesystem collection."
+        )
+    return AcquisitionReadiness(
+        encryption_type=encryption_type,
+        credential_storage_state=credential_storage_state,
+        chipset_family=chipset_family,
+        filesystem_status=filesystem_status,
+        explanation=explanation,
+    )
 
 
 def _supported(reason_code: str, explanation: str) -> CapabilityDecision:

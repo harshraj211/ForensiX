@@ -15,7 +15,9 @@ import {
   RefreshCw,
   ShieldCheck,
   Smartphone,
+  Square,
   Usb,
+  Video,
   XCircle,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
@@ -28,6 +30,7 @@ import {
   assessDevice,
   capturePhysicalBlock,
   captureRootedBundle,
+  captureWithTemporaryRoot,
   captureDeviceScreenshot,
   collectProviderRecords,
   detectDevices,
@@ -36,9 +39,12 @@ import {
   getPhysicalAcquisitionDiagnostic,
   getScrcpyDiagnostic,
   listCaseDevices,
+  listScreenRecordings,
   launchLiveScreen,
   probePhysicalBlock,
   probeRootAccess,
+  startScreenRecording,
+  stopScreenRecording,
   type CaseDevice,
   type CapabilityDecision,
   type CapabilityStatus,
@@ -480,17 +486,43 @@ function DeviceCard({
 }
 
 function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessment }) {
+  const queryClient = useQueryClient();
   const entries = Object.entries(assessment.capabilities);
+  const acquisitionReadiness = assessment.acquisition_readiness ?? {
+    encryption_type: "unknown" as const,
+    credential_storage_state: "unknown" as const,
+    chipset_family: "unknown" as const,
+    filesystem_status: "root_and_unlock_verification_required" as const,
+    explanation: "This older assessment did not record filesystem acquisition readiness.",
+  };
+  const temporaryRootReadiness = assessment.temporary_root_readiness ?? {
+    eligibility_status: "unknown" as const,
+    provider_status: "not_configured" as const,
+    reference_android_range: "4.0-10.0",
+    reference_max_security_patch: "2019-10-31",
+    explanation: "This older assessment did not evaluate temporary-root eligibility.",
+  };
+  const isTemporaryRootCandidate =
+    temporaryRootReadiness.eligibility_status === "candidate_requires_validated_profile";
+  const isTemporaryRootAvailable =
+    temporaryRootReadiness.provider_status === "exact_profile_match";
+  const [temporaryRootAuthorityAcknowledged, setTemporaryRootAuthorityAcknowledged] =
+    useState(false);
+  const [temporaryRootModificationAcknowledged, setTemporaryRootModificationAcknowledged] =
+    useState(false);
+  const [temporaryRootCleanupAcknowledged, setTemporaryRootCleanupAcknowledged] = useState(false);
   const [rootAcknowledged, setRootAcknowledged] = useState(false);
   const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
   const [systemCaptureAcknowledged, setSystemCaptureAcknowledged] = useState(false);
   const [appCaptureAcknowledged, setAppCaptureAcknowledged] = useState(false);
+  const [userDataCaptureAcknowledged, setUserDataCaptureAcknowledged] = useState(false);
   const [physicalProbeAcknowledged, setPhysicalProbeAcknowledged] = useState(false);
   const [physicalAcquisitionAcknowledged, setPhysicalAcquisitionAcknowledged] = useState(false);
   const [encryptionAcknowledged, setEncryptionAcknowledged] = useState(false);
   const [nonResumableAcknowledged, setNonResumableAcknowledged] = useState(false);
   const [providerAcknowledged, setProviderAcknowledged] = useState(false);
   const [screenAcknowledged, setScreenAcknowledged] = useState(false);
+  const [recordingAcknowledged, setRecordingAcknowledged] = useState(false);
   const websitePreview = useLiveScreenPreview();
   const scrcpyDiagnostic = useQuery({
     queryKey: ["integrations", "scrcpy"],
@@ -520,6 +552,53 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
         assessment.serial,
         mode,
       );
+    },
+  });
+  const recordingKey = [
+    "screen-recordings",
+    assessment.case_id,
+    assessment.case_device_id,
+  ] as const;
+  const recordings = useQuery({
+    queryKey: recordingKey,
+    queryFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id) {
+        throw new Error("A case-linked assessment is required for screen recording.");
+      }
+      return listScreenRecordings(assessment.case_id, assessment.case_device_id);
+    },
+    enabled: Boolean(
+      assessment.case_id &&
+        assessment.case_device_id &&
+        scrcpyDiagnostic.data?.available,
+    ),
+    refetchInterval: 5000,
+  });
+  const activeRecording = recordings.data?.find((recording) => recording.status === "active");
+  const screenRecording = useMutation({
+    mutationFn: async () => {
+      if (!assessment.case_id || !assessment.case_device_id) {
+        throw new Error("A case-linked assessment is required for screen recording.");
+      }
+      if (activeRecording) {
+        return stopScreenRecording(
+          activeRecording.id,
+          assessment.case_id,
+          assessment.case_device_id,
+          assessment.serial,
+        );
+      }
+      return startScreenRecording(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+      );
+    },
+    onSuccess: (recording) => {
+      queryClient.setQueryData(recordingKey, (current: typeof recordings.data) => {
+        const remaining = (current ?? []).filter((item) => item.id !== recording.id);
+        return [recording, ...remaining];
+      });
     },
   });
   const websiteLiveScreen = useMutation({
@@ -604,6 +683,33 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
         assessment.serial,
         rootProbe.data.id,
         "android_apps",
+      );
+    },
+  });
+  const temporaryRootCapture = useMutation({
+    mutationFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id) {
+        throw new Error("A case-linked assessment is required for temporary root.");
+      }
+      return captureWithTemporaryRoot(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+        "android_providers",
+      );
+    },
+  });
+  const rootedUserDataCapture = useMutation({
+    mutationFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+        throw new Error("A current rooted-access proof is required for this collection.");
+      }
+      return captureRootedBundle(
+        assessment.case_id,
+        assessment.case_device_id,
+        assessment.serial,
+        rootProbe.data.id,
+        "android_userdata",
       );
     },
   });
@@ -857,8 +963,240 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
               {liveScreen.data.process_id}
             </p>
           )}
+          <div className="mt-4 border-t border-violet-200/10 pt-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h4 className="flex items-center gap-2 text-xs font-semibold text-white">
+                  <Video size={14} aria-hidden="true" /> Documented examination
+                </h4>
+                <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-400">
+                  Record the interactive scrcpy window, then seal the MP4 into this case with its
+                  hash and custody history.
+                </p>
+              </div>
+              {activeRecording && (
+                <span className="inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-300/8 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-rose-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-rose-300" /> Recording
+                </span>
+              )}
+            </div>
+            {!activeRecording && (
+              <label className="mt-3 flex items-start gap-2 text-xs leading-5 text-amber-100/80">
+                <input
+                  type="checkbox"
+                  checked={recordingAcknowledged}
+                  onChange={(event) => {
+                    setRecordingAcknowledged(event.target.checked);
+                  }}
+                  className="mt-1"
+                />
+                I understand this records displayed pixels and my control actions change device
+                state; it is documentation, not a full acquisition.
+              </label>
+            )}
+            <button
+              type="button"
+              disabled={
+                screenRecording.isPending ||
+                !scrcpyDiagnostic.data?.available ||
+                (!activeRecording && !recordingAcknowledged)
+              }
+              onClick={() => {
+                screenRecording.mutate();
+              }}
+              className={`mt-3 inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-35 ${
+                activeRecording
+                  ? "border border-rose-200/20 bg-rose-200/5 text-rose-100 hover:bg-rose-200/10"
+                  : "bg-white text-slate-950 hover:bg-slate-200"
+              }`}
+            >
+              {activeRecording ? <Square size={13} /> : <Video size={14} />}
+              {screenRecording.isPending
+                ? activeRecording
+                  ? "Stopping and sealing..."
+                  : "Starting recording..."
+                : activeRecording
+                  ? "Stop and seal recording"
+                  : "Start documented session"}
+            </button>
+            {screenRecording.data?.status === "sealed" && (
+              <p className="mt-3 text-xs text-emerald-200">
+                Recording sealed · SHA-256 {screenRecording.data.sha256?.slice(0, 16)}... · source {" "}
+                {screenRecording.data.evidence_source_id?.slice(0, 8)}
+              </p>
+            )}
+            {screenRecording.error && (
+              <p className="mt-3 text-xs text-rose-300">
+                {screenRecording.error instanceof ApiError
+                  ? screenRecording.error.message
+                  : "The documented examination could not be completed."}
+              </p>
+            )}
+          </div>
         </div>
       )}
+      <div className="mt-5 rounded-lg border border-white/8 bg-black/10 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/8 pb-4">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+              Filesystem acquisition readiness
+            </h3>
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">
+              {acquisitionReadiness.explanation}
+            </p>
+          </div>
+          <span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-300">
+            {acquisitionReadiness.filesystem_status.replaceAll("_", " ")}
+          </span>
+        </div>
+        <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-3">
+          <div>
+            <dt className="text-slate-500">Encryption</dt>
+            <dd className="mt-1 font-semibold text-slate-200">
+              {acquisitionReadiness.encryption_type.replaceAll("_", " ")}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Credential storage</dt>
+            <dd className="mt-1 font-semibold text-slate-200">
+              {acquisitionReadiness.credential_storage_state}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Chipset family</dt>
+            <dd className="mt-1 font-semibold text-slate-200">
+              {acquisitionReadiness.chipset_family.replaceAll("_", " ")}
+            </dd>
+          </div>
+        </dl>
+      </div>
+      <div className={`mt-5 rounded-lg border p-4 ${
+        isTemporaryRootCandidate
+          ? "border-amber-200/15 bg-amber-200/5"
+          : "border-white/8 bg-black/10"
+      }`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
+              Temporary-root eligibility
+            </h3>
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">
+              {temporaryRootReadiness.explanation}
+            </p>
+          </div>
+          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+            isTemporaryRootCandidate
+              ? "border-amber-200/20 text-amber-200"
+              : "border-white/10 text-slate-300"
+          }`}>
+            {temporaryRootReadiness.eligibility_status.replaceAll("_", " ")}
+          </span>
+        </div>
+        <dl className="mt-4 grid gap-3 text-xs sm:grid-cols-3">
+          <div>
+            <dt className="text-slate-500">Reference Android range</dt>
+            <dd className="mt-1 font-semibold text-slate-200">
+              {temporaryRootReadiness.reference_android_range}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Latest reference patch</dt>
+            <dd className="mt-1 font-semibold text-slate-200">
+              October 2019
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Validated provider</dt>
+            <dd className="mt-1 font-semibold text-slate-200">
+              {temporaryRootReadiness.provider_status.replaceAll("_", " ")}
+            </dd>
+          </div>
+        </dl>
+        <p className="mt-4 text-[11px] leading-5 text-slate-500">
+          Eligibility is not confirmed root access. ForensiX will not execute temporary rooting
+          until the exact model, chipset, firmware, and build fingerprint match a separately
+          validated provider profile.
+        </p>
+        {isTemporaryRootAvailable ? (
+          <div className="mt-4 border-t border-white/8 pt-4">
+            <div className="space-y-2 text-xs leading-5 text-slate-300">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={temporaryRootAuthorityAcknowledged}
+                  onChange={(event) => {
+                    setTemporaryRootAuthorityAcknowledged(event.target.checked);
+                  }}
+                  className="mt-1 accent-amber-300"
+                />
+                I confirm explicit legal authority for temporary privilege elevation and collection.
+              </label>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={temporaryRootModificationAcknowledged}
+                  onChange={(event) => {
+                    setTemporaryRootModificationAcknowledged(event.target.checked);
+                  }}
+                  className="mt-1 accent-amber-300"
+                />
+                I acknowledge the provider may modify volatile device state and create logs.
+              </label>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={temporaryRootCleanupAcknowledged}
+                  onChange={(event) => {
+                    setTemporaryRootCleanupAcknowledged(event.target.checked);
+                  }}
+                  className="mt-1 accent-amber-300"
+                />
+                I authorize provider cleanup, device reboot, and post-cleanup root verification.
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={
+                !temporaryRootAuthorityAcknowledged ||
+                !temporaryRootModificationAcknowledged ||
+                !temporaryRootCleanupAcknowledged ||
+                temporaryRootCapture.isPending
+              }
+              onClick={() => {
+                temporaryRootCapture.mutate();
+              }}
+              className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg bg-amber-200 px-4 text-xs font-semibold text-[#171006] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {temporaryRootCapture.isPending ? (
+                <LoaderCircle size={14} className="animate-spin" />
+              ) : (
+                <ShieldCheck size={14} />
+              )}
+              {temporaryRootCapture.isPending
+                ? "Running controlled workflow..."
+                : "Temporarily root and capture providers"}
+            </button>
+            {temporaryRootCapture.isError && (
+              <div className="mt-3">
+                <ErrorState error={temporaryRootCapture.error} />
+              </div>
+            )}
+            {temporaryRootCapture.data && (
+              <div className="mt-3 rounded-md border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-100">
+                <p className="font-semibold">Temporary-root capture sealed and cleanup verified</p>
+                <p className="mt-1 font-mono text-[10px] opacity-65">
+                  SHA-256 {temporaryRootCapture.data.sha256}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-amber-200/75">
+            Execution remains unavailable until this exact device build has a configured,
+            hash-pinned provider profile.
+          </p>
+        )}
+      </div>
       <div className="mt-5 rounded-lg border border-white/8 bg-black/10 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">
@@ -1131,6 +1469,71 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
                       className="mt-3 inline-flex font-semibold text-cyan-200 underline decoration-cyan-300/30 underline-offset-4"
                     >
                       Examine private-application bundle
+                    </Link>
+                  </div>
+                )}
+              </div>
+              <div className="mt-5 border-t border-fuchsia-200/10 pt-4">
+                <p className="text-xs font-semibold text-white">
+                  Rooted user-data filesystem snapshot
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  Streams fixed Android user, device-encrypted user, system, service, and internal
+                  shared-storage paths into one TAR. The workstation stops the stream at 8 GiB and
+                  seals a successful snapshot as Evidence Twin evidence. This is not a bit-for-bit
+                  image, does not recover deleted blocks, and may be inconsistent if applications
+                  change files during capture.
+                </p>
+                <div className="mt-3 rounded-md border border-amber-300/15 bg-amber-300/5 p-3 text-xs leading-5 text-amber-100/80">
+                  This broad snapshot can contain credentials, messages, account tokens, location
+                  history, and private files. Use only on an unlocked device under explicit legal
+                  authority with an existing authorized root environment.
+                </div>
+                <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-fuchsia-100/70">
+                  <input
+                    type="checkbox"
+                    checked={userDataCaptureAcknowledged}
+                    onChange={(event) => {
+                      setUserDataCaptureAcknowledged(event.target.checked);
+                    }}
+                    className="mt-1 accent-fuchsia-300"
+                  />
+                  I authorize collection of the fixed broad user-data profile and acknowledge its
+                  sensitive scope, live-filesystem limitations, and 8 GiB stream cap.
+                </label>
+                <button
+                  type="button"
+                  disabled={!userDataCaptureAcknowledged || rootedUserDataCapture.isPending}
+                  onClick={() => {
+                    rootedUserDataCapture.mutate();
+                  }}
+                  className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg bg-fuchsia-200 px-4 text-xs font-semibold text-[#12091a] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {rootedUserDataCapture.isPending ? (
+                    <LoaderCircle size={14} className="animate-spin" />
+                  ) : (
+                    <HardDrive size={14} />
+                  )}
+                  {rootedUserDataCapture.isPending
+                    ? "Capturing user-data snapshot..."
+                    : "Capture user-data snapshot"}
+                </button>
+                {rootedUserDataCapture.isError && (
+                  <div className="mt-3">
+                    <ErrorState error={rootedUserDataCapture.error} />
+                  </div>
+                )}
+                {rootedUserDataCapture.data && (
+                  <div className="mt-4 rounded-md border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-100">
+                    <p className="font-semibold">User-data Evidence Twin source sealed</p>
+                    <p className="mt-1 font-mono text-[10px] opacity-65">
+                      SHA-256 {rootedUserDataCapture.data.sha256}
+                    </p>
+                    <Link
+                      to={`/cases/${assessment.case_id}/evidence-twin`}
+                      className="mt-3 inline-flex font-semibold text-cyan-200 underline decoration-cyan-300/30 underline-offset-4"
+                    >
+                      Examine user-data snapshot
                     </Link>
                   </div>
                 )}
