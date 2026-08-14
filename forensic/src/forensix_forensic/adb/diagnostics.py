@@ -31,8 +31,6 @@ async def diagnose_adb(mode: str, configured_path: Path | None) -> AdbDiagnostic
     checked = tuple([str(configured_path)] if configured_path else []) + tuple(
         str(item) for item in AdbBinaryResolver.sdk_candidates()
     )
-    if mode == "mock":
-        raise ValueError("Mock mode is permanently removed.")
     try:
         adb_path = AdbBinaryResolver(configured_path).resolve()
     except AdbError:

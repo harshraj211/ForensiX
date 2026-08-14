@@ -35,9 +35,8 @@ class AdbInfoResponse(BaseModel):
 
 
 class AdbDiagnosticResponse(BaseModel):
-    mode: Literal["mock", "system"]
+    mode: Literal["system"]
     status: Literal[
-        "mock",
         "healthy",
         "missing",
         "execution_failed",

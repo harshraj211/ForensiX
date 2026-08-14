@@ -322,7 +322,11 @@ class WhatsAppDowngradeExtractor:
         )
 
     async def _download_current_apk(self, version: str) -> Path:
-        """Placeholder for downloading the current WhatsApp APK."""
+        """Locate a pre-staged current WhatsApp APK in the work directory.
+
+        The APK must be manually placed in the work directory before calling this method;
+        automatic downloading is not supported.
+        """
         apk_path = self._work_dir / f"whatsapp_current_{version}.apk"
         if apk_path.exists():
             return apk_path

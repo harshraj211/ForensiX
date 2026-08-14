@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "production"] = "development"
     data_dir: Path = Path("data")
     database_url: str | None = None
-    adb_mode: Literal["system", "mock"] = "system"
+    adb_mode: Literal["system"] = "system"
     adb_path: Path | None = None
     allowed_origins: tuple[str, ...] = ("http://127.0.0.1:5173",)
     api_host: str = "127.0.0.1"

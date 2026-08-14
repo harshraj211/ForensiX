@@ -101,8 +101,8 @@ export interface PhysicalAcquisitionDiagnostic {
 }
 
 export interface AdbDiagnostic {
-  mode: "mock" | "system";
-  status: "mock" | "healthy" | "missing" | "execution_failed" | "no_transports" | "authorization_required" | "offline" | "unsupported_transport";
+  mode: "system";
+  status: "healthy" | "missing" | "execution_failed" | "no_transports" | "authorization_required" | "offline" | "unsupported_transport";
   available: boolean;
   platform: string;
   executable_path: string | null;

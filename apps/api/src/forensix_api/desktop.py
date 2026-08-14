@@ -49,7 +49,6 @@ def main() -> int:
     settings = Settings(
         environment="production",
         data_dir=arguments.data_dir or _default_data_dir(),
-        adb_mode="mock" if arguments.mock else "system",
         adb_path=arguments.adb_path,
         allowed_origins=(origin,),
         api_host=host,
@@ -70,7 +69,6 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=8765, choices=range(1024, 65536))
     parser.add_argument("--adb-path", type=Path)
     parser.add_argument("--data-dir", type=Path)
-    parser.add_argument("--mock", action="store_true", help="Use synthetic ADB fixtures.")
     parser.add_argument("--no-browser", action="store_true")
     return parser.parse_args()
 

@@ -1,4 +1,4 @@
-"""Policy-bounded validation runner for mock and controlled physical devices."""
+"""Policy-bounded validation runner for controlled physical devices."""
 
 import asyncio
 import hashlib

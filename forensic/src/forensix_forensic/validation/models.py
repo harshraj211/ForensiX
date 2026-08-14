@@ -68,7 +68,7 @@ class ValidationReport(BaseModel):
     started_at: datetime
     completed_at: datetime
     tool_version: str = Field(min_length=1, max_length=64)
-    mode: str = Field(pattern=r"^(mock|system)$")
+    mode: str = Field(pattern=r"^system$")
     outcome: ValidationOutcome
     environment: ValidationEnvironment
     run_context: ValidationRunContext | None = None

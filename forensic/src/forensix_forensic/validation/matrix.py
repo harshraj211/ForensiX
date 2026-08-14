@@ -121,7 +121,7 @@ def build_physical_matrix(
     if invalid_records:
         gaps.append(f"{invalid_records} input record(s) failed canonical seal verification.")
     if rejected_non_system:
-        gaps.append(f"{rejected_non_system} mock/non-system record(s) were rejected.")
+        gaps.append(f"{rejected_non_system} non-system record(s) were rejected.")
     if rejected_unverifiable_system:
         gaps.append(
             f"{rejected_unverifiable_system} system record(s) lacked hashed ADB or device "
