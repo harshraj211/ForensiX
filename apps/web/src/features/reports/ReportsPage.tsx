@@ -30,10 +30,10 @@ export function ReportsCasesPage() {
       <ul className="mt-7 grid gap-3 sm:grid-cols-2">
         {casesQuery.data?.items.map((item) => (
           <li key={item.id}>
-            <Link to={`/cases/${item.id}/reports`} className="block rounded-xl border border-white/8 bg-white/[0.025] p-5 transition hover:border-cyan-300/20 hover:bg-cyan-300/5">
-              <p className="font-mono text-[10px] text-cyan-300/65">{item.case_number}</p>
-              <h2 className="mt-2 text-base font-semibold text-white">{item.title}</h2>
-              <p className="mt-2 text-xs uppercase tracking-wide text-slate-600">{item.status}</p>
+            <Link to={`/cases/${item.id}/reports`} className="block rounded-md border border-neutral-300 bg-white p-5 transition hover:border-neutral-500 hover:bg-neutral-50">
+              <p className="font-mono text-[10px] font-medium text-[#246c44]">{item.case_number}</p>
+              <h2 className="mt-2 text-base font-semibold text-neutral-950">{item.title}</h2>
+              <p className="mt-2 text-xs font-medium uppercase tracking-wide text-neutral-600">{item.status}</p>
             </Link>
           </li>
         ))}
