@@ -35,9 +35,9 @@ export function AuthBoundary() {
 
 function AuthLoading() {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#071016] text-slate-100">
+    <div className="grid min-h-screen place-items-center bg-black text-white">
       <div role="status" className="text-center">
-        <LoaderCircle className="mx-auto animate-spin text-cyan-300" aria-hidden="true" />
+        <LoaderCircle className="mx-auto animate-spin text-neutral-300" aria-hidden="true" />
         <p className="mt-4 text-sm text-slate-400">Checking the local security boundary…</p>
       </div>
     </div>
@@ -46,15 +46,15 @@ function AuthLoading() {
 
 function AuthUnavailable({ error, retry }: { error: Error; retry: () => void }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-[#071016] px-5 text-slate-100">
-      <div role="alert" className="max-w-md rounded-xl border border-rose-300/20 bg-rose-300/6 p-6">
-        <ShieldAlert className="text-rose-300" aria-hidden="true" />
+    <div className="grid min-h-screen place-items-center bg-[#f4f4f1] px-5 text-neutral-950">
+      <div role="alert" className="max-w-md border-l-2 border-red-600 bg-white p-6">
+        <ShieldAlert className="text-red-700" aria-hidden="true" />
         <h1 className="mt-4 text-xl font-semibold">Local authentication is unavailable</h1>
-        <p className="mt-2 text-sm leading-6 text-rose-100/70">{error.message}</p>
+        <p className="mt-2 text-sm leading-6 text-neutral-600">{error.message}</p>
         <button
           type="button"
           onClick={retry}
-          className="mt-5 rounded-lg bg-rose-200 px-4 py-2 text-sm font-semibold text-rose-950"
+          className="mt-5 bg-black px-4 py-2 text-sm font-semibold text-white"
         >
           Retry
         </button>
