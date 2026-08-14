@@ -4,7 +4,10 @@ import {
   ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
+  FileCheck2,
+  Fingerprint,
   LoaderCircle,
+  Play,
   ShieldCheck,
   XCircle,
 } from "lucide-react";
@@ -197,6 +200,10 @@ export function AcquisitionPlanningPage() {
   const caseWritable = caseQuery.data
     ? !new Set(["closed", "archived"]).has(caseQuery.data.status)
     : false;
+  const latestPlan = plansQuery.data?.items[0];
+  const latestJob = latestPlan
+    ? jobsQuery.data?.items.find((job) => job.plan_id === latestPlan.id)
+    : undefined;
   const createPlan = useMutation({
     mutationFn: () => {
       if (!latestAssessment) throw new Error("A current readiness snapshot is required.");
@@ -250,14 +257,23 @@ export function AcquisitionPlanningPage() {
         <p className="font-mono text-xs text-cyan-300/65">{caseQuery.data.case_number}</p>
         <h1 className="mt-2 text-3xl font-semibold text-white">Acquisition planning</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-          Freeze a reviewable module plan against one device and one exact readiness snapshot. Creating
-          a plan does not run ADB commands or collect evidence.
+          Run a scoped, reviewable collection against one exact readiness snapshot. Every stage keeps
+          its own manifest, durable event history, and integrity result.
         </p>
       </div>
 
+      <RunProgress
+        readinessReady={Boolean(latestAssessment && readinessFresh && scopeSupported)}
+        plan={latestPlan}
+        job={latestJob}
+      />
+
       <div className="mt-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="rounded-2xl border border-white/8 bg-white/[0.025] p-6">
-          <h2 className="text-lg font-semibold text-white">New immutable plan</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+            Collection scope
+          </p>
+          <h2 className="mt-2 text-lg font-semibold text-white">Create an immutable run plan</h2>
           {devicesQuery.data?.length === 0 ? (
             <div className="mt-5 rounded-xl border border-dashed border-white/10 p-6 text-center">
               <p className="text-sm text-slate-400">Assess a case device before planning.</p>
@@ -376,28 +392,129 @@ export function AcquisitionPlanningPage() {
             </form>
           )}
         </section>
-        <PlanHistory
-          plans={plansQuery.data?.items ?? []}
-          jobs={jobsQuery.data?.items ?? []}
-          pending={plansQuery.isPending || jobsQuery.isPending}
-          error={plansQuery.error ?? jobsQuery.error}
+        <RunSafeguards
           caseWritable={caseWritable}
-          referenceTime={pageOpenedAt}
-          preparingPlanId={prepareJob.isPending ? prepareJob.variables : undefined}
-          cancellingJobId={cancelJob.isPending ? cancelJob.variables : undefined}
-          runningJobId={runInventory.isPending ? runInventory.variables : undefined}
-          onPrepare={(planId) => {
-            prepareJob.mutate(planId);
-          }}
-          onCancel={(jobId) => {
-            cancelJob.mutate(jobId);
-          }}
-          onRun={(jobId) => {
-            runInventory.mutate(jobId);
-          }}
-          mutationError={prepareJob.error ?? cancelJob.error ?? runInventory.error}
+          latestAssessmentAt={latestAssessment?.assessed_at}
+          latestPlanHash={latestPlan?.plan_hash}
+          latestJob={latestJob}
         />
       </div>
+
+      <PlanHistory
+        plans={plansQuery.data?.items ?? []}
+        jobs={jobsQuery.data?.items ?? []}
+        pending={plansQuery.isPending || jobsQuery.isPending}
+        error={plansQuery.error ?? jobsQuery.error}
+        caseWritable={caseWritable}
+        referenceTime={pageOpenedAt}
+        preparingPlanId={prepareJob.isPending ? prepareJob.variables : undefined}
+        cancellingJobId={cancelJob.isPending ? cancelJob.variables : undefined}
+        runningJobId={runInventory.isPending ? runInventory.variables : undefined}
+        onPrepare={(planId) => {
+          prepareJob.mutate(planId);
+        }}
+        onCancel={(jobId) => {
+          cancelJob.mutate(jobId);
+        }}
+        onRun={(jobId) => {
+          runInventory.mutate(jobId);
+        }}
+        mutationError={prepareJob.error ?? cancelJob.error ?? runInventory.error}
+      />
+    </div>
+  );
+}
+
+function RunProgress({
+  readinessReady,
+  plan,
+  job,
+}: {
+  readinessReady: boolean;
+  plan?: AcquisitionPlan;
+  job?: AcquisitionJob;
+}) {
+  const steps = [
+    { label: "Readiness", complete: readinessReady },
+    { label: "Scope frozen", complete: Boolean(plan) },
+    { label: "Job prepared", complete: Boolean(job) },
+    { label: "Inventory sealed", complete: Boolean(job?.result_reference) },
+    { label: "Evidence verified", complete: job?.state === "verified" },
+  ];
+  const currentIndex = Math.min(
+    steps.findIndex((step) => !step.complete),
+    steps.length - 1,
+  );
+
+  return (
+    <nav aria-label="Acquisition run progress" className="mt-7 border-y border-white/8 py-4">
+      <ol className="grid gap-3 sm:grid-cols-5">
+        {steps.map((step, index) => {
+          const current = index === (currentIndex === -1 ? steps.length - 1 : currentIndex);
+          return (
+            <li key={step.label} className="flex min-w-0 items-center gap-3">
+              <span
+                className={`grid size-7 shrink-0 place-items-center rounded-full border text-xs font-semibold ${
+                  step.complete
+                    ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-200"
+                    : current
+                      ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-200"
+                      : "border-white/10 text-slate-500"
+                }`}
+              >
+                {step.complete ? <CheckCircle2 size={14} aria-hidden="true" /> : index + 1}
+              </span>
+              <span className={`truncate text-xs font-medium ${current ? "text-white" : "text-slate-500"}`}>
+                {step.label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+function RunSafeguards({
+  caseWritable,
+  latestAssessmentAt,
+  latestPlanHash,
+  latestJob,
+}: {
+  caseWritable: boolean;
+  latestAssessmentAt?: string;
+  latestPlanHash?: string;
+  latestJob?: AcquisitionJob;
+}) {
+  return (
+    <aside className="border-l border-white/8 pl-0 lg:pl-6">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+        Run safeguards
+      </p>
+      <h2 className="mt-2 text-lg font-semibold text-white">Defensibility snapshot</h2>
+      <dl className="mt-5 divide-y divide-white/8 border-y border-white/8 text-sm">
+        <SummaryRow label="Case state" value={caseWritable ? "Writable" : "Read only"} />
+        <SummaryRow
+          label="Readiness"
+          value={latestAssessmentAt ? new Date(latestAssessmentAt).toLocaleString() : "Required"}
+        />
+        <SummaryRow label="Frozen plan" value={latestPlanHash ? shortHash(latestPlanHash) : "Not created"} mono />
+        <SummaryRow label="Durable events" value={String(latestJob?.last_event_sequence ?? 0)} />
+        <SummaryRow label="Resume policy" value={latestJob?.resume_supported ? "Supported" : "Not active"} />
+      </dl>
+      <p className="mt-4 text-xs leading-5 text-slate-500">
+        Device-side effects, selected scope, file manifests, hashes, and verification outcomes are
+        recorded against the case audit history.
+      </p>
+    </aside>
+  );
+}
+
+function SummaryRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-4 py-3">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className={`text-right text-slate-200 ${mono ? "font-mono text-xs" : ""}`}>{value}</dd>
     </div>
   );
 }
@@ -460,11 +577,23 @@ function PlanHistory({
   mutationError: Error | null;
 }) {
   return (
-    <aside className="rounded-2xl border border-white/8 bg-white/[0.025] p-6">
-      <h2 className="text-lg font-semibold text-white">Frozen plan history</h2>
-      <div className="mt-4 flex gap-3 rounded-xl border border-cyan-200/10 bg-cyan-200/5 p-3 text-xs leading-5 text-cyan-100/70">
+    <section className="mt-8 border-t border-white/8 pt-7">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+            Active collection
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-white">Prepared acquisition runs</h2>
+        </div>
+        <p className="max-w-xl text-xs leading-5 text-slate-500">
+          Each run remains tied to its readiness snapshot and immutable scope. Previous runs stay
+          visible for review and cannot be silently replaced.
+        </p>
+      </div>
+      <div className="mt-5 flex gap-3 border-y border-cyan-200/10 bg-cyan-200/5 p-3 text-xs leading-5 text-cyan-100/70">
         <ShieldCheck size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-        The bounded executor records relative paths and counts only. It does not pull or read Android file contents.
+        Inventory records paths and metadata first. File contents are collected only after explicit
+        selection, then hashed and stored with a separate manifest.
       </div>
       {pending && <p role="status" className="mt-5 text-sm text-slate-500">Loading plans…</p>}
       {error && <div className="mt-5"><CaseError error={error} /></div>}
@@ -477,7 +606,7 @@ function PlanHistory({
           const cancellable = job && new Set(["created", "validating", "ready", "paused", "interrupted"]).has(job.state);
           const inventoryAllowed = job?.state === "ready" && plan.modules.includes("shared_storage_inventory");
           return (
-          <article key={plan.id} className="rounded-xl border border-white/8 bg-black/10 p-4">
+          <article key={plan.id} className="rounded-xl border border-white/8 bg-white p-5 sm:p-6">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-sm font-semibold text-white">{scopeCopy[plan.scope].label}</h3>
               <span className="rounded-full border border-emerald-200/15 px-2 py-1 text-[10px] uppercase tracking-wide text-emerald-200">{plan.status}</span>
@@ -486,13 +615,13 @@ function PlanHistory({
             <p className="mt-3 truncate font-mono text-[10px] text-slate-600" title={plan.plan_hash}>SHA-256 {plan.plan_hash}</p>
             <p className="mt-2 text-[11px] text-slate-600">Created {new Date(plan.created_at).toLocaleString()}</p>
             {job ? (
-              <div className="mt-4 rounded-lg border border-white/8 bg-white/[0.025] p-3">
+              <div className="mt-5 border-t border-white/8 pt-4">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-xs font-semibold text-slate-300">Durable job</span>
                   <span className="rounded-full border border-cyan-200/15 px-2 py-1 text-[10px] uppercase tracking-wide text-cyan-200">{job.state}</span>
                 </div>
                 <p className="mt-2 text-xs leading-5 text-slate-500">{job.current_step ?? "Awaiting a safe executor step."}</p>
-                <p className="mt-2 text-[11px] text-slate-600">{job.progress_percent}% checkpoint / {job.last_event_sequence} durable events / not running</p>
+                <p className="mt-2 text-[11px] text-slate-600">{job.progress_percent}% checkpoint / {job.last_event_sequence} durable events</p>
                 {inventoryAllowed && (
                   <button
                     type="button"
@@ -543,7 +672,7 @@ function PlanHistory({
           );
         })}
       </div>
-    </aside>
+    </section>
   );
 }
 
@@ -608,6 +737,24 @@ function InventoryResultPanel({
       void queryClient.invalidateQueries({ queryKey: ["acquisition-partials", caseId, jobId] });
     },
   });
+  const verifyAll = useMutation({
+    mutationFn: async (evidenceFileIds: string[]) => {
+      const concurrency = 4;
+      for (let index = 0; index < evidenceFileIds.length; index += concurrency) {
+        await Promise.all(
+          evidenceFileIds
+            .slice(index, index + concurrency)
+            .map((evidenceFileId) => verifyEvidenceFile(caseId, jobId, evidenceFileId)),
+        );
+      }
+      return evidenceFileIds.length;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["evidence-verifications", caseId, jobId],
+      });
+    },
+  });
   if (inventoryQuery.isPending) {
     return <p role="status" className="mt-3 text-xs text-slate-500">Loading inventory manifest...</p>;
   }
@@ -627,6 +774,18 @@ function InventoryResultPanel({
       .filter((partial) => partial.status === "retained")
       .map((partial) => [partial.evidence_file_id, partial]),
   );
+  const acquiredFiles = filesQuery.data ?? [];
+  const completedFiles = acquiredFiles.filter((file) => file.status === "completed");
+  const verifiedFiles = completedFiles.filter(
+    (file) => latestVerificationByFile.get(file.id)?.status === "verified",
+  );
+  const unverifiedFileIds = completedFiles
+    .filter((file) => latestVerificationByFile.get(file.id)?.status !== "verified")
+    .map((file) => file.id);
+  const exceptionCount = acquiredFiles.filter(
+    (file) => file.status === "failed" || file.status === "interrupted",
+  ).length;
+  const acquiredBytes = completedFiles.reduce((total, file) => total + (file.size_bytes ?? 0), 0);
   const inScopeItems = inventory.items.filter((item) => itemAllowedByScope(item, scope));
   const visibleItems = inScopeItems.filter((item) => matchesInventoryFilter(item, filter));
   const selectableVisibleIds = visibleItems
@@ -639,7 +798,8 @@ function InventoryResultPanel({
   const selectedVisibleCount = selectableVisibleIds.filter((id) => selectedIds.has(id)).length;
   const allVisibleSelected =
     selectableVisibleIds.length > 0 && selectedVisibleCount === selectableVisibleIds.length;
-  const busy = acquireFile.isPending || acquireBatch.isPending || resumeFile.isPending;
+  const busy =
+    acquireFile.isPending || acquireBatch.isPending || resumeFile.isPending || verifyAll.isPending;
 
   const toggleSelected = (itemId: string, enabled: boolean) => {
     setSelectedIds((current) => {
@@ -667,13 +827,51 @@ function InventoryResultPanel({
   };
 
   return (
-    <div className="mt-3 rounded-lg border border-emerald-200/10 bg-emerald-200/5 p-3">
+    <div className="mt-5 border-t border-emerald-200/20 pt-5">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200">
+            Sealed inventory
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-white">Collection and verification</h4>
+        </div>
+        <button
+          type="button"
+          disabled={unverifiedFileIds.length === 0 || verifyAll.isPending}
+          onClick={() => {
+            verifyAll.mutate(unverifiedFileIds);
+          }}
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded border border-emerald-200/25 px-4 text-xs font-semibold text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {verifyAll.isPending ? (
+            <LoaderCircle size={14} className="animate-spin" aria-hidden="true" />
+          ) : (
+            <Fingerprint size={14} aria-hidden="true" />
+          )}
+          {verifyAll.isPending
+            ? `Verifying ${String(unverifiedFileIds.length)} files...`
+            : unverifiedFileIds.length > 0
+              ? `Verify all acquired (${String(unverifiedFileIds.length)})`
+              : "All acquired files verified"}
+        </button>
+      </div>
       <p className="text-xs font-semibold text-emerald-200">
         {inventory.persisted_count} path records · {inventory.status}
       </p>
       <p className="mt-1 truncate font-mono text-[10px] text-slate-500" title={inventory.manifest_hash}>
         Manifest SHA-256 {inventory.manifest_hash}
       </p>
+      <dl className="mt-4 grid gap-px overflow-hidden rounded border border-white/8 bg-[#d4d6d1] sm:grid-cols-4">
+        <RunMetric label="Inventoried" value={String(inScopeItems.length)} icon={Play} />
+        <RunMetric label="Acquired" value={String(completedFiles.length)} icon={FileCheck2} />
+        <RunMetric label="Verified" value={String(verifiedFiles.length)} icon={Fingerprint} />
+        <RunMetric
+          label={exceptionCount > 0 ? "Exceptions" : "Acquired size"}
+          value={exceptionCount > 0 ? String(exceptionCount) : formatBytes(acquiredBytes)}
+          icon={exceptionCount > 0 ? AlertTriangle : ShieldCheck}
+          warning={exceptionCount > 0}
+        />
+      </dl>
       <p className="mt-2 text-[10px] leading-4 text-amber-200/80">
         File acquisition is limited to 100 MiB per selected path (max 50 per bulk batch) and is not
         physically validated. Transfers run sequentially; failures do not abort the rest of the batch.
@@ -883,6 +1081,7 @@ function InventoryResultPanel({
       {acquireBatch.isError && <div className="mt-3"><CaseError error={acquireBatch.error} /></div>}
       {resumeFile.isError && <div className="mt-3"><CaseError error={resumeFile.error} /></div>}
       {verifyFile.isError && <div className="mt-3"><CaseError error={verifyFile.error} /></div>}
+      {verifyAll.isError && <div className="mt-3"><CaseError error={verifyAll.error} /></div>}
       {inventory.total > inventory.items.length && (
         <p className="mt-2 text-[10px] text-slate-600">
           Showing {inventory.items.length} of {inventory.total} paths.
@@ -890,6 +1089,43 @@ function InventoryResultPanel({
       )}
     </div>
   );
+}
+
+function RunMetric({
+  label,
+  value,
+  icon: Icon,
+  warning = false,
+}: {
+  label: string;
+  value: string;
+  icon: typeof ShieldCheck;
+  warning?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3 bg-white p-3">
+      <Icon
+        size={16}
+        aria-hidden="true"
+        className={warning ? "text-rose-300" : "text-emerald-300"}
+      />
+      <div>
+        <dt className="text-[10px] uppercase tracking-wide text-slate-500">{label}</dt>
+        <dd className="mt-0.5 text-sm font-semibold text-white">{value}</dd>
+      </div>
+    </div>
+  );
+}
+
+function shortHash(value: string): string {
+  return `${value.slice(0, 8)}...${value.slice(-8)}`;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${String(value)} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
 }
 
 function scopeModules(scope: AcquisitionScope, custom: AcquisitionModule[]): AcquisitionModule[] {

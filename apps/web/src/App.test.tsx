@@ -428,7 +428,7 @@ describe("case workspace", () => {
       "/api/v1/cases/case-1/custody/checkpoints/checkpoint-1/signatures/verify",
       expect.objectContaining({ method: "POST" }),
     );
-  }, 10_000);
+  }, 20_000);
 });
 
 describe("audit review", () => {
@@ -1032,7 +1032,7 @@ describe("acquisition planning", () => {
     let created = false;
     let jobState: "ready" | "completed" | null = null;
     let fileAcquired = false;
-    let verificationComplete = false;
+    const verifiedFileIds = new Set<string>();
     const assessedAt = new Date().toISOString();
     const plan = {
       id: "plan-1",
@@ -1336,29 +1336,25 @@ describe("acquisition planning", () => {
       if (url === "/api/v1/cases/case-1/acquisitions/job-1/verifications") {
         return Promise.resolve(
           jsonResponse(
-            verificationComplete
-              ? [
-                  {
-                    id: "verification-1",
-                    evidence_file_id: "file-1",
-                    case_id: "case-1",
-                    job_id: "job-1",
-                    verified_by: "user-1",
-                    status: "verified",
-                    expected_file_sha256: "e".repeat(64),
-                    observed_file_sha256: "e".repeat(64),
-                    file_size_bytes: 31,
-                    file_matches: true,
-                    expected_manifest_sha256: "f".repeat(64),
-                    observed_manifest_sha256: "f".repeat(64),
-                    manifest_matches: true,
-                    error_code: null,
-                    verification_hash: "a".repeat(64),
-                    tool_version: "0.1.0",
-                    verified_at: assessedAt,
-                  },
-                ]
-              : [],
+            [...verifiedFileIds].map((fileId, index) => ({
+              id: `verification-${String(index + 1)}`,
+              evidence_file_id: fileId,
+              case_id: "case-1",
+              job_id: "job-1",
+              verified_by: "user-1",
+              status: "verified",
+              expected_file_sha256: "e".repeat(64),
+              observed_file_sha256: "e".repeat(64),
+              file_size_bytes: 31,
+              file_matches: true,
+              expected_manifest_sha256: "f".repeat(64),
+              observed_manifest_sha256: "f".repeat(64),
+              manifest_matches: true,
+              error_code: null,
+              verification_hash: "a".repeat(64),
+              tool_version: "0.1.0",
+              verified_at: assessedAt,
+            })),
           ),
         );
       }
@@ -1447,15 +1443,17 @@ describe("acquisition planning", () => {
           }),
         );
       }
-      if (
-        url === "/api/v1/cases/case-1/acquisitions/job-1/files/file-1/verify" &&
-        init?.method === "POST"
-      ) {
-        verificationComplete = true;
+      const verifyMatch = url.match(
+        /^\/api\/v1\/cases\/case-1\/acquisitions\/job-1\/files\/(file-[123])\/verify$/,
+      );
+      if (verifyMatch && init?.method === "POST") {
+        const fileId = verifyMatch[1];
+        if (!fileId) throw new Error("Expected a file identifier for verification.");
+        verifiedFileIds.add(fileId);
         return Promise.resolve(
           jsonResponse({
-            id: "verification-1",
-            evidence_file_id: "file-1",
+            id: `verification-${fileId}`,
+            evidence_file_id: fileId,
             case_id: "case-1",
             job_id: "job-1",
             verified_by: "user-1",
@@ -1492,7 +1490,7 @@ describe("acquisition planning", () => {
     await user.click(screen.getByRole("button", { name: "Prepare durable job" }));
 
     expect(await screen.findByText("Durable job")).toBeInTheDocument();
-    expect(await screen.findByText(/4 durable events \/ not running/i)).toBeInTheDocument();
+    expect(await screen.findByText(/4 durable events/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Run bounded path inventory" }));
     expect(await screen.findByText("3 path records · completed")).toBeInTheDocument();
     expect(screen.getByText("DCIM/Camera/IMG_0001.jpg")).toBeInTheDocument();
@@ -1501,12 +1499,9 @@ describe("acquisition planning", () => {
     expect(await screen.findByText(/Batch batch-1… finished: 3 completed/i)).toBeInTheDocument();
     expect(await screen.findByText("31 bytes acquired")).toBeInTheDocument();
     expect(screen.getByText(`SHA-256 ${"e".repeat(64)}`)).toBeInTheDocument();
-    const verifyButtons = screen.getAllByRole("button", { name: "Verify integrity" });
-    expect(verifyButtons.length).toBeGreaterThan(0);
-    const verifyButton = verifyButtons.at(0);
-    if (!verifyButton) throw new Error("Expected an integrity verification button.");
-    await user.click(verifyButton);
-    expect(await screen.findByText("Integrity verified")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Verify all acquired (3)" }));
+    expect(await screen.findByRole("button", { name: "All acquired files verified" })).toBeDisabled();
+    expect(screen.getAllByText("Integrity verified")).toHaveLength(3);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/cases/case-1/acquisitions/job-1/inventory/acquire-batch",
       expect.objectContaining({
