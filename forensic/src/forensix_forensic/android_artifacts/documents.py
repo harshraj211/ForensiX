@@ -5,10 +5,9 @@ import re
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import cast
 from xml.etree.ElementTree import Element, ParseError
 
-from defusedxml.ElementTree import fromstring  # type: ignore[import-untyped]
+from defusedxml.ElementTree import fromstring
 
 from forensix_forensic.evidence_io import (
     DocumentParserRegistry,
@@ -168,7 +167,7 @@ def _safe_xml_root(path: Path) -> Element:
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
         raise AndroidDocumentParserError("DTD and entity declarations are prohibited.")
     try:
-        root = cast(Element, fromstring(payload))
+        root = fromstring(payload)
     except ParseError as error:
         raise AndroidDocumentParserError("The XML configuration is malformed.") from error
     element_count = 0
