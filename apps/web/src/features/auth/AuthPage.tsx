@@ -80,7 +80,7 @@ export function AuthPage({ mode }: { mode: "bootstrap" | "login" }) {
               </p>
             </div>
             <p className="mt-8 text-[10px] uppercase tracking-[0.14em] text-neutral-600">
-              ForensiX v0.1.0 / Local-only session
+              ForensiX v1.0.0 / Local-only session
             </p>
           </div>
         </section>

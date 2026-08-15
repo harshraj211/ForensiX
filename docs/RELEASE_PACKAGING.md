@@ -44,7 +44,7 @@ Build from a clean checkout with Node.js 24+, pnpm 11+, Python 3.12+, and the re
 ```powershell
 pnpm install --frozen-lockfile
 .venv\Scripts\python.exe -m pip install -r requirements-release.txt
-.venv\Scripts\python.exe scripts\build-release.py --version 0.1.0 --output-dir release
+.venv\Scripts\python.exe scripts\build-release.py --version 1.0.0 --output-dir release
 ```
 
 The build runs the frontend production build, creates a PyInstaller onedir bundle, copies the Alembic migrations and web assets, generates a CycloneDX SBOM, writes a per-file release manifest, creates a deterministic ZIP, and writes the archive SHA-256 sidecar.
@@ -56,8 +56,8 @@ The release script intentionally refuses a dirty Git worktree unless `--allow-di
 Push a semantic version tag after CI passes:
 
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 GitHub Actions builds Windows, Linux, and macOS, creates attestations, uploads workflow artifacts, and publishes a GitHub Release for the tag. The release job normalizes the platform archives into the three stable download names used by the README links.

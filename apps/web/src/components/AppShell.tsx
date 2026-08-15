@@ -145,7 +145,7 @@ export function AppShell() {
               </button>
             </div>
             <div className="mt-5 px-3 text-[10px] leading-5 text-neutral-500">
-              <p>ForensiX v0.1.0</p>
+              <p>ForensiX v1.0.0</p>
               <p>Local evidence environment</p>
             </div>
           </aside>

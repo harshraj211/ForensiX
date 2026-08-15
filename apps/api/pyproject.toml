@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forensix-api"
-version = "0.1.0"
+version = "1.0.0"
 description = "Local FastAPI service for ForensiX"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.139,<0.140",
-  "forensix-forensic>=0.1.0",
-  "forensix-server>=0.1.0",
+  "forensix-forensic>=1.0.0",
+  "forensix-server>=1.0.0",
   "python-multipart>=0.0.22,<0.1",
   "uvicorn[standard]>=0.41,<0.42"
 ]
