@@ -16,6 +16,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { caseKeys } from "../cases/caseKeys";
 import { CaseError } from "../cases/CasesPage";
+import { FileTypeIcon } from "../../components/FileTypeIcon";
 import {
   cancelAcquisitionJob,
   acquireInventoryBatch,
@@ -945,6 +946,7 @@ function InventoryResultPanel({
                     toggleSelected(item.id, event.target.checked);
                   }}
                 />
+                <FileTypeIcon extension={item.extension} size={46} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-mono" title={item.relative_path}>
                     {item.relative_path}

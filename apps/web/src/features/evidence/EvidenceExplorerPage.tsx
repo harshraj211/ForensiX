@@ -17,6 +17,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { FileTypeIcon } from "../../components/FileTypeIcon";
 import {
   getArtifact,
   getArtifactAnnotations,
@@ -266,13 +267,18 @@ export function EvidenceExplorerPage() {
                     }}
                     className={`w-full rounded-xl border p-4 text-left transition ${effectiveSelectedId === artifact.id ? "border-cyan-300/25 bg-cyan-300/7" : "border-white/7 bg-black/10 hover:border-white/15"}`}
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="truncate text-sm font-semibold text-slate-100">{artifact.title}</span>
-                      <span className="rounded-full border border-white/10 px-2 py-1 text-[9px] uppercase text-slate-400">{artifact.category}</span>
+                    <div className="flex items-start gap-3">
+                      <FileTypeIcon category={artifact.category} extension={artifact.extension} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="truncate text-sm font-semibold text-slate-100">{artifact.title}</span>
+                          <span className="rounded-full border border-white/10 px-2 py-1 text-[9px] uppercase text-slate-400">{artifact.category}</span>
+                        </div>
+                        <p className="mt-2 truncate font-mono text-[10px] text-slate-500">{artifact.source_relative_path}</p>
+                        <p className="mt-2 text-[10px] text-slate-600">{formatBytes(artifact.size_bytes)} · {artifact.detected_mime}</p>
+                        {artifact.duplicate_count > 1 && <p className="mt-2 text-[10px] font-semibold text-amber-200">{artifact.duplicate_count} files share this SHA-256</p>}
+                      </div>
                     </div>
-                    <p className="mt-2 truncate font-mono text-[10px] text-slate-500">{artifact.source_relative_path}</p>
-                    <p className="mt-2 text-[10px] text-slate-600">{formatBytes(artifact.size_bytes)} · {artifact.detected_mime}</p>
-                    {artifact.duplicate_count > 1 && <p className="mt-2 text-[10px] font-semibold text-amber-200">{artifact.duplicate_count} files share this SHA-256</p>}
                   </button>
                 </li>
               ))}
