@@ -16,7 +16,7 @@ The stable URLs are:
 - `https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Linux-Portable.zip`
 - `https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-macOS-Portable.zip`
 
-The release includes one `SHA256SUMS.txt` file. SBOMs are generated and attested by GitHub Actions but are intentionally kept out of the primary download list. Each ZIP still contains its internal source manifest and per-file hashes.
+The release includes one `SHA256SUMS.txt` file. SBOMs are generated and attested by GitHub Actions but are intentionally kept out of the primary download list. Each ZIP still contains its internal source manifest and per-file hashes. The desktop bundle opens a native WebView window by default and supports browser fallback with `--browser`.
 
 ## Windows signing
 

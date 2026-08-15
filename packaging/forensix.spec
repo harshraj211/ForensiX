@@ -18,6 +18,7 @@ hiddenimports = (
     collect_submodules("forensix_api")
     + collect_submodules("forensix_server")
     + collect_submodules("forensix_forensic")
+    + collect_submodules("webview")
 )
 
 analysis = Analysis(

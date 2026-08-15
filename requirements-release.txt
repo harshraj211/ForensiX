@@ -3,3 +3,4 @@
 -e ./apps/api
 pyinstaller==6.21.0
 cyclonedx-bom==7.3.0
+pywebview>=5,<6

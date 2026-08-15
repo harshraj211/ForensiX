@@ -24,7 +24,7 @@ Download the latest portable build for your workstation:
 - [Linux portable build](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Linux-Portable.zip)
 - [macOS portable build](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-macOS-Portable.zip)
 
-Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`ForensiX.exe` on Windows). The application starts its loopback backend and bundled web interface automatically and opens the workstation in your browser. No public hosting or internet connection is required after download.
+Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`ForensiX.exe` on Windows). The application starts its loopback backend and bundled web interface automatically and opens the workstation in its own desktop window. No public hosting or internet connection is required after download.
 
 The distributions are portable rather than installers. They do not silently install Android USB drivers, ADB, scrcpy, or PhotoRec. ADB is required for device detection; scrcpy is optional and is needed only for live mirror, interactive control, and documented screen recording. See [Windows workstation setup](docs/WORKSTATION_SETUP.md) for the complete procedure and `SHA256SUMS.txt` in the release for checksums.
 
@@ -193,7 +193,7 @@ On Windows, after installing dependencies, the launcher can start both services 
 
 ### Portable Windows application
 
-For the GitHub download, extract the ZIP and launch `ForensiX.exe`. The desktop launcher starts the local API and web application as one process, binds only to `127.0.0.1`, opens the browser, and uses `%LOCALAPPDATA%\ForensiX` for the database, evidence vault, logs, and generated exports. Close the application window or terminate `ForensiX.exe` to stop the local service.
+For the GitHub download, extract the ZIP and launch `ForensiX.exe`. The desktop launcher starts the local API and web application as one process, binds only to `127.0.0.1`, opens a native ForensiX window, and uses `%LOCALAPPDATA%\ForensiX` for the database, evidence vault, logs, and generated exports. Close the application window or terminate `ForensiX.exe` to stop the local service.
 
 On first use:
 
@@ -210,6 +210,8 @@ If ADB is not on `PATH`, launch the desktop executable with an explicit path:
 ```powershell
 .\ForensiX.exe --adb-path "C:\platform-tools\adb.exe"
 ```
+
+Use `--browser` to open the workstation in the default browser instead of the native window. Use `--no-browser` for a terminal-only readiness check.
 
 The application does not need a separate **Start services** action during normal use. Its status and integration diagnostics show whether the local API, ADB, device transport, evidence storage, and optional scrcpy integration are ready. ADB is started on demand by the Android tooling. scrcpy is started only when an analyst explicitly requests mirroring, control, or recording.
 
