@@ -114,15 +114,9 @@ _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
         "/data/user/0/org.thoughtcrime.securesms/databases",
         "/data/user/0/org.thoughtcrime.securesms/shared_prefs",
     ),
-    RootedCollectionProfile.MESSENGER: (
-        "/data/user/0/com.facebook.orca/databases",
-    ),
-    RootedCollectionProfile.INSTAGRAM: (
-        "/data/user/0/com.instagram.android/databases",
-    ),
-    RootedCollectionProfile.SNAPCHAT: (
-        "/data/user/0/com.snapchat.android/databases",
-    ),
+    RootedCollectionProfile.MESSENGER: ("/data/user/0/com.facebook.orca/databases",),
+    RootedCollectionProfile.INSTAGRAM: ("/data/user/0/com.instagram.android/databases",),
+    RootedCollectionProfile.SNAPCHAT: ("/data/user/0/com.snapchat.android/databases",),
     RootedCollectionProfile.ANDROID_PROVIDERS: (
         "/data/user_de/0/com.android.providers.contacts/databases",
         "/data/user/0/com.android.providers.contacts/databases",
