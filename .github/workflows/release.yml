@@ -11,7 +11,7 @@ on:
     tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   attestations: write
 
@@ -59,3 +59,34 @@ jobs:
             release/*.zip.sha256
             release/*.cdx.json
           if-no-files-found: error
+
+  publish-github-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: portable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: forensix-*
+          path: release-assets
+          merge-multiple: true
+      - name: Add stable Windows download name
+        shell: bash
+        run: |
+          windows_archive="$(find release-assets -maxdepth 1 -type f -iname '*windows-*.zip' | head -n 1)"
+          test -n "$windows_archive"
+          cp "$windows_archive" release-assets/ForensiX-Windows-Portable.zip
+          sha256sum release-assets/ForensiX-Windows-Portable.zip > release-assets/ForensiX-Windows-Portable.zip.sha256
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --verify-tag \
+              --title "ForensiX ${GITHUB_REF_NAME#v}" \
+              --generate-notes
+          fi

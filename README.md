@@ -16,6 +16,16 @@
 
 ForensiX is a planned cross-platform Android rapid evidence triage and forensic preview platform. It runs on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
+## Download For Windows
+
+Download the latest portable Windows build from GitHub:
+
+[Download ForensiX for Windows](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Windows-Portable.zip)
+
+Extract the ZIP to a trusted local folder and run `ForensiX.exe`. The application starts its loopback backend and bundled web interface automatically and opens the workstation in your browser. No public hosting or internet connection is required after download.
+
+The current Windows distribution is portable rather than an installer. It does not silently install Android USB drivers, ADB, scrcpy, or PhotoRec. ADB is required for device detection; scrcpy is optional and is needed only for live mirror, interactive control, and documented screen recording. See [Windows workstation setup](docs/WORKSTATION_SETUP.md) for the complete procedure.
+
 The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, immutable capability-gated acquisition plans, case-owned durable acquisition jobs, and the first bounded content-free shared-storage path inventory.
 
 > **No production forensic capability is claimed yet.**
@@ -179,6 +189,28 @@ On Windows, after installing dependencies, the launcher can start both services 
 .\scripts\start-forensix.ps1 -AdbPath "C:\platform-tools\adb.exe"
 ```
 
+### Portable Windows application
+
+For the GitHub download, extract the ZIP and launch `ForensiX.exe`. The desktop launcher starts the local API and web application as one process, binds only to `127.0.0.1`, opens the browser, and uses `%LOCALAPPDATA%\ForensiX` for the database, evidence vault, logs, and generated exports. Close the application window or terminate `ForensiX.exe` to stop the local service.
+
+On first use:
+
+1. Install Android SDK Platform-Tools and the correct USB driver for the Android device.
+2. Enable Developer options and USB debugging on the device.
+3. Connect the device, unlock it, and accept the RSA authorization prompt.
+4. Launch `ForensiX.exe` and complete the local administrator setup.
+5. Open **Device readiness**, run detection, and confirm the device is authorized before creating a case.
+6. Create or open a case, link the detected device, run capability assessment, and choose only the supported acquisition options.
+7. Keep the evidence directory on an encrypted workstation volume and preserve generated hashes, reports, and audit exports with the case.
+
+If ADB is not on `PATH`, launch the desktop executable with an explicit path:
+
+```powershell
+.\ForensiX.exe --adb-path "C:\platform-tools\adb.exe"
+```
+
+The application does not need a separate **Start services** action during normal use. Its status and integration diagnostics show whether the local API, ADB, device transport, evidence storage, and optional scrcpy integration are ready. ADB is started on demand by the Android tooling. scrcpy is started only when an analyst explicitly requests mirroring, control, or recording.
+
 ### 🖱️ Optional Live Mirror & Device Control
 
 To enable the optional low-latency Android mirror and separately acknowledged controller window, install the official local scrcpy runtime once, then start ForensiX normally:
@@ -213,7 +245,7 @@ Verified SQLite databases and safe ZIP/TAR working copies can be assessed and sc
 
 Supervisors and administrators can export sealed custody/audit checkpoint packages from a case after chain verification succeeds. The package hash must be preserved, signed, or published through an agency-controlled process before it becomes externally anchored. After that external action, the case screen can record its provider, reference, time, and optional receipt SHA-256 as an append-only anchor receipt. It can also verify a detached RSA/ECDSA signature against a supplied public X.509 certificate without accepting private keys. See [custody checkpoints](docs/CUSTODY_CHECKPOINTS.md).
 
-Unsigned portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, and GitHub build attestations are defined in [release packaging](docs/RELEASE_PACKAGING.md). Native code signing, notarization, and a production installer remain explicit release gates.
+Portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, GitHub build attestations, and tagged GitHub Releases are defined in [release packaging](docs/RELEASE_PACKAGING.md). The current Windows asset is unsigned and portable; native code signing, notarization, and a production installer remain explicit release gates.
 
 > Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, `storage_blocked`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
 
