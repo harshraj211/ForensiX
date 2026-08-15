@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 project_root = Path(SPEC).resolve().parents[1]
 web_root = project_root / "apps" / "web" / "dist"
@@ -14,11 +14,16 @@ datas = [
 ]
 datas += collect_data_files("alembic")
 datas += collect_data_files("reportlab")
+binaries = collect_dynamic_libs("pythonnet")
+datas += collect_data_files("pythonnet")
 hiddenimports = (
     collect_submodules("forensix_api")
     + collect_submodules("forensix_server")
     + collect_submodules("forensix_forensic")
     + collect_submodules("webview")
+    + collect_submodules("pythonnet")
+    + collect_submodules("clr_loader")
+    + ["clr"]
 )
 
 analysis = Analysis(
@@ -28,7 +33,7 @@ analysis = Analysis(
         str(project_root / "server" / "src"),
         str(project_root / "forensic" / "src"),
     ],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

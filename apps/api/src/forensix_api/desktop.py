@@ -96,7 +96,7 @@ def _run_in_browser(app: FastAPI, origin: str, host: str, port: int) -> None:
 
 def _run_in_native_window(app: FastAPI, origin: str, host: str, port: int) -> None:
     try:
-        import webview  # type: ignore[import-not-found]
+        import webview
     except ImportError:
         _run_in_browser(app, origin, host, port)
         return
