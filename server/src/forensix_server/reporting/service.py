@@ -21,6 +21,7 @@ from forensix_server.cases import CaseAccessDeniedError, CaseInvalidStateError, 
 from forensix_server.custody import AuditService, CustodyService
 from forensix_server.db import (
     AcquiredEvidenceFileRecord,
+    AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     AcquisitionPlanRecord,
     AnalystNoteRecord,
@@ -386,6 +387,16 @@ class ReportService:
                 )
             )
         )
+        inventory_items = {
+            item.id: item
+            for item in session.scalars(
+                select(AcquisitionInventoryItemRecord).where(
+                    AcquisitionInventoryItemRecord.inventory_id.in_(
+                        [inventory.id for inventory in inventories]
+                    )
+                )
+            )
+        }
         artifacts = list(
             session.scalars(select(ArtifactRecord).where(ArtifactRecord.case_id == case_id))
         )
@@ -627,6 +638,13 @@ class ReportService:
             hash_manifest=[
                 HashManifestItem(
                     evidence_file_id=item.id,
+                    source_relative_path=(
+                        inventory_items[item.inventory_item_id].relative_path
+                        if item.inventory_item_id in inventory_items
+                        else "[inventory metadata unavailable]"
+                    ),
+                    storage_key=item.storage_key,
+                    manifest_storage_key=item.manifest_storage_key,
                     status=item.status,
                     size_bytes=item.size_bytes,
                     file_sha256=item.sha256,
@@ -737,6 +755,16 @@ def _apply_redaction(snapshot: ReportSnapshot, profile: str) -> ReportSnapshot:
         if metadata_only
         else [item.model_copy(update={"summary": "[REDACTED]"}) for item in snapshot.timeline]
     )
+    hash_manifest = [
+        item.model_copy(
+            update={
+                "source_relative_path": "[REDACTED]",
+                "storage_key": "[REDACTED]",
+                "manifest_storage_key": "[REDACTED]",
+            }
+        )
+        for item in snapshot.hash_manifest
+    ]
     return snapshot.model_copy(
         update={
             "report": snapshot.report.model_copy(update={"redaction_profile": profile}),
@@ -745,6 +773,7 @@ def _apply_redaction(snapshot: ReportSnapshot, profile: str) -> ReportSnapshot:
             "selected_artifacts": selected_artifacts,
             "imported_artifacts": imported_artifacts,
             "timeline": timeline,
+            "hash_manifest": hash_manifest,
             "limitations": snapshot.limitations + [f"Report redaction profile applied: {profile}."],
             "methodology": snapshot.methodology
             + ["Redaction was applied before rendering; sealed source evidence was unchanged."],

@@ -35,6 +35,8 @@ def render_csv(snapshot: ReportSnapshot) -> bytes:
             "record_origin",
             "artifact_id",
             "evidence_reference_id",
+            "storage_key",
+            "manifest_storage_key",
             "title",
             "category",
             "subtype",
@@ -52,7 +54,43 @@ def render_csv(snapshot: ReportSnapshot) -> bytes:
             "summary",
         )
     )
+    selected_by_evidence = {
+        artifact.evidence_file_id: artifact for artifact in snapshot.selected_artifacts
+    }
+    for item in snapshot.hash_manifest:
+        selected = selected_by_evidence.get(item.evidence_file_id)
+        writer.writerow(
+            tuple(
+                neutralize_csv(value)
+                for value in (
+                    "adb_acquired_file",
+                    selected.id if selected else "",
+                    item.evidence_file_id,
+                    item.storage_key,
+                    item.manifest_storage_key,
+                    selected.title if selected else item.source_relative_path.rsplit("/", 1)[-1],
+                    selected.category if selected else "file",
+                    "file",
+                    item.status,
+                    item.source_relative_path,
+                    selected.detected_mime if selected else "",
+                    str(item.size_bytes if item.size_bytes is not None else ""),
+                    item.file_sha256 or "",
+                    selected.collected_at.isoformat() if selected else "",
+                    "forensix.file_normalizer",
+                    "high",
+                    selected.bookmark_reason if selected and selected.bookmark_reason else "",
+                    "; ".join(selected.tags) if selected else "",
+                    " | ".join(selected.analyst_notes) if selected else "",
+                    "",
+                )
+            )
+        )
     for artifact in snapshot.selected_artifacts:
+        if any(
+            item.evidence_file_id == artifact.evidence_file_id for item in snapshot.hash_manifest
+        ):
+            continue
         writer.writerow(
             tuple(
                 neutralize_csv(value)
@@ -60,6 +98,8 @@ def render_csv(snapshot: ReportSnapshot) -> bytes:
                     "adb_acquired_file",
                     artifact.id,
                     artifact.evidence_file_id,
+                    "",
+                    "",
                     artifact.title,
                     artifact.category,
                     "file",
@@ -86,6 +126,8 @@ def render_csv(snapshot: ReportSnapshot) -> bytes:
                     "imported_source_parser",
                     imported_artifact.id,
                     imported_artifact.evidence_source_id,
+                    "",
+                    "",
                     imported_artifact.title,
                     imported_artifact.category,
                     imported_artifact.subtype,
@@ -381,7 +423,39 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
             styles,
         )
     )
-    story.append(Paragraph(f"Custody events included: {len(snapshot.custody)}", styles["body"]))
+    story.append(Paragraph("All acquired files", styles["subheading"]))
+    if snapshot.hash_manifest:
+        file_rows = [["Source path", "Evidence key", "Size", "SHA-256"]]
+        file_rows.extend(
+            [
+                item.source_relative_path,
+                item.storage_key,
+                str(item.size_bytes or 0),
+                item.file_sha256 or item.status,
+            ]
+            for item in snapshot.hash_manifest
+        )
+        story.append(_data_table(file_rows, (52 * mm, 48 * mm, 18 * mm, 54 * mm), styles))
+    else:
+        story.append(Paragraph("No acquired files are recorded.", styles["body"]))
+    story.append(Paragraph("Chain of custody", styles["subheading"]))
+    if snapshot.custody:
+        custody_rows = [["Seq", "Time", "Event", "Evidence", "Event hash"]]
+        custody_rows.extend(
+            [
+                str(item.sequence),
+                item.created_at.isoformat(),
+                item.event_type,
+                item.evidence_file_id or item.evidence_source_id or "case",
+                item.event_hash,
+            ]
+            for item in snapshot.custody
+        )
+        story.append(
+            _data_table(custody_rows, (12 * mm, 36 * mm, 38 * mm, 38 * mm, 48 * mm), styles)
+        )
+    else:
+        story.append(Paragraph("No custody events are recorded.", styles["body"]))
     _section(story, "9. Methodology", styles)
     story.extend(Paragraph(f"- {escape(item)}", styles["body"]) for item in snapshot.methodology)
     _section(story, "10. Errors and limitations", styles)

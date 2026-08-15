@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, FileClock, LoaderCircle, Search, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Download, FileClock, LoaderCircle, Search, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { listAuditLogs, verifyAuditChain } from "../../lib/api";
+import { auditLogDownloadUrl, listAuditLogs, verifyAuditChain } from "../../lib/api";
+import { formatUtcAsLocal } from "../../lib/time";
 import { CaseError } from "../cases/CasesPage";
 
 const auditKeys = {
@@ -43,18 +44,23 @@ export function AuditLogPage() {
             </p>
           </div>
           {verification.data && (
-            <span
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                verification.data.valid
-                  ? "border-emerald-300/20 bg-emerald-300/5 text-emerald-200"
-                  : "border-rose-300/20 bg-rose-300/5 text-rose-200"
-              }`}
-            >
-              {verification.data.valid ? <CheckCircle2 size={14} /> : <ShieldAlert size={14} />}
-              {verification.data.valid
-                ? `${String(verification.data.record_count)} records verified`
-                : `Chain broken at #${String(verification.data.broken_sequence ?? "unknown")}`}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  verification.data.valid
+                    ? "border-emerald-300/20 bg-emerald-300/5 text-emerald-200"
+                    : "border-rose-300/20 bg-rose-300/5 text-rose-200"
+                }`}
+              >
+                {verification.data.valid ? <CheckCircle2 size={14} /> : <ShieldAlert size={14} />}
+                {verification.data.valid
+                  ? `${String(verification.data.record_count)} records verified`
+                  : `Chain broken at #${String(verification.data.broken_sequence ?? "unknown")}`}
+              </span>
+              <a href={auditLogDownloadUrl()} className="inline-flex min-h-9 items-center gap-2 rounded border border-cyan-300/20 px-3 text-xs font-semibold text-cyan-100">
+                <Download size={14} /> Download audit log
+              </a>
+            </div>
           )}
         </div>
       </header>
@@ -99,7 +105,7 @@ export function AuditLogPage() {
                   </p>
                 </div>
               </div>
-              <time className="text-[11px] text-slate-500">{new Date(entry.created_at).toLocaleString()}</time>
+              <time className="text-[11px] text-slate-500">{formatUtcAsLocal(entry.created_at)}</time>
             </div>
             <pre className="mt-4 max-h-48 overflow-auto rounded-lg border border-white/6 bg-black/20 p-3 text-[10px] leading-5 text-slate-400">
               {JSON.stringify(entry.detail, null, 2)}

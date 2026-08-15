@@ -91,7 +91,7 @@ export interface DeviceCapabilityAssessment {
   assessor_version: string;
 }
 
-export type ProviderProfile = "contacts" | "sms" | "call_log";
+export type ProviderProfile = "contacts" | "sms" | "call_log" | "device_info";
 
 export interface ProviderCollection {
   case_id: string;
@@ -102,6 +102,9 @@ export interface ProviderCollection {
   truncated: boolean;
   max_records: number;
   limitation: string;
+  evidence_source_id?: string | null;
+  evidence_sha256?: string | null;
+  evidence_storage_key?: string | null;
 }
 
 export interface RootAccessProbe {
@@ -871,6 +874,7 @@ export interface AcquisitionInventory {
 
 export interface AcquiredEvidenceFile {
   id: string;
+  artifact_id?: string | null;
   inventory_id: string;
   inventory_item_id: string;
   job_id: string;
@@ -1342,6 +1346,7 @@ interface ErrorEnvelope {
     message?: string;
     request_id?: string;
   };
+  detail?: string | Array<{ msg?: string }>;
 }
 
 export class ApiError extends Error {
@@ -1540,6 +1545,14 @@ export function verifyAuditChain(): Promise<ChainVerification> {
   return apiRequest("/api/v1/audit-logs/verify");
 }
 
+export function auditLogDownloadUrl(): string {
+  return "/api/v1/audit-logs/download";
+}
+
+export function caseAuditLogDownloadUrl(caseId: string): string {
+  return `/api/v1/cases/${encodeURIComponent(caseId)}/audit-logs/download`;
+}
+
 export function createCase(input: {
   title: string;
   description?: string;
@@ -1588,6 +1601,8 @@ export function collectProviderRecords(
   deviceId: string,
   serial: string,
   profile: ProviderProfile,
+  selectedRecordIds: string[] = [],
+  sealSelected = false,
 ): Promise<ProviderCollection> {
   return apiRequest("/api/v1/devices/providers/collect", {
     method: "POST",
@@ -1597,6 +1612,8 @@ export function collectProviderRecords(
       serial,
       profile,
       limitations_acknowledged: true,
+      selected_record_ids: selectedRecordIds,
+      seal_selected: sealSelected,
     }),
   });
 }
@@ -1863,6 +1880,15 @@ export async function runAcquisitionInventory(
   // size. Reload the sealed inventory so scope filters and counters operate on
   // every discovered path, including matches beyond the first page.
   return getAcquisitionInventory(caseId, jobId);
+}
+
+export function listRootAccessProbes(
+  caseId: string,
+  deviceId: string,
+): Promise<RootAccessProbe[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/root-probes`,
+  );
 }
 
 export async function getAcquisitionInventory(
@@ -2610,8 +2636,11 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
   const body = (await response.json()) as T | ErrorEnvelope;
   if (!response.ok) {
     const envelope = body as ErrorEnvelope;
+    const validationDetail = Array.isArray(envelope.detail)
+      ? envelope.detail.map((item) => item.msg).filter(Boolean).join("; ")
+      : envelope.detail;
     throw new ApiError(
-      envelope.error?.message ?? "ForensiX could not complete the local request.",
+      envelope.error?.message ?? validationDetail ?? "ForensiX could not complete the local request.",
       envelope.error?.code ?? "API_REQUEST_FAILED",
       envelope.error?.request_id ?? response.headers.get("X-Request-ID") ?? "unknown",
       response.status,

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import select
 
 from forensix_api.dependencies import (
     get_adb_client,
@@ -44,6 +45,7 @@ from forensix_server.db import (
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     AcquisitionPartialRecord,
+    ArtifactRecord,
     Database,
     EvidenceVerificationRecord,
     JobEventRecord,
@@ -299,7 +301,16 @@ def list_acquired_files(
             case_id,
             job_id,
         )
-        return [_file_response(record) for record in records]
+        artifact_by_file = {
+            artifact.evidence_file_id: artifact.id
+            for artifact in session.scalars(
+                select(ArtifactRecord).where(ArtifactRecord.job_id == job_id)
+            )
+        }
+        return [
+            _file_response(record, artifact_id=artifact_by_file.get(record.id))
+            for record in records
+        ]
 
 
 @router.post(
@@ -435,12 +446,15 @@ def _inventory_response(
     )
 
 
-def _file_response(record: AcquiredEvidenceFileRecord) -> AcquiredEvidenceFileResponse:
+def _file_response(
+    record: AcquiredEvidenceFileRecord, *, artifact_id: str | None = None
+) -> AcquiredEvidenceFileResponse:
     status_value = record.status
     if status_value not in {"acquiring", "completed", "failed", "interrupted"}:
         raise RuntimeError("Acquired evidence file has an invalid persisted status.")
     return AcquiredEvidenceFileResponse(
         id=record.id,
+        artifact_id=artifact_id,
         inventory_id=record.inventory_id,
         inventory_item_id=record.inventory_item_id,
         job_id=record.job_id,

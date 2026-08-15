@@ -86,6 +86,9 @@ class TimelineSnapshot(FrozenModel):
 
 class HashManifestItem(FrozenModel):
     evidence_file_id: str
+    source_relative_path: str
+    storage_key: str
+    manifest_storage_key: str
     status: str
     size_bytes: int | None
     file_sha256: str | None
@@ -213,8 +216,8 @@ class ImportedArtifactSnapshot(FrozenModel):
 
 
 class ReportSnapshot(FrozenModel):
-    schema_version: Literal["1.0.0"] = "1.0.0"
-    template_version: Literal["1.0.0"] = "1.0.0"
+    schema_version: Literal["1.1.0"] = "1.1.0"
+    template_version: Literal["1.1.0"] = "1.1.0"
     tool_name: Literal["ForensiX"] = "ForensiX"
     tool_version: str
     report: ReportIdentity

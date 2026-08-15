@@ -698,10 +698,10 @@ describe("device readiness", () => {
 
     expect(await screen.findByText("Readiness snapshot")).toBeInTheDocument();
     expect(screen.getByText(/Android 14 · API 34 · 3 packages observed/)).toBeInTheDocument();
-    expect(screen.getByText("Private App Data")).toBeInTheDocument();
+    expect(screen.queryByText("Private App Data")).not.toBeInTheDocument();
     expect(screen.getByText("Content-free root probe")).toBeInTheDocument();
     expect(screen.getByText("/sdcard")).toBeInTheDocument();
-    expect(screen.getByText("unsupported")).toBeInTheDocument();
+    expect(screen.getByText(/Only supported options are shown/)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/v1/devices/assess",
       expect.objectContaining({ body: JSON.stringify({ serial: "FX-DEMO-001" }) }),

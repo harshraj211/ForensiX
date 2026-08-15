@@ -149,19 +149,24 @@ class ProviderCollectionRequest(BaseModel):
     case_id: str = Field(min_length=36, max_length=36)
     case_device_id: str = Field(min_length=36, max_length=36)
     serial: str = Field(min_length=1, max_length=255)
-    profile: Literal["contacts", "sms", "call_log"]
+    profile: Literal["contacts", "sms", "call_log", "device_info"]
     limitations_acknowledged: Literal[True]
+    selected_record_ids: list[str] = Field(default_factory=list, max_length=500)
+    seal_selected: bool = False
 
 
 class ProviderCollectionResponse(BaseModel):
     case_id: str
     case_device_id: str
-    profile: Literal["contacts", "sms", "call_log"]
+    profile: Literal["contacts", "sms", "call_log", "device_info"]
     records: list[dict[str, str | None]]
     discovered_count: int = Field(ge=0)
     truncated: bool
     max_records: int = Field(ge=1)
     limitation: str
+    evidence_source_id: str | None = None
+    evidence_sha256: str | None = None
+    evidence_storage_key: str | None = None
 
 
 class ScrcpyLaunchRequest(BaseModel):
@@ -554,6 +559,7 @@ class AcquisitionInventoryResponse(BaseModel):
 
 class AcquiredEvidenceFileResponse(BaseModel):
     id: str
+    artifact_id: str | None = None
     inventory_id: str
     inventory_item_id: str
     job_id: str

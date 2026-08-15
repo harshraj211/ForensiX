@@ -1,10 +1,12 @@
 """Append-only custody and tamper-evident audit-chain endpoints."""
 
 import json
+from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from forensix_api.dependencies import (
     get_authenticated_session,
@@ -23,6 +25,7 @@ from forensix_api.schemas import (
     CustodyEventResponse,
 )
 from forensix_server.auth import AuthenticatedSession
+from forensix_server.cases import CaseService
 from forensix_server.custody import AuditService, CustodyService
 from forensix_server.custody_exports import CustodyCheckpointService
 from forensix_server.db import AuditLogRecord, CustodyCheckpointRecord, Database
@@ -263,6 +266,134 @@ def verify_audit_logs(
         )
 
 
+@router.get("/api/v1/audit-logs/download", response_class=Response)
+def download_audit_logs(
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> Response:
+    exported_at = datetime.now(UTC)
+    with database.session() as session:
+        service = AuditService()
+        records = service.list(session, authenticated.principal, limit=None)
+        valid, broken = service.verify(session, authenticated.principal)
+        head_hash = records[-1].entry_hash if records else None
+        payload = {
+            "schema_version": "1.0.0",
+            "exported_at": exported_at.isoformat(),
+            "exported_by": authenticated.principal.user_id,
+            "chain": {
+                "valid": valid,
+                "record_count": len(records),
+                "broken_sequence": broken,
+                "head_hash": head_hash,
+            },
+            "records": [_audit_export_payload(record) for record in records],
+        }
+        content = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True).encode("utf-8")
+        digest = sha256(content).hexdigest()
+        service.append(
+            session,
+            case_id=None,
+            actor_id=authenticated.principal.user_id,
+            event_type="audit_log_exported",
+            object_type="audit_log_export",
+            object_id=digest,
+            detail={
+                "exported_head_hash": head_hash,
+                "record_count": len(records),
+                "sha256": digest,
+            },
+            created_at=exported_at,
+        )
+    filename = f"forensix-audit-log-{exported_at.strftime('%Y%m%dT%H%M%SZ')}.json"
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={
+            "Cache-Control": "no-store, private",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "X-Content-Type-Options": "nosniff",
+            "X-ForensiX-Audit-SHA256": digest,
+            "X-ForensiX-Audit-Head": head_hash or "",
+        },
+    )
+
+
+@router.get("/api/v1/cases/{case_id}/audit-logs/download", response_class=Response)
+def download_case_audit_logs(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> Response:
+    exported_at = datetime.now(UTC)
+    with database.session() as session:
+        case = CaseService().get(session, authenticated.principal, case_id)
+        case_number = case.case_number
+        service = AuditService()
+        all_records = service.list(session, authenticated.principal, limit=None)
+        records = _case_audit_records(all_records, case_id)
+        valid, broken = service.verify(session, authenticated.principal)
+        head_hash = all_records[-1].entry_hash if all_records else None
+        payload = {
+            "schema_version": "1.0.0",
+            "exported_at": exported_at.isoformat(),
+            "exported_by": authenticated.principal.user_id,
+            "scope": {
+                "type": "case",
+                "case_id": case.id,
+                "case_number": case_number,
+                "record_count": len(records),
+                "first_global_sequence": records[0].sequence if records else None,
+                "last_global_sequence": records[-1].sequence if records else None,
+            },
+            "source_chain": {
+                "valid": valid,
+                "record_count": len(all_records),
+                "broken_sequence": broken,
+                "head_hash": head_hash,
+                "note": (
+                    "Records retain their positions and hashes from the workstation-wide chain."
+                ),
+            },
+            "records": [_audit_export_payload(record) for record in records],
+        }
+        content = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True).encode("utf-8")
+        digest = sha256(content).hexdigest()
+        service.append(
+            session,
+            case_id=case_id,
+            actor_id=authenticated.principal.user_id,
+            event_type="case_audit_log_exported",
+            object_type="case_audit_log_export",
+            object_id=digest,
+            detail={
+                "case_number": case_number,
+                "exported_head_hash": head_hash,
+                "record_count": len(records),
+                "sha256": digest,
+            },
+            created_at=exported_at,
+        )
+    timestamp = exported_at.strftime("%Y%m%dT%H%M%SZ")
+    filename = f"forensix-case-{case_number}-audit-{timestamp}.json"
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={
+            "Cache-Control": "no-store, private",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "X-Content-Type-Options": "nosniff",
+            "X-ForensiX-Audit-SHA256": digest,
+            "X-ForensiX-Audit-Head": head_hash or "",
+            "X-ForensiX-Case-ID": case_id,
+        },
+    )
+
+
 def _audit_response(record: AuditLogRecord) -> AuditLogResponse:
     return AuditLogResponse(
         id=record.id,
@@ -277,6 +408,31 @@ def _audit_response(record: AuditLogRecord) -> AuditLogResponse:
         entry_hash=record.entry_hash,
         created_at=record.created_at,
     )
+
+
+def _audit_export_payload(record: AuditLogRecord) -> dict[str, object]:
+    created_at = (
+        record.created_at.replace(tzinfo=UTC)
+        if record.created_at.tzinfo is None
+        else record.created_at.astimezone(UTC)
+    )
+    return {
+        "id": record.id,
+        "sequence": record.sequence,
+        "case_id": record.case_id,
+        "actor_id": record.actor_id,
+        "event_type": record.event_type,
+        "object_type": record.object_type,
+        "object_id": record.object_id,
+        "detail": json.loads(record.detail_json),
+        "previous_hash": record.previous_hash,
+        "entry_hash": record.entry_hash,
+        "created_at": created_at.isoformat(),
+    }
+
+
+def _case_audit_records(records: list[AuditLogRecord], case_id: str) -> list[AuditLogRecord]:
+    return [record for record in records if record.case_id == case_id]
 
 
 def _checkpoint_response(record: CustodyCheckpointRecord) -> CustodyCheckpointResponse:

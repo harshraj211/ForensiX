@@ -1,6 +1,8 @@
 import asyncio
+import json
 from datetime import UTC, datetime
 from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated, Literal
@@ -248,7 +250,7 @@ async def collect_provider_records(
     adb_client: Annotated[AdbClient, Depends(get_adb_client)],
     database: Annotated[Database, Depends(get_database)],
 ) -> ProviderCollectionResponse:
-    profile = ContentProviderProfile(request.profile)
+    profile = ContentProviderProfile(request.profile) if request.profile != "device_info" else None
     with database.session() as session:
         device = CaseDeviceService().get_device(
             session,
@@ -262,21 +264,95 @@ async def collect_provider_records(
                 "The connected Android serial does not match the case-linked device."
             )
 
-    probe = await adb_client.probe_content_provider(request.serial, profile)
-    if probe.status is not ContentProviderAccessStatus.AVAILABLE:
-        raise CaseInvalidStateError(
-            f"Android did not permit {profile.value} provider access: {probe.reason_code}."
+    if profile is None:
+        properties = await adb_client.get_properties(request.serial)
+        allowlist = (
+            "ro.product.manufacturer",
+            "ro.product.model",
+            "ro.product.device",
+            "ro.build.version.release",
+            "ro.build.version.sdk",
+            "ro.build.version.security_patch",
+            "ro.build.fingerprint",
+            "ro.boot.hardware",
+            "ro.boot.serialno",
         )
-    result = await adb_client.query_content_provider(request.serial, profile)
+        records = [{"_id": "device-info", **{key: properties.get(key) for key in allowlist}}]
+        discovered_count = 1
+        truncated = False
+        max_records = 1
+    else:
+        probe = await adb_client.probe_content_provider(request.serial, profile)
+        if probe.status is not ContentProviderAccessStatus.AVAILABLE:
+            raise CaseInvalidStateError(
+                f"Android did not permit {profile.value} provider access: {probe.reason_code}."
+            )
+        result = await adb_client.query_content_provider(request.serial, profile)
+        records = [record.values for record in result.records]
+        discovered_count = result.discovered_count
+        truncated = result.truncated
+        max_records = result.max_records
+
+    source = None
+    if request.seal_selected:
+        requested_ids = set(request.selected_record_ids)
+        if not requested_ids:
+            raise CaseInvalidStateError("Select at least one record before acquisition.")
+        if len(requested_ids) != len(request.selected_record_ids) or any(
+            not record_id or len(record_id) > 128 for record_id in requested_ids
+        ):
+            raise CaseInvalidStateError("Selected record identifiers are invalid or duplicated.")
+        available_by_id = {
+            str(record.get("_id")): record for record in records if record.get("_id") is not None
+        }
+        if not requested_ids.issubset(available_by_id):
+            raise CaseInvalidStateError(
+                "The selected records no longer match the current device preview; preview again."
+            )
+        selected = [available_by_id[record_id] for record_id in request.selected_record_ids]
+        payload = json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "profile": request.profile,
+                "device_id": request.case_device_id,
+                "record_count": len(selected),
+                "records": selected,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        source = EvidenceTwinService().seal_logical_stream(
+            database,
+            authenticated.principal,
+            request.case_id,
+            request.case_device_id,
+            BytesIO(payload),
+            source_name=f"android-{request.profile}.json",
+            display_name=f"Selected Android {request.profile.replace('_', ' ')}",
+            declared_size_bytes=len(payload),
+            operation=f"adb_logical_{request.profile}_selected",
+            limitations=(
+                "Only analyst-selected rows from the fixed logical projection are included.",
+                "ADB is not a hardware write blocker and Android may record transport activity.",
+                "This selective logical artifact is not a full filesystem acquisition.",
+            ),
+        )
+        records = selected
     with database.session() as session:
         session.add(
             CaseEventRecord(
                 case_id=request.case_id,
                 actor_id=authenticated.principal.user_id,
-                event_type="provider_records_collected",
+                event_type=(
+                    "provider_records_acquired"
+                    if request.seal_selected
+                    else "provider_records_previewed"
+                ),
                 safe_detail=(
-                    f"device_id={request.case_device_id};profile={profile.value};"
-                    f"record_count={len(result.records)};truncated={result.truncated}"
+                    f"device_id={request.case_device_id};profile={request.profile};"
+                    f"record_count={len(records)};truncated={truncated};"
+                    f"sealed={request.seal_selected}"
                 ),
             )
         )
@@ -284,14 +360,18 @@ async def collect_provider_records(
         case_id=request.case_id,
         case_device_id=request.case_device_id,
         profile=request.profile,
-        records=[record.values for record in result.records],
-        discovered_count=result.discovered_count,
-        truncated=result.truncated,
-        max_records=result.max_records,
+        records=records,
+        discovered_count=discovered_count,
+        truncated=truncated,
+        max_records=max_records,
         limitation=(
-            "This is a live logical provider preview. It is audit-recorded but is not yet a "
-            "sealed evidence source; export or rooted acquisition is required for offline parsing."
+            "Selected records are sealed as a hashed logical evidence source."
+            if source is not None
+            else "This is an audit-recorded live preview; select rows to seal them as evidence."
         ),
+        evidence_source_id=source.id if source is not None else None,
+        evidence_sha256=source.sha256 if source is not None else None,
+        evidence_storage_key=source.sealed_storage_key if source is not None else None,
     )
 
 

@@ -39,6 +39,7 @@ import {
   getPhysicalAcquisitionDiagnostic,
   getScrcpyDiagnostic,
   listCaseDevices,
+  listRootAccessProbes,
   listScreenRecordings,
   launchLiveScreen,
   probePhysicalBlock,
@@ -504,7 +505,9 @@ function DeviceCard({
 
 function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessment }) {
   const queryClient = useQueryClient();
-  const entries = Object.entries(assessment.capabilities);
+  const entries = Object.entries(assessment.capabilities).filter(
+    ([, decision]) => decision.status === "supported",
+  );
   const acquisitionReadiness = assessment.acquisition_readiness ?? {
     encryption_type: "unknown" as const,
     credential_storage_state: "unknown" as const,
@@ -540,6 +543,8 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
   const [encryptionAcknowledged, setEncryptionAcknowledged] = useState(false);
   const [nonResumableAcknowledged, setNonResumableAcknowledged] = useState(false);
   const [providerAcknowledged, setProviderAcknowledged] = useState(false);
+  const [selectedProviderIds, setSelectedProviderIds] = useState<Set<string>>(new Set());
+  const [panelOpenedAt] = useState(() => Date.now());
   const [screenAcknowledged, setScreenAcknowledged] = useState(false);
   const [recordingAcknowledged, setRecordingAcknowledged] = useState(false);
   const websitePreview = useLiveScreenPreview();
@@ -634,7 +639,15 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
     },
   });
   const providerCollection = useMutation({
-    mutationFn: (profile: ProviderProfile) => {
+    mutationFn: ({
+      profile,
+      selectedRecordIds = [],
+      sealSelected = false,
+    }: {
+      profile: ProviderProfile;
+      selectedRecordIds?: string[];
+      sealSelected?: boolean;
+    }) => {
       if (!assessment.case_id || !assessment.case_device_id) {
         throw new Error("A case-linked assessment is required for provider collection.");
       }
@@ -643,8 +656,25 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
         assessment.case_device_id,
         assessment.serial,
         profile,
+        selectedRecordIds,
+        sealSelected,
       );
     },
+    onSuccess: (result, variables) => {
+      if (!variables.sealSelected) {
+        setSelectedProviderIds(new Set(result.records.map((record) => String(record._id))));
+      }
+    },
+  });
+  const rootProbeHistory = useQuery({
+    queryKey: ["root-probes", assessment.case_id, assessment.case_device_id],
+    queryFn: () => {
+      if (!assessment.case_id || !assessment.case_device_id) {
+        throw new Error("A case-linked device is required for root history.");
+      }
+      return listRootAccessProbes(assessment.case_id, assessment.case_device_id);
+    },
+    enabled: Boolean(assessment.case_id && assessment.case_device_id),
   });
   const rootProbe = useMutation({
     mutationFn: () => {
@@ -661,53 +691,61 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
       setCaptureAcknowledged(false);
       setSystemCaptureAcknowledged(false);
       setAppCaptureAcknowledged(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["root-probes", assessment.case_id, assessment.case_device_id],
+      });
     },
   });
+  const latestRootProbe = rootProbe.data ?? rootProbeHistory.data?.[0];
+  const effectiveRootProbe =
+    latestRootProbe && new Date(latestRootProbe.expires_at).getTime() > panelOpenedAt
+      ? latestRootProbe
+      : undefined;
   const rootedCapture = useMutation({
     mutationFn: () => {
-      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+      if (!assessment.case_id || !assessment.case_device_id || !effectiveRootProbe) {
         throw new Error("A current rooted-access proof is required for this collection.");
       }
       return captureRootedBundle(
         assessment.case_id,
         assessment.case_device_id,
         assessment.serial,
-        rootProbe.data.id,
+        effectiveRootProbe.id,
         "android_providers",
       );
     },
   });
   const rootedSystemCapture = useMutation({
     mutationFn: () => {
-      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+      if (!assessment.case_id || !assessment.case_device_id || !effectiveRootProbe) {
         throw new Error("A current rooted-access proof is required for this collection.");
       }
       return captureRootedBundle(
         assessment.case_id,
         assessment.case_device_id,
         assessment.serial,
-        rootProbe.data.id,
+        effectiveRootProbe.id,
         "android_system",
       );
     },
   });
   const rootedAppCapture = useMutation({
     mutationFn: () => {
-      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+      if (!assessment.case_id || !assessment.case_device_id || !effectiveRootProbe) {
         throw new Error("A current rooted-access proof is required for this collection.");
       }
       return captureRootedBundle(
         assessment.case_id,
         assessment.case_device_id,
         assessment.serial,
-        rootProbe.data.id,
+        effectiveRootProbe.id,
         "android_apps",
       );
     },
   });
   const selectiveRootedCapture = useMutation({
     mutationFn: async () => {
-      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+      if (!assessment.case_id || !assessment.case_device_id || !effectiveRootProbe) {
         throw new Error("A current rooted-access proof is required for this collection.");
       }
       const captured = [];
@@ -718,7 +756,7 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
             assessment.case_id,
             assessment.case_device_id,
             assessment.serial,
-            rootProbe.data.id,
+            effectiveRootProbe.id,
             profile,
           ),
         });
@@ -741,14 +779,14 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
   });
   const rootedUserDataCapture = useMutation({
     mutationFn: () => {
-      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+      if (!assessment.case_id || !assessment.case_device_id || !effectiveRootProbe) {
         throw new Error("A current rooted-access proof is required for this collection.");
       }
       return captureRootedBundle(
         assessment.case_id,
         assessment.case_device_id,
         assessment.serial,
-        rootProbe.data.id,
+        effectiveRootProbe.id,
         "android_userdata",
       );
     },
@@ -756,18 +794,18 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
   const physicalDiagnostic = useQuery({
     queryKey: ["integrations", "physical-acquisition"],
     queryFn: getPhysicalAcquisitionDiagnostic,
-    enabled: rootProbe.data?.status === "available",
+    enabled: effectiveRootProbe?.status === "available",
   });
   const physicalProbe = useMutation({
     mutationFn: () => {
-      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+      if (!assessment.case_id || !assessment.case_device_id || !effectiveRootProbe) {
         throw new Error("A current rooted-access proof is required for this probe.");
       }
       return probePhysicalBlock(
         assessment.case_id,
         assessment.case_device_id,
         assessment.serial,
-        rootProbe.data.id,
+        effectiveRootProbe.id,
       );
     },
     onSuccess: () => {
@@ -813,15 +851,48 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
           <CapabilityRow key={capability} capability={capability} decision={decision} />
         ))}
       </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+        <span className="rounded-full border border-white/10 px-2 py-1 font-semibold text-slate-300">
+          {latestRootProbe?.status === "available"
+            ? "Rooted device"
+            : latestRootProbe
+              ? "Non-rooted device"
+              : "Root access not verified"}
+        </span>
+        <span>
+          {latestRootProbe && !effectiveRootProbe
+            ? "The previous root proof expired. Run a fresh check before rooted acquisition."
+            : "Only supported options are shown."}
+        </span>
+        {!effectiveRootProbe && assessment.case_id && assessment.case_device_id && (
+          <div className="flex w-full flex-wrap items-center gap-2 pt-1">
+            <label className="flex items-center gap-2 text-amber-800">
+              <input
+                type="checkbox"
+                checked={rootAcknowledged}
+                onChange={(event) => { setRootAcknowledged(event.target.checked); }}
+              />
+              Authorize the fixed root check; it may trigger a root-manager prompt.
+            </label>
+            <button
+              type="button"
+              disabled={!rootAcknowledged || rootProbe.isPending}
+              onClick={() => { rootProbe.mutate(); }}
+              className="min-h-8 rounded border border-neutral-300 bg-white px-3 font-semibold text-neutral-900 disabled:opacity-40"
+            >
+              {rootProbe.isPending ? "Checking..." : "Check root status"}
+            </button>
+          </div>
+        )}
+      </div>
       {assessment.case_id && assessment.case_device_id && (
         <div className="mt-5 rounded-lg border border-cyan-200/12 bg-cyan-200/[0.025] p-4">
           <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-200">
-            Permitted live provider preview
+            Selective logical acquisition
           </h3>
           <p className="mt-2 text-xs leading-5 text-slate-400">
-            These buttons appear only for providers that this exact Android transport allowed.
-            Results are real live rows, capped at 500, and the operation is recorded in the case
-            audit history.
+            Non-rooted ADB options only. Preview fixed, permitted records, select exactly what is
+            relevant, then seal those rows as hashed case evidence. Unsupported providers are hidden.
           </p>
           <label className="mt-3 flex items-start gap-2 text-xs leading-5 text-amber-100/80">
             <input
@@ -832,29 +903,33 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
               }}
               className="mt-1"
             />
-            I understand this is a logical live preview, not a sealed filesystem acquisition.
+            I understand preview reads live logical records; only my final selection is sealed.
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
             {(
               [
-                ["contacts", "contacts", "Collect contacts"],
-                ["sms_mms", "sms", "Collect SMS"],
-                ["call_logs", "call_log", "Collect call logs"],
+                ["device_metadata", "device_info", "Preview device info"],
+                ["contacts", "contacts", "Preview contacts"],
+                ["sms_mms", "sms", "Preview messages"],
+                ["call_logs", "call_log", "Preview call logs"],
               ] as const
             ).map(([capability, profile, label]) => {
-              const supported = assessment.capabilities[capability]?.status === "supported";
+              const supported =
+                profile === "device_info" ||
+                assessment.capabilities[capability]?.status === "supported";
               return (
                 <button
                   key={profile}
                   type="button"
                   disabled={!supported || !providerAcknowledged || providerCollection.isPending}
                   onClick={() => {
-                    providerCollection.mutate(profile);
+                    setSelectedProviderIds(new Set());
+                    providerCollection.mutate({ profile });
                   }}
                   className="rounded-lg border border-cyan-200/15 bg-cyan-200/5 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-200/10 disabled:cursor-not-allowed disabled:opacity-35"
                 >
-                  {providerCollection.isPending && providerCollection.variables === profile
-                    ? "Collecting…"
+                  {providerCollection.isPending && providerCollection.variables.profile === profile
+                    ? "Reading..."
                     : label}
                 </button>
               );
@@ -869,28 +944,71 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
           )}
           {providerCollection.data && (
             <div className="mt-4 rounded-md border border-emerald-200/12 bg-emerald-200/[0.035] p-3">
-              <p className="text-xs font-semibold text-emerald-200">
-                {providerCollection.data.records.length} {providerCollection.data.profile} record(s)
-                collected
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-emerald-200">
+                  {providerCollection.data.records.length}{" "}
+                  {providerCollection.data.profile.replaceAll("_", " ")} record(s) available
+                </p>
+                <button
+                  type="button"
+                  disabled={selectedProviderIds.size === 0 || providerCollection.isPending}
+                  onClick={() => {
+                    providerCollection.mutate({
+                      profile: providerCollection.data.profile,
+                      selectedRecordIds: [...selectedProviderIds],
+                      sealSelected: true,
+                    });
+                  }}
+                  className="min-h-9 rounded bg-emerald-300 px-3 text-[11px] font-semibold text-emerald-950 disabled:opacity-40"
+                >
+                  Acquire selected ({selectedProviderIds.size})
+                </button>
+              </div>
               <p className="mt-1 text-[11px] leading-5 text-slate-500">
                 {providerCollection.data.limitation}
               </p>
               <div className="mt-3 max-h-56 space-y-2 overflow-auto">
-                {providerCollection.data.records.map((record, index) => (
-                  <dl
-                    key={`${providerCollection.data.profile}-${String(record._id ?? index)}`}
-                    className="grid gap-1 rounded border border-white/7 bg-black/15 p-2 text-[11px]"
-                  >
-                    {Object.entries(record).map(([key, value]) => (
-                      <div key={key} className="grid grid-cols-[8rem_1fr] gap-2">
-                        <dt className="font-mono text-slate-500">{key}</dt>
-                        <dd className="break-all text-slate-300">{value ?? "NULL"}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                ))}
+                {providerCollection.data.records.map((record, index) => {
+                  const recordId = String(record._id ?? index);
+                  return (
+                    <label
+                      key={`${providerCollection.data.profile}-${recordId}`}
+                      className="flex gap-3 rounded border border-white/7 bg-black/15 p-3 text-[11px]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedProviderIds.has(recordId)}
+                        onChange={(event) => {
+                          setSelectedProviderIds((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(recordId);
+                            else next.delete(recordId);
+                            return next;
+                          });
+                        }}
+                        className="mt-0.5 size-4 shrink-0 accent-emerald-300"
+                      />
+                      <dl className="min-w-0 flex-1 space-y-1">
+                        {Object.entries(record).map(([key, value]) => (
+                          <div key={key} className="grid gap-1 sm:grid-cols-[8rem_1fr] sm:gap-2">
+                            <dt className="font-mono text-slate-500">{key}</dt>
+                            <dd className="break-all text-slate-300">{value ?? "NULL"}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </label>
+                  );
+                })}
               </div>
+              {providerCollection.data.evidence_source_id && (
+                <div className="mt-3 rounded border border-emerald-200/15 bg-emerald-200/5 p-3 text-[11px] text-emerald-100">
+                  <p className="font-semibold">Selection sealed as case evidence</p>
+                  <p className="mt-1 break-all font-mono">SHA-256 {providerCollection.data.evidence_sha256}</p>
+                  <p className="mt-1 break-all font-mono text-emerald-100/60">
+                    Key {providerCollection.data.evidence_storage_key}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1323,20 +1441,20 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
             Detect root status
           </button>
           {rootProbe.isError && <div className="mt-3"><ErrorState error={rootProbe.error} /></div>}
-          {rootProbe.data && (
+          {latestRootProbe && (
             <div className={`mt-4 rounded-md border p-3 text-xs ${
-              rootProbe.data.status === "available"
+              latestRootProbe.status === "available"
                 ? "border-emerald-300/20 bg-emerald-300/5 text-emerald-100"
                 : "border-amber-300/20 bg-amber-300/5 text-amber-100"
             }`}>
-              <p className="font-semibold">Root access {rootProbe.data.status}</p>
-              <p className="mt-1 opacity-70">{rootProbe.data.reason_code.replaceAll("_", " ")}</p>
+              <p className="font-semibold">Root access {latestRootProbe.status}</p>
+              <p className="mt-1 opacity-70">{latestRootProbe.reason_code.replaceAll("_", " ")}</p>
               <p className="mt-2 font-mono text-[10px] opacity-55">
-                Proof {rootProbe.data.probe_hash} · expires {new Date(rootProbe.data.expires_at).toLocaleTimeString()}
+                Proof {latestRootProbe.probe_hash} · expires {new Date(latestRootProbe.expires_at).toLocaleTimeString()}
               </p>
             </div>
           )}
-          {rootProbe.data && rootProbe.data.status !== "available" && (
+          {latestRootProbe && latestRootProbe.status !== "available" && (
             <div className="mt-3 rounded-md border border-cyan-200/15 bg-cyan-200/5 p-3 text-xs leading-5 text-cyan-100/75">
               <p className="font-semibold">Non-rooted acquisition mode</p>
               <p className="mt-1">
@@ -1346,7 +1464,7 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
               </p>
             </div>
           )}
-          {rootProbe.data?.status === "available" && (
+          {effectiveRootProbe?.status === "available" && (
             <div className="mt-4 border-t border-fuchsia-200/10 pt-4">
               <div className="rounded-lg border border-emerald-200/15 bg-emerald-200/[0.035] p-4">
                 <p className="text-sm font-semibold text-white">Choose exactly what to acquire</p>

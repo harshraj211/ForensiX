@@ -5,16 +5,26 @@ import { useState } from "react";
 
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { FileTypeIcon } from "../../components/FileTypeIcon";
 import {
+  artifactPreviewContentUrl,
+  auditLogDownloadUrl,
+  caseAuditLogDownloadUrl,
   generateReport,
+  generateArtifactPreview,
+  getArtifactPreview,
   getCurrentUser,
   getCase,
+  listCustodyEvents,
   listCases,
   listReports,
   reportDownloadUrl,
   reviewReport,
+  searchArtifacts,
+  type Artifact,
 } from "../../lib/api";
 import { authKeys } from "../auth/authKeys";
+import { formatUtcAsLocal } from "../../lib/time";
 
 export function ReportsCasesPage() {
   const casesQuery = useQuery({ queryKey: caseKeys.all, queryFn: listCases });
@@ -47,6 +57,7 @@ export function CaseReportsPage() {
   const queryClient = useQueryClient();
   const [redactionProfile, setRedactionProfile] = useState<"full" | "mask_sensitive" | "metadata_only">("full");
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [evidencePage, setEvidencePage] = useState(0);
   const currentUser = useQuery({ queryKey: authKeys.me, queryFn: getCurrentUser });
   const caseQuery = useQuery({
     queryKey: caseKeys.detail(caseId),
@@ -56,6 +67,16 @@ export function CaseReportsPage() {
   const reportsQuery = useQuery({
     queryKey: ["reports", caseId],
     queryFn: () => listReports(caseId),
+    enabled: Boolean(caseId),
+  });
+  const artifactsQuery = useQuery({
+    queryKey: ["report-evidence", caseId, evidencePage],
+    queryFn: () => searchArtifacts(caseId, { offset: evidencePage * 50, limit: 50 }),
+    enabled: Boolean(caseId),
+  });
+  const custodyQuery = useQuery({
+    queryKey: ["report-custody", caseId],
+    queryFn: () => listCustodyEvents(caseId),
     enabled: Boolean(caseId),
   });
   const generation = useMutation({
@@ -91,12 +112,67 @@ export function CaseReportsPage() {
           <button type="button" disabled={generation.isPending} onClick={() => { generation.mutate(); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-cyan-300 px-5 text-sm font-semibold text-slate-950 disabled:cursor-wait disabled:opacity-50">
             {generation.isPending ? <LoaderCircle size={17} className="animate-spin" /> : <FileCheck2 size={17} />} Generate preliminary report
           </button>
+          <a href={caseAuditLogDownloadUrl(caseId)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-cyan-300/20 px-4 text-xs font-semibold text-cyan-100">
+            <Download size={14} /> Download this case audit log
+          </a>
+          <a href={auditLogDownloadUrl()} className="inline-flex min-h-9 items-center justify-center gap-2 px-4 text-xs font-medium text-slate-400 hover:text-cyan-100">
+            <Download size={13} /> Download all workstation audit logs
+          </a>
         </div>
       </div>
       <div className="mt-6 flex gap-3 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm leading-6 text-amber-100/80">
         <ShieldAlert className="mt-0.5 shrink-0 text-amber-300" size={19} />
         <p>Reports are marked Preliminary by default. ADB is not a hardware write blocker, and unsupported private application data is not claimed.</p>
       </div>
+      <section className="mt-6 border-y border-white/10 py-6" aria-labelledby="acquired-evidence-heading">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Evidence inventory</p>
+            <h2 id="acquired-evidence-heading" className="mt-2 text-xl font-semibold text-white">All acquired files</h2>
+            <p className="mt-2 text-xs text-slate-500">Evidence keys, integrity hashes, and safe visual identification.</p>
+          </div>
+          <p className="font-mono text-xs text-slate-500">{artifactsQuery.data?.total ?? 0} files</p>
+        </div>
+        {artifactsQuery.isPending && <p role="status" className="mt-5 text-sm text-slate-500">Loading acquired evidence...</p>}
+        {artifactsQuery.isError && <div className="mt-5"><CaseError error={artifactsQuery.error} /></div>}
+        <ul className="mt-5 space-y-2">
+          {artifactsQuery.data?.items.map((artifact) => (
+            <li key={artifact.id} className="grid gap-4 rounded-md border border-white/8 bg-white/[0.02] p-3 sm:grid-cols-[100px_minmax(0,1fr)]">
+              <EvidenceVisual caseId={caseId} artifact={artifact} />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white" title={artifact.title}>{artifact.title}</p>
+                <p className="mt-1 break-all font-mono text-[10px] text-slate-500">{artifact.source_relative_path}</p>
+                <dl className="mt-3 grid gap-2 text-[10px] sm:grid-cols-2">
+                  <div><dt className="text-slate-600">Evidence key</dt><dd className="mt-0.5 break-all font-mono text-cyan-100/70">{typeof artifact.provenance.storage_key === "string" ? artifact.provenance.storage_key : "Unavailable"}</dd></div>
+                  <div><dt className="text-slate-600">SHA-256</dt><dd className="mt-0.5 break-all font-mono text-emerald-100/70">{artifact.primary_sha256}</dd></div>
+                  <div><dt className="text-slate-600">Type / size</dt><dd className="mt-0.5 text-slate-300">{artifact.detected_mime} · {artifact.size_bytes.toLocaleString()} bytes</dd></div>
+                  <div><dt className="text-slate-600">Collected</dt><dd className="mt-0.5 text-slate-300">{formatUtcAsLocal(artifact.collected_at)}</dd></div>
+                </dl>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {(artifactsQuery.data?.total ?? 0) > 50 && (
+          <div className="mt-4 flex items-center justify-between gap-3 text-xs">
+            <button type="button" disabled={evidencePage === 0} onClick={() => { setEvidencePage((page) => Math.max(0, page - 1)); }} className="min-h-9 rounded border border-white/10 px-3 text-slate-300 disabled:opacity-35">Previous</button>
+            <span className="text-slate-500">Page {evidencePage + 1} of {Math.ceil((artifactsQuery.data?.total ?? 0) / 50)}</span>
+            <button type="button" disabled={(evidencePage + 1) * 50 >= (artifactsQuery.data?.total ?? 0)} onClick={() => { setEvidencePage((page) => page + 1); }} className="min-h-9 rounded border border-white/10 px-3 text-slate-300 disabled:opacity-35">Next</button>
+          </div>
+        )}
+        <div className="mt-7 border-t border-white/8 pt-5">
+          <h3 className="text-sm font-semibold text-white">Chain of custody</h3>
+          <p className="mt-1 text-xs text-slate-500">{custodyQuery.data?.length ?? 0} hash-linked events</p>
+          <ol className="mt-3 max-h-72 space-y-2 overflow-auto pr-1">
+            {custodyQuery.data?.map((event) => (
+              <li key={event.id} className="grid gap-2 rounded border border-white/7 p-3 text-[10px] sm:grid-cols-[3rem_10rem_minmax(0,1fr)]">
+                <span className="font-mono text-cyan-300">#{event.sequence}</span>
+                <span className="text-slate-500">{formatUtcAsLocal(event.created_at)}</span>
+                <span className="min-w-0"><strong className="block text-slate-200">{event.event_type.replaceAll("_", " ")}</strong><span className="block truncate font-mono text-slate-600" title={event.event_hash}>{event.event_hash}</span></span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
       {generation.isError && <div className="mt-5"><CaseError error={generation.error} /></div>}
       {review.isError && <div className="mt-5"><CaseError error={review.error} /></div>}
       {reportsQuery.isError && <div className="mt-5"><CaseError error={reportsQuery.error} /></div>}
@@ -109,7 +185,7 @@ export function CaseReportsPage() {
                 <span className="rounded-full border border-amber-300/25 bg-amber-300/7 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-200">Preliminary</span>
                 <span className="ml-2 rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-300">{report.approval_state}</span>
                 <h2 className="mt-3 font-semibold text-white">{report.title}</h2>
-                <p className="mt-1 text-xs text-slate-500">Generated {new Date(report.generated_at).toLocaleString()}</p>
+                <p className="mt-1 text-xs text-slate-500">Generated {formatUtcAsLocal(report.generated_at)}</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {report.outputs.map((output) => (
@@ -142,4 +218,22 @@ export function CaseReportsPage() {
       {reportsQuery.data?.length === 0 && <p className="mt-8 text-sm text-slate-500">No report snapshots have been generated for this case.</p>}
     </div>
   );
+}
+
+function EvidenceVisual({ caseId, artifact }: { caseId: string; artifact: Artifact }) {
+  const preview = useQuery({
+    queryKey: ["report-artifact-preview", caseId, artifact.id],
+    queryFn: async () => {
+      const current = await getArtifactPreview(caseId, artifact.id);
+      return current.status === "not_generated"
+        ? generateArtifactPreview(caseId, artifact.id)
+        : current;
+    },
+    enabled: artifact.category === "image",
+    retry: false,
+  });
+  if (preview.data?.status === "available") {
+    return <img src={artifactPreviewContentUrl(caseId, artifact.id)} alt={`Thumbnail of ${artifact.title}`} className="size-[100px] rounded border border-white/10 bg-black object-contain" />;
+  }
+  return <div className="flex size-[100px] items-center justify-center rounded border border-white/10 bg-black/20"><FileTypeIcon extension={artifact.extension} size={58} /></div>;
 }

@@ -19,10 +19,13 @@ import { CaseError } from "../cases/CasesPage";
 import { FileTypeIcon } from "../../components/FileTypeIcon";
 import {
   cancelAcquisitionJob,
+  artifactPreviewContentUrl,
   acquireInventoryBatch,
   acquireInventoryFile,
   createAcquisitionPlan,
   getAcquisitionInventory,
+  generateArtifactPreview,
+  getArtifactPreview,
   getCase,
   listAcquisitionJobs,
   listAcquiredFiles,
@@ -40,6 +43,7 @@ import {
   type AcquisitionPlan,
   type AcquisitionScope,
   type BulkAcquireResult,
+  type AcquiredEvidenceFile,
   type EvidenceVerification,
 } from "../../lib/api";
 import {
@@ -847,6 +851,10 @@ function InventoryResultPanel({
         File acquisition is limited to 100 MiB per selected path (max 50 per bulk batch) and is not
         physically validated. Transfers run sequentially; failures do not abort the rest of the batch.
       </p>
+      <p className="mt-1 text-[10px] leading-4 text-slate-500">
+        Real thumbnails are generated only from sealed acquired image bytes; unacquired files remain
+        represented by type icons so previewing never silently collects unselected content.
+      </p>
       <div className="mt-3 flex flex-wrap gap-2">
         {(
           [
@@ -946,7 +954,12 @@ function InventoryResultPanel({
                     toggleSelected(item.id, event.target.checked);
                   }}
                 />
-                <FileTypeIcon extension={item.extension} size={46} />
+                <AcquiredFileVisual
+                  caseId={caseId}
+                  file={acquired}
+                  extension={item.extension}
+                  label={item.relative_path}
+                />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-mono" title={item.relative_path}>
                     {item.relative_path}
@@ -1064,6 +1077,45 @@ function InventoryResultPanel({
       )}
     </div>
   );
+}
+
+function AcquiredFileVisual({
+  caseId,
+  file,
+  extension,
+  label,
+}: {
+  caseId: string;
+  file: AcquiredEvidenceFile | undefined;
+  extension: string | null;
+  label: string;
+}) {
+  const artifactId = file?.status === "completed" ? file.artifact_id : null;
+  const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "heic", "heif"].includes(
+    (extension ?? "").toLowerCase(),
+  );
+  const preview = useQuery({
+    queryKey: ["acquisition-thumbnail", caseId, artifactId],
+    queryFn: async () => {
+      if (!artifactId) throw new Error("An acquired artifact is required for a thumbnail.");
+      const current = await getArtifactPreview(caseId, artifactId);
+      return current.status === "not_generated"
+        ? generateArtifactPreview(caseId, artifactId)
+        : current;
+    },
+    enabled: Boolean(artifactId && isImage),
+    retry: false,
+  });
+  if (artifactId && preview.data?.status === "available") {
+    return (
+      <img
+        src={artifactPreviewContentUrl(caseId, artifactId)}
+        alt={`Thumbnail of ${label}`}
+        className="size-16 shrink-0 rounded border border-white/10 bg-black object-contain"
+      />
+    );
+  }
+  return <FileTypeIcon extension={extension} size={46} />;
 }
 
 function RunMetric({

@@ -1,8 +1,10 @@
 from datetime import UTC, datetime
 
 from forensix_server.reporting.renderers import neutralize_csv, render_csv, render_json, render_pdf
+from forensix_server.reporting.service import _apply_redaction
 from forensix_server.reporting.snapshot import (
     CaseSnapshot,
+    HashManifestItem,
     ImportedArtifactSnapshot,
     ReportIdentity,
     ReportSnapshot,
@@ -50,14 +52,43 @@ def test_report_renderers_emit_stable_outputs() -> None:
 
     assert first == second
     assert first.startswith(b"%PDF-")
-    assert b'"schema_version":"1.0.0"' in render_json(snapshot).replace(b" ", b"")
-    assert render_csv(snapshot).startswith(b"record_origin,artifact_id,evidence_reference_id")
+    assert b'"schema_version":"1.1.0"' in render_json(snapshot).replace(b" ", b"")
+    assert render_csv(snapshot).startswith(
+        b"record_origin,artifact_id,evidence_reference_id,storage_key,manifest_storage_key"
+    )
 
 
 def test_csv_formula_prefixes_are_neutralized() -> None:
     for dangerous in ("=1+1", "+cmd", "-2", "@SUM(A1)", "\tvalue", "\rvalue"):
         assert neutralize_csv(dangerous) == f"'{dangerous}"
     assert neutralize_csv("normal") == "normal"
+
+
+def test_acquired_file_keys_are_exported_and_redacted_by_profile() -> None:
+    snapshot = _snapshot().model_copy(
+        update={
+            "hash_manifest": [
+                HashManifestItem(
+                    evidence_file_id="77777777-7777-7777-7777-777777777777",
+                    source_relative_path="DCIM/Camera/photo.jpg",
+                    storage_key="c/case/raw/photo.jpg",
+                    manifest_storage_key="c/case/manifests/photo.json",
+                    status="completed",
+                    size_bytes=128,
+                    file_sha256="a" * 64,
+                    manifest_sha256="b" * 64,
+                    validation_state="not_physically_validated",
+                )
+            ]
+        }
+    )
+
+    exported = render_csv(snapshot)
+    assert b"c/case/raw/photo.jpg" in exported
+    assert b"DCIM/Camera/photo.jpg" in exported
+    redacted = _apply_redaction(snapshot, "mask_sensitive")
+    assert redacted.hash_manifest[0].storage_key == "[REDACTED]"
+    assert redacted.hash_manifest[0].file_sha256 == "a" * 64
 
 
 def test_pdf_places_plaintext_chat_content_before_technical_sections() -> None:
