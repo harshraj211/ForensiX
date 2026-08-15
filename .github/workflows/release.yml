@@ -47,6 +47,10 @@ jobs:
           fi
       - run: python scripts/build-release.py --version "$VERSION" --output-dir release
         shell: bash
+        env:
+          FORENSIX_WINDOWS_SIGN_CERT_B64: ${{ matrix.os == 'windows-latest' && secrets.FORENSIX_WINDOWS_SIGN_CERT_B64 || '' }}
+          FORENSIX_WINDOWS_SIGN_CERT_PASSWORD: ${{ matrix.os == 'windows-latest' && secrets.FORENSIX_WINDOWS_SIGN_CERT_PASSWORD || '' }}
+          FORENSIX_WINDOWS_SIGN_TIMESTAMP_URL: ${{ vars.FORENSIX_WINDOWS_SIGN_TIMESTAMP_URL || 'http://timestamp.digicert.com' }}
       - name: Resolve attestation files
         id: release-files
         shell: bash

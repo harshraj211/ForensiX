@@ -30,14 +30,17 @@ def seal_portable_bundle(
     source_commit: str,
     source_dirty: bool,
     sbom_path: Path,
+    signature_status: str = "unsigned",
 ) -> ReleaseArtifact:
-    """Create an unsigned deterministic ZIP with an internal per-file hash manifest."""
+    """Create a deterministic ZIP with an internal per-file hash manifest."""
     if not _VERSION_PATTERN.fullmatch(version):
         raise ValueError("Release version must be a semantic version.")
     if not re.fullmatch(r"[a-z0-9._-]{3,80}", platform_tag):
         raise ValueError("Platform tag is invalid.")
     if not re.fullmatch(r"[a-f0-9]{40}", source_commit):
         raise ValueError("Source commit must be a full Git SHA-1.")
+    if signature_status not in {"unsigned", "authenticode"}:
+        raise ValueError("Signature status must be unsigned or authenticode.")
     bundle = bundle_dir.expanduser().resolve()
     output = output_dir.expanduser().resolve()
     sbom = sbom_path.expanduser().resolve()
@@ -56,9 +59,11 @@ def seal_portable_bundle(
         "platform": platform_tag,
         "source_commit": source_commit,
         "source_dirty": source_dirty,
-        "signature_status": "unsigned",
+        "signature_status": signature_status,
         "limitations": [
-            "This portable engineering build is not code-signed or notarized.",
+            *([] if signature_status == "authenticode" else [
+                "This portable engineering build is not code-signed or notarized.",
+            ]),
             "Verify the archive and internal manifest before controlled evaluation.",
         ],
         "files": members,

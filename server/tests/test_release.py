@@ -39,6 +39,30 @@ def test_release_bundle_is_sealed_and_independently_verified(tmp_path: Path) -> 
     }
 
 
+def test_release_bundle_records_authenticode_status(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "ForensiX.exe").write_bytes(b"signed executable fixture")
+    sbom = tmp_path / "sbom.json"
+    sbom.write_text("{}", encoding="utf-8")
+
+    artifact = seal_portable_bundle(
+        bundle,
+        tmp_path / "release",
+        version="1.0.0",
+        platform_tag="windows-x86_64",
+        source_commit="d" * 40,
+        source_dirty=False,
+        sbom_path=sbom,
+        signature_status="authenticode",
+    )
+
+    with zipfile.ZipFile(artifact.archive_path) as zipped:
+        manifest = json.loads(zipped.read("release-manifest.json"))
+    assert manifest["signature_status"] == "authenticode"
+    assert all("not code-signed" not in item for item in manifest["limitations"])
+
+
 def test_release_verification_detects_archive_tampering(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     bundle.mkdir()

@@ -1,6 +1,6 @@
 # Release Packaging
 
-ForensiX ships as portable, unsigned Windows, Linux, and macOS ZIP bundles. Each bundle is designed for a controlled workstation where the analyst can verify the release before use.
+ForensiX ships as portable Windows, Linux, and macOS ZIP bundles. Windows bundles can be Authenticode-signed during the trusted release workflow; Linux and macOS bundles remain portable archives with hash and manifest verification.
 
 ## GitHub download
 
@@ -17,6 +17,25 @@ The stable URLs are:
 - `https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-macOS-Portable.zip`
 
 The release includes one `SHA256SUMS.txt` file. SBOMs are generated and attested by GitHub Actions but are intentionally kept out of the primary download list. Each ZIP still contains its internal source manifest and per-file hashes.
+
+## Windows signing
+
+Windows SmartScreen reports `Unknown publisher` for unsigned executables. To publish a signed Windows build, configure these protected GitHub Actions secrets before creating the release tag:
+
+- `FORENSIX_WINDOWS_SIGN_CERT_B64`: base64-encoded password-protected Authenticode `.pfx` certificate
+- `FORENSIX_WINDOWS_SIGN_CERT_PASSWORD`: the `.pfx` password
+
+For example, a maintainer can set the secrets with the GitHub CLI from a trusted machine (the certificate file must never be committed):
+
+```powershell
+$cert = [Convert]::ToBase64String([IO.File]::ReadAllBytes("ForensiX-CodeSigning.pfx"))
+$cert | gh secret set FORENSIX_WINDOWS_SIGN_CERT_B64
+gh secret set FORENSIX_WINDOWS_SIGN_CERT_PASSWORD
+```
+
+The workflow signs the launcher and bundled `.exe`, `.dll`, and `.pyd` files with SHA-256 and a trusted RFC 3161 timestamp before sealing the ZIP. The certificate private key is never committed to the repository. The resulting `release-manifest.json` records `authenticode` only when signing completed successfully.
+
+The certificate must chain to a Windows-trusted publisher for SmartScreen protection on other machines. A self-signed certificate can identify a local publisher only after that certificate is manually trusted and does not solve public distribution warnings. Signing alone also does not immediately guarantee a new publisher has reputation; Microsoft SmartScreen may still show an initial warning while reputation is established.
 
 ## Local build
 
@@ -45,7 +64,7 @@ GitHub Actions builds Windows, Linux, and macOS, creates attestations, uploads w
 
 ## Current release boundaries
 
-- The bundles are not code-signed; Windows SmartScreen and macOS Gatekeeper may warn about them.
+- Unsigned builds trigger Windows SmartScreen and may trigger macOS Gatekeeper. Configure the protected Windows signing secrets for public signed releases.
 - There is no MSI or per-user installer yet.
 - Android USB drivers, ADB Platform-Tools, and scrcpy are not silently installed.
 - The application remains loopback-only and must not be deployed as a public web service.

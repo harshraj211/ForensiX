@@ -1,4 +1,4 @@
-"""Build an unsigned portable ForensiX bundle, SBOM, manifest, and checksums."""
+"""Build a portable ForensiX bundle, SBOM, manifest, and checksums."""
 
 import argparse
 import json
@@ -47,6 +47,7 @@ def main() -> int:
         root,
     )
     _materialize_regular_symlinks(build_root / "dist" / "ForensiX")
+    signature_status = _sign_windows_bundle(build_root / "dist" / "ForensiX")
     platform_tag = _platform_tag()
     sbom = output / f"ForensiX-{arguments.version}-{platform_tag}.cdx.json"
     _run(
@@ -72,11 +73,12 @@ def main() -> int:
         source_commit=commit,
         source_dirty=source_dirty,
         sbom_path=sbom,
+        signature_status=signature_status,
     )
     print(f"Portable archive: {artifact.archive_path}")
     print(f"Archive SHA-256: {artifact.archive_sha256}")
     print(f"Manifest SHA-256: {artifact.manifest_sha256}")
-    print("Signature status: unsigned")
+    print(f"Signature status: {signature_status}")
     return 0
 
 
@@ -123,6 +125,77 @@ def _materialize_regular_symlinks(bundle: Path) -> None:
             raise RuntimeError(f"Release bundle contains an invalid symbolic link: {path}")
         path.unlink()
         temporary.replace(path)
+
+
+def _sign_windows_bundle(bundle: Path) -> str:
+    """Sign Windows PE files when a release certificate is explicitly configured."""
+    if platform.system() != "Windows":
+        return "unsigned"
+    certificate_b64 = os.environ.get("FORENSIX_WINDOWS_SIGN_CERT_B64", "").strip()
+    password = os.environ.get("FORENSIX_WINDOWS_SIGN_CERT_PASSWORD")
+    if not certificate_b64 and not password:
+        return "unsigned"
+    if not certificate_b64 or password is None:
+        raise RuntimeError(
+            "Windows signing requires both FORENSIX_WINDOWS_SIGN_CERT_B64 and "
+            "FORENSIX_WINDOWS_SIGN_CERT_PASSWORD."
+        )
+    signtool = _find_signtool()
+    if signtool is None:
+        raise RuntimeError("signtool.exe was not found on the Windows runner.")
+    timestamp_url = os.environ.get(
+        "FORENSIX_WINDOWS_SIGN_TIMESTAMP_URL", "http://timestamp.digicert.com"
+    )
+    certificate = bundle.parent / "forensix-signing.pfx"
+    try:
+        import base64
+
+        certificate.write_bytes(base64.b64decode(certificate_b64, validate=True))
+        pe_files = sorted(
+            path
+            for path in bundle.rglob("*")
+            if path.is_file() and path.suffix.lower() in {".dll", ".exe", ".pyd"}
+        )
+        if not pe_files:
+            raise RuntimeError("No Windows PE files were found to sign.")
+        for path in pe_files:
+            _run(
+                [
+                    signtool,
+                    "sign",
+                    "/quiet",
+                    "/fd",
+                    "SHA256",
+                    "/f",
+                    str(certificate),
+                    "/p",
+                    password,
+                    "/tr",
+                    timestamp_url,
+                    "/td",
+                    "SHA256",
+                    "/d",
+                    "ForensiX",
+                    str(path),
+                ],
+                bundle,
+            )
+    finally:
+        certificate.unlink(missing_ok=True)
+    return "authenticode"
+
+
+def _find_signtool() -> str | None:
+    """Find the Windows SDK signing tool on local and GitHub-hosted runners."""
+    discovered = shutil.which("signtool.exe")
+    if discovered:
+        return discovered
+    candidates = []
+    for root_name in ("ProgramFiles(x86)", "ProgramFiles"):
+        root = os.environ.get(root_name)
+        if root:
+            candidates.extend(Path(root).glob("Windows Kits/10/bin/*/x64/signtool.exe"))
+    return str(sorted(candidates)[-1]) if candidates else None
 
 
 def _add_reproducible_sbom_serial(

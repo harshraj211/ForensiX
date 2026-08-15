@@ -247,7 +247,7 @@ Verified SQLite databases and safe ZIP/TAR working copies can be assessed and sc
 
 Supervisors and administrators can export sealed custody/audit checkpoint packages from a case after chain verification succeeds. The package hash must be preserved, signed, or published through an agency-controlled process before it becomes externally anchored. After that external action, the case screen can record its provider, reference, time, and optional receipt SHA-256 as an append-only anchor receipt. It can also verify a detached RSA/ECDSA signature against a supplied public X.509 certificate without accepting private keys. See [custody checkpoints](docs/CUSTODY_CHECKPOINTS.md).
 
-Portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, GitHub build attestations, and tagged GitHub Releases are defined in [release packaging](docs/RELEASE_PACKAGING.md). The current Windows asset is unsigned and portable; native code signing, notarization, and a production installer remain explicit release gates.
+Portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, GitHub build attestations, and tagged GitHub Releases are defined in [release packaging](docs/RELEASE_PACKAGING.md). Windows releases support Authenticode signing when the maintainer configures the protected signing certificate secrets; releases without those secrets remain explicitly unsigned.
 
 > Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, `storage_blocked`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
 
