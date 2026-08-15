@@ -114,10 +114,13 @@ def _materialize_regular_symlinks(bundle: Path) -> None:
         if not path.is_symlink():
             continue
         target = path.resolve()
-        if not target.is_file():
-            raise RuntimeError(f"Release bundle contains a non-file symbolic link: {path}")
         temporary = path.with_name(f".{path.name}.materializing")
-        shutil.copyfile(target, temporary)
+        if target.is_file():
+            shutil.copyfile(target, temporary)
+        elif target.is_dir():
+            shutil.copytree(target, temporary, symlinks=False)
+        else:
+            raise RuntimeError(f"Release bundle contains an invalid symbolic link: {path}")
         path.unlink()
         temporary.replace(path)
 
