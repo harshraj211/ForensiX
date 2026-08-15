@@ -26,7 +26,7 @@ Download the latest portable build for your workstation:
 
 Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`ForensiX.exe` on Windows). The application starts its loopback backend and bundled web interface automatically and opens the workstation in its own desktop window. No public hosting or internet connection is required after download.
 
-The distributions are portable rather than installers. They do not silently install Android USB drivers, ADB, scrcpy, or PhotoRec. ADB is required for device detection; scrcpy is optional and is needed only for live mirror, interactive control, and documented screen recording. See [Windows workstation setup](docs/WORKSTATION_SETUP.md) for the complete procedure and `SHA256SUMS.txt` in the release for checksums.
+The distributions are portable rather than installers. They do not silently install Android USB drivers or ADB. The Windows bundle includes the official scrcpy runtime; scrcpy is started only when an analyst requests live mirror, interactive control, or documented screen recording. PhotoRec remains optional and external. See [Windows workstation setup](docs/WORKSTATION_SETUP.md) for the complete procedure and `SHA256SUMS.txt` in the release for checksums.
 
 The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, immutable capability-gated acquisition plans, case-owned durable acquisition jobs, and the first bounded content-free shared-storage path inventory.
 
@@ -217,13 +217,13 @@ The application does not need a separate **Start services** action during normal
 
 ### 🖱️ Optional Live Mirror & Device Control
 
-To enable the optional low-latency Android mirror and separately acknowledged controller window, install the official local scrcpy runtime once, then start ForensiX normally:
+The Windows portable release includes and validates the official scrcpy runtime automatically. Source checkouts can install it locally with:
 
 ```powershell
 .\scripts\install-scrcpy.ps1
 ```
 
-The launcher validates and pins the local scrcpy executable for that server session. Inside a case-linked device assessment, use **Read-only mirror** for passive viewing or **Interactive control** only after acknowledging that taps and typing change the device. See the [workstation setup](docs/WORKSTATION_SETUP.md#optional-live-mirror-and-device-control) guide.
+The launcher validates and pins the bundled or local scrcpy executable for that server session. scrcpy does not open at application startup because no device or case has been selected yet. Inside a case-linked device assessment, use **Read-only mirror** for passive viewing or **Interactive control** only after acknowledging that taps and typing change the device. See the [workstation setup](docs/WORKSTATION_SETUP.md#scrcpy-mirror-and-control) guide.
 
 ### 🕳️ Optional Deleted-Data Research
 

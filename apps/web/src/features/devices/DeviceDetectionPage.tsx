@@ -1093,8 +1093,9 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
           </div>
           {!scrcpyDiagnostic.isLoading && !scrcpyDiagnostic.data?.available && (
             <p className="mt-3 text-xs leading-5 text-slate-500">
-              Install the official scrcpy release and set FORENSIX_SCRCPY_PATH before using live
-              mirror or control. Screenshot capture works through ADB without scrcpy.
+              scrcpy is unavailable. The Windows portable build includes it automatically; source
+              checkouts must configure FORENSIX_SCRCPY_PATH. Screenshot capture works through ADB
+              without scrcpy.
             </p>
           )}
           {screenshot.data && (

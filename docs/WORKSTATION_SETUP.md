@@ -30,7 +30,7 @@ On the phone, enable Developer options and USB debugging. Keep the device unlock
 
 ## scrcpy mirror and control
 
-scrcpy is optional. Install the official Windows release and keep the complete extracted folder together because the release includes supporting DLLs. Configure the executable and its hash before starting ForensiX:
+The Windows portable release includes the official scrcpy runtime and configures its executable and SHA-256 automatically. For a source checkout, install the official Windows release and keep the complete extracted folder together:
 
 ```powershell
 $env:FORENSIX_SCRCPY_PATH = "C:\tools\scrcpy\scrcpy.exe"
@@ -38,7 +38,7 @@ $env:FORENSIX_SCRCPY_EXPECTED_SHA256 = (Get-FileHash $env:FORENSIX_SCRCPY_PATH -
 .\ForensiX.exe
 ```
 
-Use **Read-only mirror** for passive viewing. Use **Interactive control** only after acknowledging that taps and typing modify device state. Use **Start documented session** when the displayed pixels and control actions must be sealed as an MP4 case record. A screenshot capture does not require scrcpy.
+scrcpy does not open at application startup because it must be attached to a selected case device and its control modes have device-side effects. Use **Read-only mirror** for passive viewing. Use **Interactive control** only after acknowledging that taps and typing modify device state. Use **Start documented session** when the displayed pixels and control actions must be sealed as an MP4 case record. A screenshot capture does not require scrcpy.
 
 ## First-run workflow
 
@@ -60,7 +60,7 @@ Application data is stored in `%LOCALAPPDATA%\ForensiX` by default. This include
 - **ADB not found:** install Platform-Tools, add its directory to `PATH`, or use `--adb-path`.
 - **Device unauthorized:** unlock the phone, reconnect USB, and accept the RSA prompt.
 - **No device shown:** verify the cable, USB mode, OEM driver, and `adb devices -l` output.
-- **scrcpy unavailable:** configure `FORENSIX_SCRCPY_PATH` and its SHA-256, then restart ForensiX.
+- **scrcpy unavailable:** on the Windows portable build, re-extract the ZIP after unblocking it in Windows file properties; for a source checkout, configure `FORENSIX_SCRCPY_PATH` and its SHA-256, then restart ForensiX.
 - **Browser does not open:** browse to `http://127.0.0.1:8765` and inspect `%LOCALAPPDATA%\ForensiX\logs`.
 - **Port already in use:** stop the existing ForensiX process or start the executable with another port, for example `ForensiX.exe --port 8876`.
 

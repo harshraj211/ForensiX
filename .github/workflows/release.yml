@@ -37,6 +37,10 @@ jobs:
           cache: pip
       - run: pnpm install --frozen-lockfile
       - run: python -m pip install -r requirements-release.txt
+      - name: Install official scrcpy runtime
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: .\scripts\install-scrcpy.ps1 -Version 4.1 -Destination tools\scrcpy
       - name: Resolve version
         shell: bash
         run: |

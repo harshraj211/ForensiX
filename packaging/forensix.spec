@@ -14,6 +14,9 @@ datas = [
 ]
 datas += collect_data_files("alembic")
 datas += collect_data_files("reportlab")
+scrcpy_root = project_root / "tools" / "scrcpy"
+if scrcpy_root.is_dir() and (scrcpy_root / "scrcpy.exe").is_file():
+    datas.append((str(scrcpy_root), "tools/scrcpy"))
 binaries = collect_dynamic_libs("pythonnet")
 datas += collect_data_files("pythonnet")
 hiddenimports = (

@@ -1,6 +1,7 @@
 """Loopback-only desktop launcher and bundled single-origin web host."""
 
 import argparse
+import hashlib
 import importlib
 import os
 import socket
@@ -65,6 +66,8 @@ def main() -> int:
         api_host=host,
         api_port=port,
         deployment_transport="loopback_http",
+        scrcpy_path=_scrcpy_path(),
+        scrcpy_expected_sha256=_scrcpy_expected_sha256(),
     )
     app = create_desktop_app(_web_root(), settings)
     if arguments.no_browser:
@@ -105,6 +108,32 @@ def _select_port(host: str, requested: int) -> int:
                 continue
             return port
     raise RuntimeError(f"No available loopback port found near {requested}.")
+
+
+def _scrcpy_path() -> Path | None:
+    configured = os.environ.get("FORENSIX_SCRCPY_PATH")
+    if configured:
+        return Path(configured).expanduser()
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if isinstance(bundle_root, str):
+        candidate = Path(bundle_root) / "tools" / "scrcpy" / "scrcpy.exe"
+    else:
+        candidate = Path(__file__).resolve().parents[4] / "tools" / "scrcpy" / "scrcpy.exe"
+    return candidate if candidate.is_file() else None
+
+
+def _scrcpy_expected_sha256() -> str | None:
+    configured = os.environ.get("FORENSIX_SCRCPY_EXPECTED_SHA256")
+    if configured:
+        return configured.lower()
+    path = _scrcpy_path()
+    if path is None:
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _run_in_browser(app: FastAPI, origin: str, host: str, port: int) -> None:

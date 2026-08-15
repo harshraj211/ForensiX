@@ -66,7 +66,7 @@ GitHub Actions builds Windows, Linux, and macOS, creates attestations, uploads w
 
 - Unsigned builds trigger Windows SmartScreen and may trigger macOS Gatekeeper. Configure the protected Windows signing secrets for public signed releases.
 - There is no MSI or per-user installer yet.
-- Android USB drivers, ADB Platform-Tools, and scrcpy are not silently installed.
+- Android USB drivers and ADB Platform-Tools are not silently installed. The Windows portable bundle includes the official scrcpy runtime; it starts only when an analyst requests a device mirror, control session, or recording.
 - The application remains loopback-only and must not be deployed as a public web service.
 - Evidence and database data live outside the application bundle and must be backed up separately.
 
