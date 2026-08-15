@@ -1,6 +1,7 @@
 """Loopback-only desktop launcher and bundled single-origin web host."""
 
 import argparse
+import importlib
 import os
 import sys
 import threading
@@ -8,6 +9,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 from fastapi import FastAPI
@@ -96,7 +98,7 @@ def _run_in_browser(app: FastAPI, origin: str, host: str, port: int) -> None:
 
 def _run_in_native_window(app: FastAPI, origin: str, host: str, port: int) -> None:
     try:
-        import webview
+        webview: Any = importlib.import_module("webview")
     except ImportError:
         _run_in_browser(app, origin, host, port)
         return
