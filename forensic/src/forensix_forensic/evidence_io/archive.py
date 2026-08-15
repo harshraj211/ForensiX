@@ -219,6 +219,15 @@ def _validate_source(source: Path) -> None:
 
 
 def _validate_member_name(value: str, max_depth: int) -> str:
+    return validate_archive_member_name(value, max_depth)
+
+
+def validate_archive_member_name(value: str, max_depth: int) -> str:
+    """Return the normalized form of a safe archive member path or raise.
+
+    Member paths must be relative, contain no traversal, drive prefixes,
+    backslashes, or control characters, and stay within the depth limit.
+    """
     if not value or "\x00" in value or "\\" in value or _DRIVE_PREFIX.match(value):
         raise ArchiveExtractionError("The archive contains an unsafe member path.")
     path = PurePosixPath(value)

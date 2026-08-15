@@ -5,6 +5,7 @@ from .archive import (
     ArchivePolicy,
     ExtractedArchiveMember,
     SafeArchiveExtractor,
+    validate_archive_member_name,
 )
 from .parser import (
     DocumentEvidenceParser,
@@ -36,6 +37,7 @@ __all__ = [
     "ParserRegistry",
     "ParserRegistryError",
     "SafeArchiveExtractor",
+    "validate_archive_member_name",
     "SafeSQLiteError",
     "SafeSQLiteReader",
     "RECOVERY_PROBE_VERSION",

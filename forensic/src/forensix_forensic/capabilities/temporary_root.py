@@ -16,6 +16,10 @@ class TemporaryRootProfile:
     build_fingerprint: str
     security_patch: str
     validation_record_sha256: str
+    # Exact kernel version string (``uname -r``) observed during controlled-device
+    # validation. Empty means live kernel revalidation is not yet enforced for
+    # this profile.
+    kernel_build_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +93,16 @@ def find_temporary_root_research_candidate(
 
 def find_temporary_root_profile(
     properties: dict[str, str],
+    *,
+    kernel_build_id: str | None = None,
 ) -> TemporaryRootProfile | None:
+    """Match a validated profile, optionally requiring an exact kernel match.
+
+    When ``kernel_build_id`` is supplied and the profile pins one, the live
+    ``uname -r`` observation must match it exactly; otherwise execution is
+    refused. Profiles without a pinned kernel value keep the four-field match
+    for backward compatibility.
+    """
     observed = (
         properties.get("ro.product.manufacturer", "").strip().casefold(),
         properties.get("ro.product.model", "").strip().casefold(),
@@ -105,8 +118,15 @@ def find_temporary_root_profile(
             profile.build_fingerprint.strip(),
             profile.security_patch.strip(),
         )
-        if observed == expected:
-            return profile
+        if observed != expected:
+            continue
+        if (
+            kernel_build_id is not None
+            and profile.kernel_build_id
+            and kernel_build_id.strip() != profile.kernel_build_id.strip()
+        ):
+            continue
+        return profile
     return None
 
 

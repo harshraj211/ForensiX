@@ -24,7 +24,11 @@ from .temporary_root_provider import (
     TemporaryRootProviderPackage,
     TemporaryRootProviderResult,
 )
-from .temporary_root_workflow import TemporaryRootWorkflow, TemporaryRootWorkflowResult
+from .temporary_root_workflow import (
+    TemporaryRootProfileMismatchError,
+    TemporaryRootWorkflow,
+    TemporaryRootWorkflowResult,
+)
 
 __all__ = [
     "AcquisitionReadiness",
@@ -45,6 +49,7 @@ __all__ = [
     "TemporaryRootProviderError",
     "TemporaryRootProviderPackage",
     "TemporaryRootProviderResult",
+    "TemporaryRootProfileMismatchError",
     "TemporaryRootWorkflow",
     "TemporaryRootWorkflowResult",
 ]

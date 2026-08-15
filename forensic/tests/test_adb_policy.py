@@ -107,6 +107,13 @@ def test_root_probe_policy_is_fixed_and_serial_scoped() -> None:
     assert command.timeout_seconds == 8.0
 
 
+def test_kernel_version_policy_is_fixed_and_serial_scoped() -> None:
+    command = AdbCommandPolicy.get_kernel_version("FX-DEMO-001")
+
+    assert command.arguments == ("-s", "FX-DEMO-001", "shell", "uname", "-r")
+    assert command.timeout_seconds == 8.0
+
+
 def test_provider_probe_policy_is_content_free_and_profile_bounded() -> None:
     command = AdbCommandPolicy.probe_content_provider(
         "FX-DEMO-001", ContentProviderProfile.CONTACTS
@@ -239,6 +246,30 @@ def test_rooted_userdata_policy_uses_fixed_broad_paths_and_extended_timeout() ->
     assert "/data/misc" in shell_text
     assert "/data/media/0" in shell_text
     assert "tar -cf -" in shell_text
+
+
+def test_bfu_credentials_policy_uses_only_fixed_locksettings_paths() -> None:
+    command = AdbCommandPolicy.capture_rooted_bundle(
+        "FX-DEMO-001", RootedCollectionProfile.BFU_CREDENTIALS
+    )
+
+    shell_text = command.arguments[5]
+    assert command.arguments[:5] == ("-s", "FX-DEMO-001", "exec-out", "su", "-c")
+    assert "/data/system/locksettings.db" in shell_text
+    assert "/data/system/gatekeeper.password.key" in shell_text
+    assert "/data/user/0" not in shell_text
+    assert "tar -cf -" in shell_text
+
+
+@pytest.mark.asyncio
+async def test_system_client_reads_and_validates_kernel_version() -> None:
+    runner = RecordingRunner([_result(0, stdout="4.4.177-g83bee1dc48e8\n")])
+
+    version = await SystemAdbClient(cast(SubprocessAdbRunner, runner)).get_kernel_version(
+        "FX-DEMO-001"
+    )
+
+    assert version == "4.4.177-g83bee1dc48e8"
 
 
 def test_physical_block_policy_is_fixed_and_has_no_caller_path() -> None:

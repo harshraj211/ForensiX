@@ -15,6 +15,7 @@ def test_profile_registry_requires_exact_build_and_patch_match(
         build_fingerprint="example/device/build:10/TEST/1:user/release-keys",
         security_patch="2019-10-01",
         validation_record_sha256="a" * 64,
+        kernel_build_id="4.4.177-controlled",
     )
     monkeypatch.setattr(temporary_root, "TEMPORARY_ROOT_PROFILES", (profile,))
     properties = {
@@ -25,6 +26,14 @@ def test_profile_registry_requires_exact_build_and_patch_match(
     }
 
     assert temporary_root.find_temporary_root_profile(properties) == profile
+    assert (
+        temporary_root.find_temporary_root_profile(properties, kernel_build_id="4.4.177-controlled")
+        == profile
+    )
+    assert (
+        temporary_root.find_temporary_root_profile(properties, kernel_build_id="4.4.178-other")
+        is None
+    )
     properties["ro.build.version.security_patch"] = "2019-10-05"
     assert temporary_root.find_temporary_root_profile(properties) is None
 

@@ -269,13 +269,20 @@ class RootedCaptureRequest(BaseModel):
         "android_system",
         "android_apps",
         "android_userdata",
+        "bfu_credentials",
     ]
     side_effects_acknowledged: Literal[True]
 
 
 class TemporaryRootCaptureRequest(BaseModel):
     serial: str = Field(min_length=1, max_length=255)
-    profile: Literal["android_providers", "android_system", "android_apps", "android_userdata"]
+    profile: Literal[
+        "android_providers",
+        "android_system",
+        "android_apps",
+        "android_userdata",
+        "bfu_credentials",
+    ]
     legal_authority_acknowledged: Literal[True]
     device_modification_acknowledged: Literal[True]
     cleanup_reboot_acknowledged: Literal[True]

@@ -9,6 +9,7 @@ class AdbOperation(StrEnum):
     SERVER_INFO = "server_info"
     LIST_TRANSPORTS = "list_transports"
     GET_PROPERTIES = "get_properties"
+    GET_KERNEL_VERSION = "get_kernel_version"
     LIST_PACKAGES = "list_packages"
     STORAGE_ROOT_EXISTS = "storage_root_exists"
     STORAGE_ROOT_READABLE = "storage_root_readable"
@@ -52,6 +53,7 @@ class RootedCollectionProfile(StrEnum):
     ANDROID_SYSTEM = "android_system"
     ANDROID_APPS = "android_apps"
     ANDROID_USERDATA = "android_userdata"
+    BFU_CREDENTIALS = "bfu_credentials"
 
 
 class PhysicalBlockProfile(StrEnum):
@@ -162,6 +164,15 @@ _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
         "/data/misc",
         "/data/media/0",
     ),
+    RootedCollectionProfile.BFU_CREDENTIALS: (
+        "/data/system/gatekeeper.password.key",
+        "/data/system/gatekeeper.pattern.key",
+        "/data/system/gatekeeper/0/gatekeeper.password.key",
+        "/data/system/gatekeeper/0/gatekeeper.pattern.key",
+        "/data/system/locksettings.db",
+        "/data/system/locksettings.db-shm",
+        "/data/system/locksettings.db-wal",
+    ),
 }
 
 _PHYSICAL_BLOCK_PATHS: dict[PhysicalBlockProfile, str] = {
@@ -228,6 +239,16 @@ class AdbCommandPolicy:
         return ApprovedAdbCommand(
             AdbOperation.GET_PROPERTIES,
             ("-s", serial, "shell", "getprop"),
+            8.0,
+        )
+
+    @staticmethod
+    def get_kernel_version(serial: str) -> ApprovedAdbCommand:
+        """Return the live kernel version string for provider-profile revalidation."""
+        _validate_serial(serial)
+        return ApprovedAdbCommand(
+            AdbOperation.GET_KERNEL_VERSION,
+            ("-s", serial, "shell", "uname", "-r"),
             8.0,
         )
 

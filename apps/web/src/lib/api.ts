@@ -1429,7 +1429,8 @@ export type RootedCollectionProfile =
   | "android_providers"
   | "android_system"
   | "android_apps"
-  | "android_userdata";
+  | "android_userdata"
+  | "bfu_credentials";
 
 export async function generateCaseNarrative(caseId: string): Promise<AiNarrative> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/ai/narrative`, { method: "POST" });
@@ -2014,7 +2015,12 @@ export function captureWithTemporaryRoot(
   caseId: string,
   deviceId: string,
   serial: string,
-  profile: "android_providers" | "android_system" | "android_apps" | "android_userdata",
+  profile:
+    | "android_providers"
+    | "android_system"
+    | "android_apps"
+    | "android_userdata"
+    | "bfu_credentials",
 ): Promise<EvidenceSource> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/temporary-root-captures`,

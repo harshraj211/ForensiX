@@ -23,6 +23,15 @@ class TemporaryRootWorkflowResult[T]:
     provider_sha256: str
     acquisition_result: T
     cleanup_verified: bool
+    kernel_build_id: str | None = None
+
+
+class TemporaryRootProfileMismatchError(TemporaryRootProviderError):
+    """Raised when the live device no longer matches the validated provider profile."""
+
+    def __init__(self, message: str, *, reason: str) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 class TemporaryRootWorkflow:
@@ -47,10 +56,18 @@ class TemporaryRootWorkflow:
         acquire: Callable[[], Awaitable[T]],
     ) -> TemporaryRootWorkflowResult[T]:
         properties = await adb_client.get_properties(serial)
-        matched = find_temporary_root_profile(properties)
+        kernel_build_id = await adb_client.get_kernel_version(serial)
+        base_matched = find_temporary_root_profile(properties)
+        matched = find_temporary_root_profile(properties, kernel_build_id=kernel_build_id)
+        if base_matched is not None and matched is None:
+            raise TemporaryRootProfileMismatchError(
+                "The connected device kernel does not match the validated provider profile.",
+                reason="kernel_build_id",
+            )
         if matched is None or matched != provider.profile:
-            raise TemporaryRootProviderError(
-                "The connected device does not exactly match the validated provider profile."
+            raise TemporaryRootProfileMismatchError(
+                "The connected device does not exactly match the validated provider profile.",
+                reason="device_profile",
             )
 
         activation_attempted = False
@@ -98,6 +115,7 @@ class TemporaryRootWorkflow:
             provider_sha256=activation.executable_sha256,
             acquisition_result=cast(T, acquisition_result),
             cleanup_verified=True,
+            kernel_build_id=kernel_build_id,
         )
 
     async def _verify_cleanup(self, adb_client: AdbClient, serial: str) -> None:

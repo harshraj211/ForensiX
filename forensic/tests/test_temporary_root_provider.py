@@ -15,7 +15,10 @@ from forensix_forensic.capabilities.temporary_root_provider import (
     TemporaryRootProviderPackage,
     TemporaryRootProviderResult,
 )
-from forensix_forensic.capabilities.temporary_root_workflow import TemporaryRootWorkflow
+from forensix_forensic.capabilities.temporary_root_workflow import (
+    TemporaryRootProfileMismatchError,
+    TemporaryRootWorkflow,
+)
 
 
 def _profile() -> TemporaryRootProfile:
@@ -27,6 +30,7 @@ def _profile() -> TemporaryRootProfile:
         build_fingerprint="example/device/build:10/TEST/1:user/release-keys",
         security_patch="2019-10-01",
         validation_record_sha256="a" * 64,
+        kernel_build_id="4.4.0-controlled",
     )
 
 
@@ -85,6 +89,10 @@ class _FakeAdbClient:
         assert serial == "SERIAL-123"
         return {"ro.build.fingerprint": _profile().build_fingerprint}
 
+    async def get_kernel_version(self, serial: str) -> str:
+        assert serial == "SERIAL-123"
+        return _profile().kernel_build_id
+
     async def probe_root_access(self, serial: str) -> RootAccessProbe:
         assert serial == "SERIAL-123"
         self.probe_count += 1
@@ -116,7 +124,7 @@ async def test_workflow_activates_acquires_cleans_and_verifies(
     monkeypatch.setattr(
         temporary_root_workflow,
         "find_temporary_root_profile",
-        lambda _: provider.profile,
+        lambda _, **__: provider.profile,
     )
 
     async def acquire() -> str:
@@ -131,6 +139,7 @@ async def test_workflow_activates_acquires_cleans_and_verifies(
 
     assert result.acquisition_result == "sealed-evidence-id"
     assert result.cleanup_verified is True
+    assert result.kernel_build_id == "4.4.0-controlled"
     assert provider.operations == ["activate:SERIAL-123", "cleanup:SERIAL-123"]
 
 
@@ -142,7 +151,7 @@ async def test_workflow_cleans_up_when_acquisition_fails(
     monkeypatch.setattr(
         temporary_root_workflow,
         "find_temporary_root_profile",
-        lambda _: provider.profile,
+        lambda _, **__: provider.profile,
     )
 
     async def acquire() -> str:
@@ -159,6 +168,33 @@ async def test_workflow_cleans_up_when_acquisition_fails(
 
     assert provider.operations == ["activate:SERIAL-123", "cleanup:SERIAL-123"]
     assert adb_client.probe_count == 2
+
+
+@pytest.mark.asyncio
+async def test_workflow_rejects_kernel_mismatch_before_provider_activation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = _FakeProvider()
+
+    def match_profile(_: dict[str, str], *, kernel_build_id: str | None = None):
+        return provider.profile if kernel_build_id is None else None
+
+    monkeypatch.setattr(temporary_root_workflow, "find_temporary_root_profile", match_profile)
+
+    with pytest.raises(TemporaryRootProfileMismatchError) as caught:
+        await TemporaryRootWorkflow().run(
+            cast(AdbClient, _FakeAdbClient()),
+            cast(HashPinnedTemporaryRootProvider, provider),
+            "SERIAL-123",
+            cast(Callable[[], Awaitable[str]], _unreachable_acquire),
+        )
+
+    assert caught.value.reason == "kernel_build_id"
+    assert provider.operations == []
+
+
+async def _unreachable_acquire() -> str:
+    raise AssertionError("Acquisition must not run after profile mismatch.")
 
 
 def _root_probe(status: RootAccessStatus, uid: int | None) -> RootAccessProbe:

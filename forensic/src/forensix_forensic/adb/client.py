@@ -59,6 +59,8 @@ class AdbClient(Protocol):
 
     async def get_properties(self, serial: str) -> dict[str, str]: ...
 
+    async def get_kernel_version(self, serial: str) -> str: ...
+
     async def get_battery(self, serial: str) -> dict[str, str]: ...
 
     async def list_packages(self, serial: str) -> tuple[str, ...]: ...
@@ -159,6 +161,20 @@ class SystemAdbClient:
         if result.exit_code != 0:
             raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
         return parse_getprop_output(result.stdout)
+
+    async def get_kernel_version(self, serial: str) -> str:
+        """Return the live ``uname -r`` kernel version for provider revalidation."""
+        result = await self._run(AdbCommandPolicy.get_kernel_version(serial))
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        version = result.stdout.strip()
+        if (
+            not version
+            or len(version) > 128
+            or any(ord(character) < 32 or ord(character) == 127 for character in version)
+        ):
+            raise AdbCommandError(result.exit_code, "ADB returned an invalid kernel version.")
+        return version
 
     async def get_battery(self, serial: str) -> dict[str, str]:
         from .parser import parse_dumpsys_battery

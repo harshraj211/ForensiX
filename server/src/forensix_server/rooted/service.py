@@ -23,7 +23,10 @@ from forensix_forensic.capabilities.temporary_root_provider import (
     HashPinnedTemporaryRootProvider,
     TemporaryRootProviderPackage,
 )
-from forensix_forensic.capabilities.temporary_root_workflow import TemporaryRootWorkflow
+from forensix_forensic.capabilities.temporary_root_workflow import (
+    TemporaryRootProfileMismatchError,
+    TemporaryRootWorkflow,
+)
 from forensix_server.auth import Principal
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseInvalidStateError
@@ -332,7 +335,12 @@ class RootedDeviceService:
                 side_effects_acknowledged=True,
             )
 
-        result = await TemporaryRootWorkflow().run(adb_client, provider, serial, acquire)
+        try:
+            result = await TemporaryRootWorkflow().run(adb_client, provider, serial, acquire)
+        except TemporaryRootProfileMismatchError as error:
+            raise RootedDeviceError(
+                f"Temporary-root provider revalidation failed ({error.reason})."
+            ) from error
         now = datetime.now(UTC)
         with database.session() as session:
             AuditService().append(
@@ -347,6 +355,7 @@ class RootedDeviceService:
                     "device_id": device_id,
                     "evidence_source_sha256": result.acquisition_result.sha256,
                     "profile": profile.value,
+                    "kernel_build_id": result.kernel_build_id,
                     "provider_profile_id": result.profile_id,
                     "provider_sha256": result.provider_sha256,
                 },

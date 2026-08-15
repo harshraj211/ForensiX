@@ -10,6 +10,7 @@ from forensix_forensic.evidence_io import (
     ArchiveExtractionError,
     ArchivePolicy,
     SafeArchiveExtractor,
+    validate_archive_member_name,
 )
 from forensix_forensic.storage import EvidenceStore
 
@@ -76,3 +77,13 @@ def test_tar_rejects_symbolic_link_members(tmp_path: Path) -> None:
 
     with pytest.raises(ArchiveExtractionError, match="special"):
         SafeArchiveExtractor().extract(source, EvidenceStore(tmp_path / "store"), "safe/output")
+
+
+def test_public_member_name_validator_normalizes_safe_paths() -> None:
+    assert validate_archive_member_name("Data/Contacts2.DB", 4) == "data/contacts2.db"
+
+
+@pytest.mark.parametrize("name", ["../escape.db", "/absolute.db", "C:/drive.db", "a\\b.db"])
+def test_public_member_name_validator_rejects_unsafe_paths(name: str) -> None:
+    with pytest.raises(ArchiveExtractionError):
+        validate_archive_member_name(name, 4)
