@@ -1,8 +1,9 @@
+import socket
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from forensix_api.desktop import create_desktop_app
+from forensix_api.desktop import _select_port, create_desktop_app
 from forensix_server.config import Settings
 
 
@@ -30,3 +31,14 @@ def test_desktop_app_rejects_missing_web_bundle(tmp_path: Path) -> None:
         assert "missing or incomplete" in str(error)
     else:
         raise AssertionError("Missing desktop assets must not start the application.")
+
+
+def test_desktop_launcher_skips_a_busy_port() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as blocker:
+        blocker.bind(("127.0.0.1", 0))
+        blocker.listen()
+        busy_port = blocker.getsockname()[1]
+
+        selected = _select_port("127.0.0.1", busy_port)
+
+    assert selected != busy_port

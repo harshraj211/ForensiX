@@ -3,6 +3,7 @@
 import argparse
 import importlib
 import os
+import socket
 import sys
 import threading
 import time
@@ -49,23 +50,29 @@ def create_desktop_app(web_root: Path, settings: Settings) -> FastAPI:
 def main() -> int:
     arguments = _arguments()
     host = "127.0.0.1"
-    origin = f"http://{host}:{arguments.port}"
+    port = _select_port(host, arguments.port)
+    if port != arguments.port:
+        print(
+            f"Port {arguments.port} is already in use; using available port {port}.",
+            file=sys.stderr,
+        )
+    origin = f"http://{host}:{port}"
     settings = Settings(
         environment="production",
         data_dir=arguments.data_dir or _default_data_dir(),
         adb_path=arguments.adb_path,
         allowed_origins=(origin,),
         api_host=host,
-        api_port=arguments.port,
+        api_port=port,
         deployment_transport="loopback_http",
     )
     app = create_desktop_app(_web_root(), settings)
     if arguments.no_browser:
-        _run_server(app, host, arguments.port)
+        _run_server(app, host, port)
     elif arguments.browser:
-        _run_in_browser(app, origin, host, arguments.port)
+        _run_in_browser(app, origin, host, port)
     else:
-        _run_in_native_window(app, origin, host, arguments.port)
+        _run_in_native_window(app, origin, host, port)
     return 0
 
 
@@ -85,6 +92,19 @@ def _arguments() -> argparse.Namespace:
 
 def _run_server(app: FastAPI, host: str, port: int) -> None:
     uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+def _select_port(host: str, requested: int) -> int:
+    """Use the requested port when free, otherwise find a nearby free port."""
+    for port in range(requested, min(requested + 100, 65536)):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                probe.bind((host, port))
+            except OSError:
+                continue
+            return port
+    raise RuntimeError(f"No available loopback port found near {requested}.")
 
 
 def _run_in_browser(app: FastAPI, origin: str, host: str, port: int) -> None:
