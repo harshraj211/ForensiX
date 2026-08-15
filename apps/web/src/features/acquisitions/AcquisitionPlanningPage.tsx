@@ -74,8 +74,20 @@ const scopeCopy: Record<AcquisitionScope, { label: string; description: string }
     label: "Storage inventory",
     description: "Plan a metadata-only inventory of approved readable shared-storage roots.",
   },
+  image_files: {
+    label: "Photos only",
+    description: "Acquire only recognized image and photo files. Video and audio are excluded.",
+  },
+  video_files: {
+    label: "Videos only",
+    description: "Acquire only recognized video files. Photos and audio are excluded.",
+  },
+  audio_files: {
+    label: "Audio only",
+    description: "Acquire only recognized audio and voice-recording files. Photos and video are excluded.",
+  },
   media_files: {
-    label: "Media only",
+    label: "All media (photos + videos + audio)",
     description: "Inventory shared storage and authorize acquisition of recognized images, video, and audio only.",
   },
   document_files: {
@@ -838,6 +850,9 @@ function InventoryResultPanel({
         {(
           [
             ["all", "All in scope"],
+            ["images", "Photos"],
+            ["videos", "Videos"],
+            ["audio", "Audio"],
             ["media", "Media"],
             ["documents", "Documents"],
             ["downloads", "Downloads"],
@@ -1091,6 +1106,9 @@ function scopeModules(scope: AcquisitionScope, custom: AcquisitionModule[]): Acq
   if (scope === "metadata_only") return ["device_metadata", "package_inventory"];
   if (
     scope === "shared_storage_inventory" ||
+    scope === "image_files" ||
+    scope === "video_files" ||
+    scope === "audio_files" ||
     scope === "media_files" ||
     scope === "document_files" ||
     scope === "downloads_files"
@@ -1099,6 +1117,9 @@ function scopeModules(scope: AcquisitionScope, custom: AcquisitionModule[]): Acq
 }
 
 function defaultFilterForScope(scope: AcquisitionScope): InventoryFilter {
+  if (scope === "image_files") return "images";
+  if (scope === "video_files") return "videos";
+  if (scope === "audio_files") return "audio";
   if (scope === "media_files") return "media";
   if (scope === "document_files") return "documents";
   if (scope === "downloads_files") return "downloads";

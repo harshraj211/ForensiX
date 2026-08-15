@@ -156,6 +156,9 @@ def test_quick_triage_plan_is_frozen_to_exact_readiness_snapshot(session: Sessio
     "scope",
     [
         AcquisitionScope.SHARED_STORAGE_INVENTORY,
+        AcquisitionScope.IMAGE_FILES,
+        AcquisitionScope.VIDEO_FILES,
+        AcquisitionScope.AUDIO_FILES,
         AcquisitionScope.MEDIA_FILES,
         AcquisitionScope.DOCUMENT_FILES,
         AcquisitionScope.DOWNLOADS_FILES,

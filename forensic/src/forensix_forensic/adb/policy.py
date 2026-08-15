@@ -39,6 +39,15 @@ class SharedStorageRoot(StrEnum):
 
 
 class RootedCollectionProfile(StrEnum):
+    ANDROID_CONTACTS = "android_contacts"
+    ANDROID_MESSAGES = "android_messages"
+    ANDROID_CALL_LOG = "android_call_log"
+    WHATSAPP = "whatsapp"
+    TELEGRAM = "telegram"
+    SIGNAL = "signal"
+    MESSENGER = "messenger"
+    INSTAGRAM = "instagram"
+    SNAPCHAT = "snapchat"
     ANDROID_PROVIDERS = "android_providers"
     ANDROID_SYSTEM = "android_system"
     ANDROID_APPS = "android_apps"
@@ -74,6 +83,46 @@ ADB_BACKUP_TIMEOUT_SECONDS = 300.0
 ADB_INSTALL_TIMEOUT_SECONDS = 120.0
 
 _ROOTED_PROFILE_PATHS: dict[RootedCollectionProfile, tuple[str, ...]] = {
+    RootedCollectionProfile.ANDROID_CONTACTS: (
+        "/data/user_de/0/com.android.providers.contacts/databases",
+        "/data/user/0/com.android.providers.contacts/databases",
+    ),
+    RootedCollectionProfile.ANDROID_MESSAGES: (
+        "/data/user_de/0/com.android.providers.telephony/databases",
+        "/data/user/0/com.android.providers.telephony/databases",
+    ),
+    RootedCollectionProfile.ANDROID_CALL_LOG: (
+        "/data/user_de/0/com.android.providers.contacts/databases/calllog.db",
+        "/data/user/0/com.android.providers.contacts/databases/calllog.db",
+    ),
+    RootedCollectionProfile.WHATSAPP: (
+        "/data/user/0/com.whatsapp/databases",
+        "/data/user/0/com.whatsapp/files/key",
+        "/data/user/0/com.whatsapp/shared_prefs",
+    ),
+    RootedCollectionProfile.TELEGRAM: (
+        "/data/user/0/org.telegram.messenger.web/files/cache4.db",
+        "/data/user/0/org.telegram.messenger.web/files/cache4.db-shm",
+        "/data/user/0/org.telegram.messenger.web/files/cache4.db-wal",
+        "/data/user/0/org.telegram.messenger.web/shared_prefs",
+        "/data/user/0/org.telegram.messenger/files/cache4.db",
+        "/data/user/0/org.telegram.messenger/files/cache4.db-shm",
+        "/data/user/0/org.telegram.messenger/files/cache4.db-wal",
+        "/data/user/0/org.telegram.messenger/shared_prefs",
+    ),
+    RootedCollectionProfile.SIGNAL: (
+        "/data/user/0/org.thoughtcrime.securesms/databases",
+        "/data/user/0/org.thoughtcrime.securesms/shared_prefs",
+    ),
+    RootedCollectionProfile.MESSENGER: (
+        "/data/user/0/com.facebook.orca/databases",
+    ),
+    RootedCollectionProfile.INSTAGRAM: (
+        "/data/user/0/com.instagram.android/databases",
+    ),
+    RootedCollectionProfile.SNAPCHAT: (
+        "/data/user/0/com.snapchat.android/databases",
+    ),
     RootedCollectionProfile.ANDROID_PROVIDERS: (
         "/data/user_de/0/com.android.providers.contacts/databases",
         "/data/user/0/com.android.providers.contacts/databases",

@@ -552,7 +552,8 @@ class AcquisitionPlanRecord(Base):
     __table_args__ = (
         CheckConstraint(
             "scope IN ('metadata_only', 'quick_triage', 'shared_storage_inventory', "
-            "'media_files', 'document_files', 'downloads_files', 'custom')",
+            "'image_files', 'video_files', 'audio_files', 'media_files', "
+            "'document_files', 'downloads_files', 'custom')",
             name="ck_acquisition_plans_scope",
         ),
         CheckConstraint("status IN ('ready')", name="ck_acquisition_plans_status"),

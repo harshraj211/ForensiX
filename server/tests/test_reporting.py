@@ -1,7 +1,12 @@
 from datetime import UTC, datetime
 
 from forensix_server.reporting.renderers import neutralize_csv, render_csv, render_json, render_pdf
-from forensix_server.reporting.snapshot import CaseSnapshot, ReportIdentity, ReportSnapshot
+from forensix_server.reporting.snapshot import (
+    CaseSnapshot,
+    ImportedArtifactSnapshot,
+    ReportIdentity,
+    ReportSnapshot,
+)
 
 
 def _snapshot() -> ReportSnapshot:
@@ -53,3 +58,40 @@ def test_csv_formula_prefixes_are_neutralized() -> None:
     for dangerous in ("=1+1", "+cmd", "-2", "@SUM(A1)", "\tvalue", "\rvalue"):
         assert neutralize_csv(dangerous) == f"'{dangerous}"
     assert neutralize_csv("normal") == "normal"
+
+
+def test_pdf_places_plaintext_chat_content_before_technical_sections() -> None:
+    snapshot = _snapshot().model_copy(
+        update={
+            "imported_artifacts": [
+                ImportedArtifactSnapshot(
+                    id="44444444-4444-4444-4444-444444444444",
+                    evidence_source_id="55555555-5555-5555-5555-555555555555",
+                    parser_run_id="66666666-6666-6666-6666-666666666666",
+                    category="communication",
+                    subtype="whatsapp_message",
+                    title="WhatsApp outgoing message",
+                    summary="Meet me at the station at noon.",
+                    event_time=datetime(2026, 7, 17, 7, 30, tzinfo=UTC),
+                    source_locator="msgstore.db#message:7",
+                    status="active",
+                    confidence="medium",
+                    parser_id="android.whatsapp.message",
+                    parser_version="1.0.0",
+                    artifact_hash="a" * 64,
+                )
+            ]
+        }
+    )
+
+    from forensix_server.reporting.renderers import _readable_messages
+
+    assert _readable_messages(snapshot) == [
+        (
+            "2026-07-17T07:30:00+00:00",
+            "WhatsApp",
+            "WhatsApp outgoing message",
+            "Meet me at the station at noon.",
+        )
+    ]
+    assert render_pdf(snapshot).startswith(b"%PDF-")

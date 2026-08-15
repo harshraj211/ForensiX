@@ -7,6 +7,9 @@ class AcquisitionScope(StrEnum):
     METADATA_ONLY = "metadata_only"
     QUICK_TRIAGE = "quick_triage"
     SHARED_STORAGE_INVENTORY = "shared_storage_inventory"
+    IMAGE_FILES = "image_files"
+    VIDEO_FILES = "video_files"
+    AUDIO_FILES = "audio_files"
     MEDIA_FILES = "media_files"
     DOCUMENT_FILES = "document_files"
     DOWNLOADS_FILES = "downloads_files"
@@ -36,52 +39,39 @@ PRESET_MODULES: dict[AcquisitionScope, tuple[AcquisitionModule, ...]] = {
         AcquisitionModule.SHARED_STORAGE_INVENTORY,
     ),
     AcquisitionScope.SHARED_STORAGE_INVENTORY: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
+    AcquisitionScope.IMAGE_FILES: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
+    AcquisitionScope.VIDEO_FILES: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
+    AcquisitionScope.AUDIO_FILES: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
     AcquisitionScope.MEDIA_FILES: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
     AcquisitionScope.DOCUMENT_FILES: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
     AcquisitionScope.DOWNLOADS_FILES: (AcquisitionModule.SHARED_STORAGE_INVENTORY,),
     AcquisitionScope.CUSTOM: (),
 }
 
-MEDIA_EXTENSIONS = frozenset(
+IMAGE_EXTENSIONS = frozenset(
     {
-        "3g2",
-        "3ga",
-        "3gp",
-        "aac",
-        "amr",
         "avif",
-        "avi",
         "bmp",
         "dng",
-        "flac",
         "gif",
         "heic",
         "heif",
         "jpeg",
         "jpg",
-        "m4a",
-        "m4v",
-        "mid",
-        "midi",
-        "mkv",
-        "mov",
-        "mp3",
-        "mp4",
-        "mpeg",
-        "mpg",
-        "oga",
-        "ogg",
-        "opus",
         "png",
         "svg",
         "tif",
         "tiff",
-        "ts",
-        "wav",
-        "webm",
         "webp",
     }
 )
+VIDEO_EXTENSIONS = frozenset(
+    {"3g2", "3gp", "avi", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "ts", "webm"}
+)
+AUDIO_EXTENSIONS = frozenset(
+    {"3ga", "aac", "amr", "flac", "m4a", "mid", "midi", "mp3", "oga", "ogg", "opus", "wav"}
+)
+MEDIA_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
 DOCUMENT_EXTENSIONS = frozenset(
     {
         "csv",
@@ -114,6 +104,12 @@ def scope_allows_inventory_item(
     """Return whether a frozen scope authorizes acquiring one inventory item."""
     normalized_extension = (extension or "").casefold()
     normalized_path = relative_path.replace("\\", "/").casefold()
+    if scope is AcquisitionScope.IMAGE_FILES:
+        return normalized_extension in IMAGE_EXTENSIONS
+    if scope is AcquisitionScope.VIDEO_FILES:
+        return normalized_extension in VIDEO_EXTENSIONS
+    if scope is AcquisitionScope.AUDIO_FILES:
+        return normalized_extension in AUDIO_EXTENSIONS
     if scope is AcquisitionScope.MEDIA_FILES:
         return normalized_extension in MEDIA_EXTENSIONS
     if scope is AcquisitionScope.DOCUMENT_FILES:

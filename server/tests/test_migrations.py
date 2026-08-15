@@ -212,7 +212,7 @@ def test_database_adopts_legacy_create_all_schema_before_upgrade(tmp_path: Path)
         column["name"] for column in inspector.get_columns("screen_recording_sessions")
     }
     assert "mp4_storage_key" in recording_columns
-    assert revision == "0040_screen_recording_mp4"
+    assert revision == "0041_separate_media_scopes"
     database.dispose()
 
 

@@ -738,6 +738,9 @@ export type AcquisitionScope =
   | "metadata_only"
   | "quick_triage"
   | "shared_storage_inventory"
+  | "image_files"
+  | "video_files"
+  | "audio_files"
   | "media_files"
   | "document_files"
   | "downloads_files"
@@ -1413,6 +1416,21 @@ export async function getInvestigationStoryboard(caseId: string): Promise<Invest
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/storyboard`);
 }
 
+export type RootedCollectionProfile =
+  | "android_contacts"
+  | "android_messages"
+  | "android_call_log"
+  | "whatsapp"
+  | "telegram"
+  | "signal"
+  | "messenger"
+  | "instagram"
+  | "snapchat"
+  | "android_providers"
+  | "android_system"
+  | "android_apps"
+  | "android_userdata";
+
 export async function generateCaseNarrative(caseId: string): Promise<AiNarrative> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/ai/narrative`, { method: "POST" });
 }
@@ -1696,7 +1714,7 @@ export function captureRootedBundle(
   deviceId: string,
   serial: string,
   rootProbeId: string,
-  profile: "android_providers" | "android_system" | "android_apps" | "android_userdata",
+  profile: RootedCollectionProfile,
 ): Promise<EvidenceSource> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/devices/${encodeURIComponent(deviceId)}/rooted-captures`,

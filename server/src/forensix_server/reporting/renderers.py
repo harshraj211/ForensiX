@@ -117,6 +117,33 @@ def neutralize_csv(value: str) -> str:
     return value
 
 
+def _readable_messages(snapshot: ReportSnapshot) -> list[tuple[str, str, str, str]]:
+    """Return human-readable chat rows before any forensic implementation detail."""
+    rows: list[tuple[str, str, str, str]] = []
+    for artifact in snapshot.imported_artifacts:
+        subtype = artifact.subtype.casefold()
+        if artifact.category != "communication" or not any(
+            marker in subtype for marker in ("message", "sms", "mms", "chat")
+        ):
+            continue
+        application = subtype.split("_", 1)[0].replace("android", "SMS").title()
+        if subtype.startswith("whatsapp"):
+            application = "WhatsApp"
+        elif subtype.startswith("telegram"):
+            application = "Telegram"
+        elif subtype.startswith(("android_sms", "sms")):
+            application = "SMS"
+        rows.append(
+            (
+                artifact.event_time.isoformat() if artifact.event_time else "Time unavailable",
+                application,
+                artifact.title,
+                artifact.summary,
+            )
+        )
+    return rows
+
+
 class _InvariantCanvas(canvas.Canvas):  # type: ignore[misc]
     def __init__(self, *args: object, **kwargs: object) -> None:
         kwargs["invariant"] = 1
@@ -221,7 +248,36 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
             )
         )
         story.append(Spacer(1, 3 * mm))
-    _section(story, "4. Evidence Twin imported sources", styles)
+    _section(story, "4. Readable chats and messages", styles)
+    message_rows = _readable_messages(snapshot)
+    if message_rows:
+        story.append(
+            Paragraph(
+                "Messages recovered from selected sources are shown here in plain language. "
+                "Hashes, parser versions, source locators, and chain-of-custody records follow in "
+                "the technical sections below.",
+                styles["body"],
+            )
+        )
+        rows = [["Time", "App", "Chat / direction", "Message"]]
+        rows.extend([list(row) for row in message_rows[:500]])
+        story.append(_data_table(rows, (35 * mm, 22 * mm, 47 * mm, 68 * mm), styles))
+        if len(message_rows) > 500:
+            story.append(
+                Paragraph(
+                    f"This PDF shows the first 500 of {len(message_rows)} messages. "
+                    "The JSON and CSV exports retain the complete report snapshot.",
+                    styles["small"],
+                )
+            )
+    else:
+        story.append(
+            Paragraph(
+                "No readable chat or message artifacts are present in this report snapshot.",
+                styles["body"],
+            )
+        )
+    _section(story, "5. Technical source and parsing details", styles)
     if not snapshot.evidence_sources:
         story.append(Paragraph("No imported evidence source is recorded.", styles["body"]))
     for source in snapshot.evidence_sources:
@@ -266,7 +322,7 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
             )
             story.append(_data_table(output_rows, (62 * mm, 24 * mm, 86 * mm), styles))
         story.append(Spacer(1, 3 * mm))
-    _section(story, "5. Evidence summary", styles)
+    _section(story, "6. Evidence summary", styles)
     story.append(
         _key_value_table(
             tuple(
@@ -304,7 +360,7 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
         story.append(_data_table(imported_rows, (58 * mm, 30 * mm, 24 * mm, 60 * mm), styles))
     else:
         story.append(Paragraph("No imported-source artifacts are recorded.", styles["body"]))
-    _section(story, "6. Timeline summary", styles)
+    _section(story, "7. Timeline summary", styles)
     if snapshot.timeline:
         rows = [["Time", "Type", "Confidence", "Summary"]]
         rows.extend(
@@ -314,7 +370,7 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
         story.append(_data_table(rows, (42 * mm, 38 * mm, 24 * mm, 68 * mm), styles))
     else:
         story.append(Paragraph("No timeline events are recorded.", styles["body"]))
-    _section(story, "7. Integrity and custody", styles)
+    _section(story, "8. Integrity and custody", styles)
     story.append(
         _key_value_table(
             tuple(
@@ -326,9 +382,9 @@ def render_pdf(snapshot: ReportSnapshot) -> bytes:
         )
     )
     story.append(Paragraph(f"Custody events included: {len(snapshot.custody)}", styles["body"]))
-    _section(story, "8. Methodology", styles)
+    _section(story, "9. Methodology", styles)
     story.extend(Paragraph(f"- {escape(item)}", styles["body"]) for item in snapshot.methodology)
-    _section(story, "9. Errors and limitations", styles)
+    _section(story, "10. Errors and limitations", styles)
     if snapshot.errors:
         story.append(Paragraph("Recorded errors", styles["subheading"]))
         story.extend(Paragraph(f"- {escape(item)}", styles["error"]) for item in snapshot.errors)

@@ -973,8 +973,24 @@ describe("device readiness", () => {
       }),
     );
     await user.click(screen.getByLabelText(/authorize this elevated-access probe/i));
-    await user.click(screen.getByRole("button", { name: "Probe rooted access" }));
+    await user.click(screen.getByRole("button", { name: "Detect root status" }));
     expect(await screen.findByText("Root access available")).toBeInTheDocument();
+    expect(screen.getByText("Choose exactly what to acquire")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /WhatsApp/i }));
+    await user.click(screen.getByLabelText(/authorize acquisition of only the checked data types/i));
+    await user.click(screen.getByRole("button", { name: "Acquire selected (1)" }));
+    expect(await screen.findByText("1 selected evidence source(s) sealed")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/cases/case-1/devices/device-1/rooted-captures",
+      expect.objectContaining({
+        body: JSON.stringify({
+          serial: "FX-DEMO-001",
+          root_probe_id: "probe-0000-0000-0000-000000000001",
+          profile: "whatsapp",
+          side_effects_acknowledged: true,
+        }),
+      }),
+    );
     await user.click(screen.getByLabelText(/authorize this bounded rooted collection/i));
     await user.click(screen.getByRole("button", { name: "Capture provider bundle" }));
     expect(await screen.findByText("Evidence Twin source sealed")).toBeInTheDocument();

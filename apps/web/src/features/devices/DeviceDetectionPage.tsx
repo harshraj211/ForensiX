@@ -52,7 +52,24 @@ import {
   type DeviceState,
   type DeviceTransport,
   type ProviderProfile,
+  type RootedCollectionProfile,
 } from "../../lib/api";
+
+const selectiveRootedProfiles: ReadonlyArray<{
+  profile: RootedCollectionProfile;
+  label: string;
+  detail: string;
+}> = [
+  { profile: "android_contacts", label: "Contacts", detail: "Android contacts database only" },
+  { profile: "android_messages", label: "SMS / MMS messages", detail: "Android telephony message databases only" },
+  { profile: "android_call_log", label: "Call history", detail: "Android call-log database only" },
+  { profile: "whatsapp", label: "WhatsApp", detail: "WhatsApp databases, key file, and settings" },
+  { profile: "telegram", label: "Telegram", detail: "Telegram message cache and settings" },
+  { profile: "signal", label: "Signal", detail: "Signal databases and settings; encryption may remain" },
+  { profile: "messenger", label: "Messenger", detail: "Facebook Messenger databases only" },
+  { profile: "instagram", label: "Instagram", detail: "Instagram databases only" },
+  { profile: "snapchat", label: "Snapchat", detail: "Snapchat databases only" },
+];
 
 const stateCopy: Record<
   DeviceState,
@@ -515,6 +532,8 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
   const [captureAcknowledged, setCaptureAcknowledged] = useState(false);
   const [systemCaptureAcknowledged, setSystemCaptureAcknowledged] = useState(false);
   const [appCaptureAcknowledged, setAppCaptureAcknowledged] = useState(false);
+  const [selectedRootedProfiles, setSelectedRootedProfiles] = useState<RootedCollectionProfile[]>([]);
+  const [selectiveCaptureAcknowledged, setSelectiveCaptureAcknowledged] = useState(false);
   const [userDataCaptureAcknowledged, setUserDataCaptureAcknowledged] = useState(false);
   const [physicalProbeAcknowledged, setPhysicalProbeAcknowledged] = useState(false);
   const [physicalAcquisitionAcknowledged, setPhysicalAcquisitionAcknowledged] = useState(false);
@@ -684,6 +703,27 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
         rootProbe.data.id,
         "android_apps",
       );
+    },
+  });
+  const selectiveRootedCapture = useMutation({
+    mutationFn: async () => {
+      if (!assessment.case_id || !assessment.case_device_id || !rootProbe.data) {
+        throw new Error("A current rooted-access proof is required for this collection.");
+      }
+      const captured = [];
+      for (const profile of selectedRootedProfiles) {
+        captured.push({
+          profile,
+          source: await captureRootedBundle(
+            assessment.case_id,
+            assessment.case_device_id,
+            assessment.serial,
+            rootProbe.data.id,
+            profile,
+          ),
+        });
+      }
+      return captured;
     },
   });
   const temporaryRootCapture = useMutation({
@@ -1280,7 +1320,7 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
             className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg border border-fuchsia-300/20 bg-fuchsia-300/8 px-4 text-xs font-semibold text-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {rootProbe.isPending ? <LoaderCircle size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-            Probe rooted access
+            Detect root status
           </button>
           {rootProbe.isError && <div className="mt-3"><ErrorState error={rootProbe.error} /></div>}
           {rootProbe.data && (
@@ -1296,8 +1336,91 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
               </p>
             </div>
           )}
+          {rootProbe.data && rootProbe.data.status !== "available" && (
+            <div className="mt-3 rounded-md border border-cyan-200/15 bg-cyan-200/5 p-3 text-xs leading-5 text-cyan-100/75">
+              <p className="font-semibold">Non-rooted acquisition mode</p>
+              <p className="mt-1">
+                Private WhatsApp, Telegram, Signal, and other app databases are unavailable, so
+                those acquisition controls are hidden. Shared photos, videos, audio, documents,
+                and any Android providers explicitly permitted by this device remain available.
+              </p>
+            </div>
+          )}
           {rootProbe.data?.status === "available" && (
             <div className="mt-4 border-t border-fuchsia-200/10 pt-4">
+              <div className="rounded-lg border border-emerald-200/15 bg-emerald-200/[0.035] p-4">
+                <p className="text-sm font-semibold text-white">Choose exactly what to acquire</p>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  This phone is rooted. Each checked item is captured and sealed separately; unchecked
+                  data is not included. Application choices are never shown as available for a phone
+                  whose root check fails.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {selectiveRootedProfiles.map((item) => (
+                    <label key={item.profile} className="flex gap-3 rounded-lg border border-white/8 p-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedRootedProfiles.includes(item.profile)}
+                        onChange={(event) => {
+                          setSelectedRootedProfiles((current) => event.target.checked
+                            ? [...current, item.profile]
+                            : current.filter((profile) => profile !== item.profile));
+                          setSelectiveCaptureAcknowledged(false);
+                        }}
+                        className="mt-1 accent-fuchsia-300"
+                      />
+                      <span>
+                        <span className="block text-xs font-semibold text-white">{item.label}</span>
+                        <span className="mt-1 block text-[10px] leading-4 text-slate-500">{item.detail}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <label className="mt-3 flex items-start gap-3 text-xs leading-5 text-fuchsia-100/70">
+                  <input
+                    type="checkbox"
+                    checked={selectiveCaptureAcknowledged}
+                    onChange={(event) => { setSelectiveCaptureAcknowledged(event.target.checked); }}
+                    className="mt-1 accent-fuchsia-300"
+                  />
+                  I authorize acquisition of only the checked data types and acknowledge that
+                  private records and account material may be collected.
+                </label>
+                <button
+                  type="button"
+                  disabled={
+                    selectedRootedProfiles.length === 0 ||
+                    !selectiveCaptureAcknowledged ||
+                    selectiveRootedCapture.isPending
+                  }
+                  onClick={() => { selectiveRootedCapture.mutate(); }}
+                  className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-lg bg-fuchsia-200 px-4 text-xs font-semibold text-[#12091a] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {selectiveRootedCapture.isPending
+                    ? <LoaderCircle size={14} className="animate-spin" />
+                    : <HardDrive size={14} />}
+                  {selectiveRootedCapture.isPending
+                    ? "Acquiring selected data..."
+                    : `Acquire selected (${String(selectedRootedProfiles.length)})`}
+                </button>
+                {selectiveRootedCapture.isError && <div className="mt-3"><ErrorState error={selectiveRootedCapture.error} /></div>}
+                {selectiveRootedCapture.data && (
+                  <div className="mt-4 rounded-md border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-100">
+                    <p className="font-semibold">{selectiveRootedCapture.data.length} selected evidence source(s) sealed</p>
+                    <ul className="mt-2 space-y-1 font-mono text-[10px] opacity-70">
+                      {selectiveRootedCapture.data.map(({ profile, source }) => (
+                        <li key={profile}>{profile.replaceAll("_", " ")}: SHA-256 {source.sha256}</li>
+                      ))}
+                    </ul>
+                    <Link to={`/cases/${assessment.case_id}/evidence-twin`} className="mt-3 inline-flex font-semibold text-cyan-200 underline">
+                      Examine selected data
+                    </Link>
+                  </div>
+                )}
+              </div>
+              <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Advanced full-profile collections (optional)
+              </p>
               <p className="text-xs font-semibold text-white">Bounded provider collection</p>
               <p className="mt-2 text-xs leading-5 text-slate-400">
                 Streams only fixed contacts, telephony, and calendar provider database directories

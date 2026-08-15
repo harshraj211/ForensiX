@@ -47,4 +47,16 @@ describe("inventory file classification", () => {
     expect(itemAllowedByScope(media, "media_files")).toBe(true);
     expect(itemAllowedByScope(media, "document_files")).toBe(false);
   });
+
+  it("keeps photos, videos, and audio in separate scopes", () => {
+    const photo = inventoryItem("DCIM/photo.jpg", "jpg");
+    const video = inventoryItem("Movies/clip.mp4", "mp4");
+    const audio = inventoryItem("Recordings/interview.opus", "opus");
+    expect(itemAllowedByScope(photo, "image_files")).toBe(true);
+    expect(itemAllowedByScope(photo, "video_files")).toBe(false);
+    expect(itemAllowedByScope(video, "video_files")).toBe(true);
+    expect(itemAllowedByScope(video, "audio_files")).toBe(false);
+    expect(itemAllowedByScope(audio, "audio_files")).toBe(true);
+    expect(itemAllowedByScope(audio, "image_files")).toBe(false);
+  });
 });
