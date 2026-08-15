@@ -61,9 +61,13 @@ def seal_portable_bundle(
         "source_dirty": source_dirty,
         "signature_status": signature_status,
         "limitations": [
-            *([] if signature_status == "authenticode" else [
-                "This portable engineering build is not code-signed or notarized.",
-            ]),
+            *(
+                []
+                if signature_status == "authenticode"
+                else [
+                    "This portable engineering build is not code-signed or notarized.",
+                ]
+            ),
             "Verify the archive and internal manifest before controlled evaluation.",
         ],
         "files": members,
