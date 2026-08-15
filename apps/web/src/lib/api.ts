@@ -1851,14 +1851,18 @@ export function cancelAcquisitionJob(
   );
 }
 
-export function runAcquisitionInventory(
+export async function runAcquisitionInventory(
   caseId: string,
   jobId: string,
 ): Promise<AcquisitionInventory> {
-  return apiRequest(
+  await apiRequest<AcquisitionInventory>(
     `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/inventory`,
     { method: "POST" },
   );
+  // The inventory-run response is deliberately capped at the API's default page
+  // size. Reload the sealed inventory so scope filters and counters operate on
+  // every discovered path, including matches beyond the first page.
+  return getAcquisitionInventory(caseId, jobId);
 }
 
 export async function getAcquisitionInventory(

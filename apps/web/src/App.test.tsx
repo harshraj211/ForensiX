@@ -1048,6 +1048,7 @@ describe("acquisition planning", () => {
     let created = false;
     let jobState: "ready" | "completed" | null = null;
     let fileAcquired = false;
+    let sealedInventory: unknown = null;
     const verifiedFileIds = new Set<string>();
     const assessedAt = new Date().toISOString();
     const plan = {
@@ -1195,68 +1196,75 @@ describe("acquisition planning", () => {
       }
       if (url === "/api/v1/cases/case-1/acquisitions/job-1/inventory" && init?.method === "POST") {
         jobState = "completed";
+        sealedInventory = {
+          id: "inventory-1",
+          job_id: "job-1",
+          case_id: "case-1",
+          plan_id: "plan-1",
+          device_id: "device-1",
+          created_by: "user-1",
+          root_id: "primary_alias",
+          display_path: "/sdcard",
+          status: "completed",
+          discovered_count: 3,
+          persisted_count: 3,
+          skipped_count: 0,
+          max_items: 250,
+          max_depth: 6,
+          manifest_hash: "c".repeat(64),
+          started_at: assessedAt,
+          completed_at: assessedAt,
+          items: [
+            {
+              id: "item-1",
+              ordinal: 1,
+              relative_path: "DCIM/Camera/IMG_0001.jpg",
+              path_hash: "d".repeat(64),
+              extension: "jpg",
+              size_bytes: 31,
+              modified_time_raw: null,
+              modified_at: null,
+              timestamp_source: null,
+              timestamp_confidence: null,
+            },
+            {
+              id: "item-2",
+              ordinal: 2,
+              relative_path: "Documents/timeline.csv",
+              path_hash: "c".repeat(64),
+              extension: "csv",
+              size_bytes: 40,
+              modified_time_raw: null,
+              modified_at: null,
+              timestamp_source: null,
+              timestamp_confidence: null,
+            },
+            {
+              id: "item-3",
+              ordinal: 3,
+              relative_path: "Download/notes.txt",
+              path_hash: "b".repeat(64),
+              extension: "txt",
+              size_bytes: 12,
+              modified_time_raw: null,
+              modified_at: null,
+              timestamp_source: null,
+              timestamp_confidence: null,
+            },
+          ],
+          total: 3,
+          offset: 0,
+          limit: 100,
+        };
         return Promise.resolve(
-          jsonResponse({
-            id: "inventory-1",
-            job_id: "job-1",
-            case_id: "case-1",
-            plan_id: "plan-1",
-            device_id: "device-1",
-            created_by: "user-1",
-            root_id: "primary_alias",
-            display_path: "/sdcard",
-            status: "completed",
-            discovered_count: 3,
-            persisted_count: 3,
-            skipped_count: 0,
-            max_items: 250,
-            max_depth: 6,
-            manifest_hash: "c".repeat(64),
-            started_at: assessedAt,
-            completed_at: assessedAt,
-            items: [
-              {
-                id: "item-1",
-                ordinal: 1,
-                relative_path: "DCIM/Camera/IMG_0001.jpg",
-                path_hash: "d".repeat(64),
-                extension: "jpg",
-                size_bytes: 31,
-                modified_time_raw: null,
-                modified_at: null,
-                timestamp_source: null,
-                timestamp_confidence: null,
-              },
-              {
-                id: "item-2",
-                ordinal: 2,
-                relative_path: "Documents/timeline.csv",
-                path_hash: "c".repeat(64),
-                extension: "csv",
-                size_bytes: 40,
-                modified_time_raw: null,
-                modified_at: null,
-                timestamp_source: null,
-                timestamp_confidence: null,
-              },
-              {
-                id: "item-3",
-                ordinal: 3,
-                relative_path: "Download/notes.txt",
-                path_hash: "b".repeat(64),
-                extension: "txt",
-                size_bytes: 12,
-                modified_time_raw: null,
-                modified_at: null,
-                timestamp_source: null,
-                timestamp_confidence: null,
-              },
-            ],
-            total: 3,
-            offset: 0,
-            limit: 100,
-          }),
+          jsonResponse(sealedInventory),
         );
+      }
+      if (
+        url === "/api/v1/cases/case-1/acquisitions/job-1/inventory?offset=0&limit=500" &&
+        sealedInventory
+      ) {
+        return Promise.resolve(jsonResponse(sealedInventory));
       }
       if (url === "/api/v1/cases/case-1/acquisitions/job-1/files") {
         return Promise.resolve(
