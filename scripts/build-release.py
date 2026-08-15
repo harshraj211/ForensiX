@@ -114,9 +114,7 @@ def _add_reproducible_sbom_serial(
     document = json.loads(sbom_path.read_text(encoding="utf-8"))
     serial_input = f"forensix:{source_commit}:{version}:{platform_tag}"
     document["serialNumber"] = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, serial_input)}"
-    sbom_path.write_text(
-        json.dumps(document, sort_keys=True, indent=2) + "\n", encoding="utf-8"
-    )
+    sbom_path.write_text(json.dumps(document, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
 
 def _capture(command: list[str], working_directory: Path) -> str:
