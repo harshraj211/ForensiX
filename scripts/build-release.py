@@ -46,6 +46,7 @@ def main() -> int:
         ],
         root,
     )
+    _materialize_regular_symlinks(build_root / "dist" / "ForensiX")
     platform_tag = _platform_tag()
     sbom = output / f"ForensiX-{arguments.version}-{platform_tag}.cdx.json"
     _run(
@@ -105,6 +106,20 @@ def _pnpm_build_command() -> list[str]:
 
 def _run(command: list[str], working_directory: Path) -> None:
     subprocess.run(command, cwd=working_directory, check=True)  # noqa: S603
+
+
+def _materialize_regular_symlinks(bundle: Path) -> None:
+    """Copy PyInstaller's external file links into the portable bundle."""
+    for path in sorted(bundle.rglob("*")):
+        if not path.is_symlink():
+            continue
+        target = path.resolve()
+        if not target.is_file():
+            raise RuntimeError(f"Release bundle contains a non-file symbolic link: {path}")
+        temporary = path.with_name(f".{path.name}.materializing")
+        shutil.copyfile(target, temporary)
+        path.unlink()
+        temporary.replace(path)
 
 
 def _add_reproducible_sbom_serial(

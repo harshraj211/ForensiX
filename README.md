@@ -16,15 +16,17 @@
 
 ForensiX is a planned cross-platform Android rapid evidence triage and forensic preview platform. It runs on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
-## Download For Windows
+## Downloads
 
-Download the latest portable Windows build from GitHub:
+Download the latest portable build for your workstation:
 
-[Download ForensiX for Windows](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Windows-Portable.zip)
+- [Windows portable build](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Windows-Portable.zip)
+- [Linux portable build](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Linux-Portable.zip)
+- [macOS portable build](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-macOS-Portable.zip)
 
-Extract the ZIP to a trusted local folder and run `ForensiX.exe`. The application starts its loopback backend and bundled web interface automatically and opens the workstation in your browser. No public hosting or internet connection is required after download.
+Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`ForensiX.exe` on Windows). The application starts its loopback backend and bundled web interface automatically and opens the workstation in your browser. No public hosting or internet connection is required after download.
 
-The current Windows distribution is portable rather than an installer. It does not silently install Android USB drivers, ADB, scrcpy, or PhotoRec. ADB is required for device detection; scrcpy is optional and is needed only for live mirror, interactive control, and documented screen recording. See [Windows workstation setup](docs/WORKSTATION_SETUP.md) for the complete procedure.
+The distributions are portable rather than installers. They do not silently install Android USB drivers, ADB, scrcpy, or PhotoRec. ADB is required for device detection; scrcpy is optional and is needed only for live mirror, interactive control, and documented screen recording. See [Windows workstation setup](docs/WORKSTATION_SETUP.md) for the complete procedure and `SHA256SUMS.txt` in the release for checksums.
 
 The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, immutable capability-gated acquisition plans, case-owned durable acquisition jobs, and the first bounded content-free shared-storage path inventory.
 

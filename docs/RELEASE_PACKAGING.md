@@ -1,18 +1,22 @@
 # Release Packaging
 
-ForensiX currently ships as a portable, unsigned Windows ZIP. It is designed for a controlled workstation where the analyst can verify the release before use.
+ForensiX ships as portable, unsigned Windows, Linux, and macOS ZIP bundles. Each bundle is designed for a controlled workstation where the analyst can verify the release before use.
 
 ## GitHub download
 
-The tagged release workflow builds the Windows portable bundle. On tagged releases it publishes the generated files to GitHub Releases and creates the stable Windows asset:
+The tagged release workflow builds all three desktop bundles. On tagged releases it publishes one stable download per platform:
 
-`ForensiX-Windows-Portable.zip`
+- `ForensiX-Windows-Portable.zip`
+- `ForensiX-Linux-Portable.zip`
+- `ForensiX-macOS-Portable.zip`
 
-The stable download URL is:
+The stable URLs are:
 
-`https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Windows-Portable.zip`
+- `https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Windows-Portable.zip`
+- `https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Linux-Portable.zip`
+- `https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-macOS-Portable.zip`
 
-The Windows release also includes a SHA-256 sidecar, SBOM, source manifest, and platform-specific archive. The stable ZIP is an alias of the versioned Windows archive; the internal manifest remains versioned and records the source commit.
+The release includes one `SHA256SUMS.txt` file. SBOMs are generated and attested by GitHub Actions but are intentionally kept out of the primary download list. Each ZIP still contains its internal source manifest and per-file hashes.
 
 ## Local build
 
@@ -37,11 +41,11 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-GitHub Actions builds Windows, creates attestations, uploads the workflow artifacts, and publishes a GitHub Release for the tag. The release job also creates the stable Windows asset used by the README download link.
+GitHub Actions builds Windows, Linux, and macOS, creates attestations, uploads workflow artifacts, and publishes a GitHub Release for the tag. The release job normalizes the platform archives into the three stable download names used by the README links.
 
 ## Current release boundaries
 
-- The Windows bundle is not code-signed, so Windows SmartScreen may warn about it.
+- The bundles are not code-signed; Windows SmartScreen and macOS Gatekeeper may warn about them.
 - There is no MSI or per-user installer yet.
 - Android USB drivers, ADB Platform-Tools, and scrcpy are not silently installed.
 - The application remains loopback-only and must not be deployed as a public web service.

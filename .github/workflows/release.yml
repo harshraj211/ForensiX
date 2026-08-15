@@ -17,7 +17,11 @@ permissions:
 
 jobs:
   portable:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -59,7 +63,7 @@ jobs:
           sbom-path: ${{ steps.release-files.outputs.sbom }}
       - uses: actions/upload-artifact@v4
         with:
-          name: forensix-windows
+          name: forensix-${{ matrix.os }}
           path: |
             release/*.zip
             release/*.zip.sha256
@@ -77,22 +81,33 @@ jobs:
           pattern: forensix-*
           path: release-assets
           merge-multiple: true
-      - name: Add stable Windows download name
+      - name: Normalize release downloads
         shell: bash
         run: |
-          windows_archive="$(find release-assets -maxdepth 1 -type f -iname '*windows-*.zip' | head -n 1)"
-          test -n "$windows_archive"
-          cp "$windows_archive" release-assets/ForensiX-Windows-Portable.zip
-          sha256sum release-assets/ForensiX-Windows-Portable.zip > release-assets/ForensiX-Windows-Portable.zip.sha256
+          mkdir normalized
+          for platform in windows linux macos; do
+            archive="$(find release-assets -maxdepth 1 -type f -iname "*${platform}-*.zip" | head -n 1)"
+            test -n "$archive"
+            case "$platform" in
+              windows) name="ForensiX-Windows-Portable.zip" ;;
+              linux) name="ForensiX-Linux-Portable.zip" ;;
+              macos) name="ForensiX-macOS-Portable.zip" ;;
+            esac
+            cp "$archive" "normalized/$name"
+          done
+          sha256sum normalized/*.zip > normalized/SHA256SUMS.txt
+          find release-assets -maxdepth 1 -type f -delete
+          cp normalized/* release-assets/
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          assets=(release-assets/*.zip release-assets/SHA256SUMS.txt)
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" release-assets/* \
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
               --verify-tag \
               --title "ForensiX ${GITHUB_REF_NAME#v}" \
               --generate-notes
