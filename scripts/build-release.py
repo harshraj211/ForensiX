@@ -1,12 +1,14 @@
 """Build an unsigned portable ForensiX bundle, SBOM, manifest, and checksums."""
 
 import argparse
+import json
 import os
 import platform
 import re
 import shutil
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 from forensix_server.release import seal_portable_bundle
@@ -60,6 +62,7 @@ def main() -> int:
         ],
         root,
     )
+    _add_reproducible_sbom_serial(sbom, commit, arguments.version, platform_tag)
     artifact = seal_portable_bundle(
         build_root / "dist" / "ForensiX",
         output,
@@ -102,6 +105,18 @@ def _pnpm_build_command() -> list[str]:
 
 def _run(command: list[str], working_directory: Path) -> None:
     subprocess.run(command, cwd=working_directory, check=True)  # noqa: S603
+
+
+def _add_reproducible_sbom_serial(
+    sbom_path: Path, source_commit: str, version: str, platform_tag: str
+) -> None:
+    """Add the required CycloneDX serial without making release metadata random."""
+    document = json.loads(sbom_path.read_text(encoding="utf-8"))
+    serial_input = f"forensix:{source_commit}:{version}:{platform_tag}"
+    document["serialNumber"] = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, serial_input)}"
+    sbom_path.write_text(
+        json.dumps(document, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+    )
 
 
 def _capture(command: list[str], working_directory: Path) -> str:

@@ -17,11 +17,7 @@ permissions:
 
 jobs:
   portable:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -63,7 +59,7 @@ jobs:
           sbom-path: ${{ steps.release-files.outputs.sbom }}
       - uses: actions/upload-artifact@v4
         with:
-          name: forensix-${{ matrix.os }}
+          name: forensix-windows
           path: |
             release/*.zip
             release/*.zip.sha256

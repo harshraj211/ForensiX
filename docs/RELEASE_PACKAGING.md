@@ -4,7 +4,7 @@ ForensiX currently ships as a portable, unsigned Windows ZIP. It is designed for
 
 ## GitHub download
 
-The tagged release workflow builds Windows, Linux, and macOS portable bundles. On tagged releases it publishes the generated files to GitHub Releases and creates the stable Windows asset:
+The tagged release workflow builds the Windows portable bundle. On tagged releases it publishes the generated files to GitHub Releases and creates the stable Windows asset:
 
 `ForensiX-Windows-Portable.zip`
 
@@ -37,7 +37,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-GitHub Actions builds each platform, creates attestations, uploads the workflow artifacts, and publishes a GitHub Release for the tag. The release job also creates the stable Windows asset used by the README download link.
+GitHub Actions builds Windows, creates attestations, uploads the workflow artifacts, and publishes a GitHub Release for the tag. The release job also creates the stable Windows asset used by the README download link.
 
 ## Current release boundaries
 
