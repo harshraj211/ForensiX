@@ -137,7 +137,9 @@ def _bundle_members(bundle: Path, *, excluded: set[str]) -> list[dict[str, str |
     members: list[dict[str, str | int]] = []
     for path in sorted(bundle.rglob("*")):
         if path.is_symlink():
-            raise ValueError("Release bundles cannot contain symbolic links.")
+            resolved = path.resolve()
+            if not resolved.is_file() or not resolved.is_relative_to(bundle):
+                raise ValueError("Release bundles cannot contain external symbolic links.")
         if not path.is_file():
             continue
         relative = path.relative_to(bundle).as_posix()

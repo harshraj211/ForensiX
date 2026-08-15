@@ -47,10 +47,20 @@ jobs:
           fi
       - run: python scripts/build-release.py --version "$VERSION" --output-dir release
         shell: bash
+      - name: Resolve attestation files
+        id: release-files
+        shell: bash
+        run: |
+          archive="$(find release -maxdepth 1 -type f -name '*.zip' -print -quit)"
+          sbom="$(find release -maxdepth 1 -type f -name '*.cdx.json' -print -quit)"
+          test -n "$archive"
+          test -n "$sbom"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "sbom=$sbom" >> "$GITHUB_OUTPUT"
       - uses: actions/attest@v4
         with:
-          subject-path: "release/*.zip"
-          sbom-path: "release/*.cdx.json"
+          subject-path: ${{ steps.release-files.outputs.archive }}
+          sbom-path: ${{ steps.release-files.outputs.sbom }}
       - uses: actions/upload-artifact@v4
         with:
           name: forensix-${{ matrix.os }}
