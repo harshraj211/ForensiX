@@ -27,7 +27,7 @@ ForensiX/
 │   └── web/                  React/Vite workstation frontend
 ├── forensic/                 ADB policies, Android providers, media, recovery adapters
 ├── server/                   Domain services, SQLAlchemy models, Alembic migrations
-├── docs/                     Setup, release, research, and technical documentation
+├── TECHNICAL_REPOSITORY.md   Complete technical handover and reviewer documentation
 ├── packaging/                PyInstaller desktop specification
 ├── scripts/                  Start, test, install, validation, backup, and release scripts
 ├── tools/                    Optional local tools such as scrcpy

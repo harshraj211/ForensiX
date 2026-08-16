@@ -25,11 +25,11 @@ Download the latest portable build for your workstation:
 
 Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`ForensiX.exe` on Windows). The application starts its loopback backend and bundled web interface automatically and opens the workstation in its own desktop window. No public hosting or internet connection is required after download.
 
-The distributions are portable rather than installers. They do not silently install Android USB drivers or ADB. The Windows bundle includes the official scrcpy runtime; scrcpy is started only when an analyst requests live mirror, interactive control, or documented screen recording. PhotoRec remains optional and external. See [Windows workstation setup](docs/WORKSTATION_SETUP.md) for the complete procedure and `SHA256SUMS.txt` in the release for checksums.
+The distributions are portable rather than installers. They do not silently install Android USB drivers or ADB. The Windows bundle includes the official scrcpy runtime; scrcpy is started only when an analyst requests live mirror, interactive control, or documented screen recording. PhotoRec remains optional and external. See the [technical repository](TECHNICAL_REPOSITORY.md) for workstation setup and `SHA256SUMS.txt` in the release for checksums.
 
 The current release combines local authentication, case management, device readiness, rooted/non-rooted capability assessment, supported logical previews, selected evidence acquisition, scrcpy-based documentation, reports, downloads, and case-specific audit and custody records.
 
-See the [technical repository document](docs/TECHNICAL_REPOSITORY.md) for the complete source map, architecture, API route families, database schema, dependencies, deployment instructions, and validation process.
+See the [technical repository document](TECHNICAL_REPOSITORY.md) for the complete source map, architecture, API route families, database schema, dependencies, deployment instructions, and validation process.
 
 > ForensiX is a controlled logical triage workstation. The UI and reports identify what was supported, blocked, or unavailable for the connected device instead of presenting unsupported extraction as completed evidence.
 
@@ -259,7 +259,7 @@ The Windows portable release includes and validates the official scrcpy runtime 
 .\scripts\install-scrcpy.ps1
 ```
 
-The launcher validates and pins the bundled or local scrcpy executable for that server session. scrcpy does not open at application startup because no device or case has been selected yet. Inside a case-linked device assessment, use **Read-only mirror** for passive viewing or **Interactive control** only after acknowledging that taps and typing change the device. See the [workstation setup](docs/WORKSTATION_SETUP.md#scrcpy-mirror-and-control) guide.
+The launcher validates and pins the bundled or local scrcpy executable for that server session. scrcpy does not open at application startup because no device or case has been selected yet. Inside a case-linked device assessment, use **Read-only mirror** for passive viewing or **Interactive control** only after acknowledging that taps and typing change the device. See the [technical repository](TECHNICAL_REPOSITORY.md#4-major-code-flows) guide.
 
 ### 🕳️ Optional Deleted-Data Research
 
@@ -269,23 +269,23 @@ For controlled raw-image research, ForensiX can also invoke a separately install
 .\scripts\install-testdisk.ps1
 ```
 
-> PhotoRec output is a carved candidate set, not proof of deletion; it is never run against a live Android device or a sealed master source. See [deleted-data research](docs/DELETED_DATA_RESEARCH.md).
+> PhotoRec output is a carved candidate set, not proof of deletion; it is never run against a live Android device or a sealed master source. See the [technical repository](TECHNICAL_REPOSITORY.md#10-capability-and-research-boundaries).
 
 Use `-NoBrowser` for a terminal-only readiness check. Existing listeners on the configured API or web ports are reused instead of starting duplicate services.
 
-Run `.\scripts\Test-ForensiX.ps1 -AdbPath "C:\path\to\adb.exe"` for a non-acquisition workstation check. Linux/macOS users can start with `FORENSIX_ADB_PATH=/path/to/adb ./scripts/start-forensix.sh`. See [workstation setup](docs/WORKSTATION_SETUP.md) for driver, udev, Gatekeeper, status, and log guidance.
+Run `.\scripts\Test-ForensiX.ps1 -AdbPath "C:\path\to\adb.exe"` for a non-acquisition workstation check. Linux/macOS users can start with `FORENSIX_ADB_PATH=/path/to/adb ./scripts/start-forensix.sh`. See the [technical repository](TECHNICAL_REPOSITORY.md#8-installation-and-deployment) for driver, udev, Gatekeeper, status, and log guidance.
 
-Encrypted workstation backups can be created, independently verified, and safely restored with `scripts/forensix-backup.py`; see [backup and recovery](docs/BACKUP_RECOVERY.md). Live evidence storage still relies on BitLocker, FileVault, or LUKS until an OS-keychain and agency-escrow design is formally validated.
+Encrypted workstation backups can be created, independently verified, and safely restored with `scripts/forensix-backup.py`; see the [technical repository](TECHNICAL_REPOSITORY.md#8-installation-and-deployment). Live evidence storage still relies on BitLocker, FileVault, or LUKS until an OS-keychain and agency-escrow design is formally validated.
 
-Create a privacy-preserving, integrity-sealed mock or controlled-device validation record with `scripts/run-forensic-validation.py`; see [forensic validation](docs/FORENSIC_VALIDATION.md). The physical runner supports a fixed-path, two-pass known-file acquisition and SHA-256 check without allowing caller-supplied device paths, plus an examiner-driven disconnect/reconnect check. The matrix verifier rejects mock or tampered records and requires declared host, Android, OEM, rooted, and non-rooted coverage. A passing mock run is regression evidence and does not replace the physical-device release matrix.
+Create a privacy-preserving, integrity-sealed mock or controlled-device validation record with `scripts/run-forensic-validation.py`; see the [technical repository](TECHNICAL_REPOSITORY.md#9-validation-and-quality-checks). The physical runner supports a fixed-path, two-pass known-file acquisition and SHA-256 check without allowing caller-supplied device paths, plus an examiner-driven disconnect/reconnect check. The matrix verifier rejects mock or tampered records and requires declared host, Android, OEM, rooted, and non-rooted coverage. A passing mock run is regression evidence and does not replace the physical-device release matrix.
 
-The requirement-by-requirement implementation evidence and remaining external proof are recorded in [the Evidence Twin completion audit](docs/EVIDENCE_TWIN_COMPLETION_AUDIT.md).
+The requirement-by-requirement implementation evidence and remaining external proof are recorded in the [technical repository](TECHNICAL_REPOSITORY.md#9-validation-and-quality-checks).
 
-Verified SQLite databases and safe ZIP/TAR working copies can be assessed and scanned for bounded SQLite fragments from the Evidence Twin screen. The result remains candidate material: it does not prove a fragment is a deleted row. Verified raw ext4/F2FS working copies can additionally be sent to a separately installed, hash-pinned PhotoRec executable. See [deleted-data research](docs/DELETED_DATA_RESEARCH.md).
+Verified SQLite databases and safe ZIP/TAR working copies can be assessed and scanned for bounded SQLite fragments from the Evidence Twin screen. The result remains candidate material: it does not prove a fragment is a deleted row. Verified raw ext4/F2FS working copies can additionally be sent to a separately installed, hash-pinned PhotoRec executable. See the [technical repository](TECHNICAL_REPOSITORY.md#10-capability-and-research-boundaries).
 
-Supervisors and administrators can export sealed custody/audit checkpoint packages from a case after chain verification succeeds. The package hash must be preserved, signed, or published through an agency-controlled process before it becomes externally anchored. After that external action, the case screen can record its provider, reference, time, and optional receipt SHA-256 as an append-only anchor receipt. It can also verify a detached RSA/ECDSA signature against a supplied public X.509 certificate without accepting private keys. See [custody checkpoints](docs/CUSTODY_CHECKPOINTS.md).
+Supervisors and administrators can export sealed custody/audit checkpoint packages from a case after chain verification succeeds. The package hash must be preserved, signed, or published through an agency-controlled process before it becomes externally anchored. After that external action, the case screen can record its provider, reference, time, and optional receipt SHA-256 as an append-only anchor receipt. It can also verify a detached RSA/ECDSA signature against a supplied public X.509 certificate without accepting private keys. See the [technical repository](TECHNICAL_REPOSITORY.md#5-api-documentation).
 
-Portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, GitHub build attestations, and tagged GitHub Releases are defined in [release packaging](docs/RELEASE_PACKAGING.md). Windows releases support Authenticode signing when the maintainer configures the protected signing certificate secrets; releases without those secrets remain explicitly unsigned.
+Portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, GitHub build attestations, and tagged GitHub Releases are defined in the [technical repository](TECHNICAL_REPOSITORY.md#8-installation-and-deployment). Windows releases support Authenticode signing when the maintainer configures the protected signing certificate secrets; releases without those secrets remain explicitly unsigned.
 
 > Mock scenarios are `no_devices`, `authorized`, `unauthorized`, `offline`, `multiple`, `storage_blocked`, and `timeout`. To use a real ADB executable, set `FORENSIX_ADB_MODE=system` and optionally set `FORENSIX_ADB_PATH` to the full executable path.
 
