@@ -3,7 +3,6 @@
 # 🔎 ForensiX
 ### Cross-Platform Android Rapid Evidence Triage & Forensic Preview Platform
 
-[![Status](https://img.shields.io/badge/Status-Phase_0-orange?style=for-the-badge)](#project-status)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![ADB](https://img.shields.io/badge/Transport-ADB-3DDC84?style=for-the-badge&logo=android&logoColor=white)](#local-setup)
@@ -14,7 +13,7 @@
 
 ## 🧭 About
 
-ForensiX is a planned cross-platform Android rapid evidence triage and forensic preview platform. It runs on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
+ForensiX is a cross-platform Android rapid evidence triage and forensic preview workstation. It runs locally on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
 ## Downloads
 
@@ -28,31 +27,56 @@ Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`Fo
 
 The distributions are portable rather than installers. They do not silently install Android USB drivers or ADB. The Windows bundle includes the official scrcpy runtime; scrcpy is started only when an analyst requests live mirror, interactive control, or documented screen recording. PhotoRec remains optional and external. See [Windows workstation setup](docs/WORKSTATION_SETUP.md) for the complete procedure and `SHA256SUMS.txt` in the release for checksums.
 
-The implementation has started with the Phase 0 transport-validation and product-security foundation. The current build provides offline local authentication and RBAC, case lifecycle and object-level authorization, case-linked device identity and readiness history, immutable capability-gated acquisition plans, case-owned durable acquisition jobs, and the first bounded content-free shared-storage path inventory.
+The current release combines local authentication, case management, device readiness, rooted/non-rooted capability assessment, supported logical previews, selected evidence acquisition, scrcpy-based documentation, reports, downloads, and case-specific audit and custody records.
 
-> **No production forensic capability is claimed yet.**
-
----
-
-## 📌 Project Status
-
-| Field | Value |
-| --- | --- |
-| Product name | **ForensiX** |
-| Default operating mode | **Controlled Logical Triage Mode** |
-| Target stack | React, TypeScript, FastAPI, Python, SQLite, and ADB |
-| Architecture | [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) |
-| Current implementation | [Phase 0 Status](docs/PHASE0_STATUS.md) |
-
----
-
-## ⚠️ Important Limitation
-
-> ForensiX will not claim hardware write blocking, physical acquisition, locked-device bypass, unrestricted access to app-private data, or universal deleted-data recovery. Supported operations will depend on the device, Android version, authorization state, encryption, OEM restrictions, and available privileges. Every acquisition action and known side effect must be recorded.
+> ForensiX is a controlled logical triage workstation. The UI and reports identify what was supported, blocked, or unavailable for the connected device instead of presenting unsupported extraction as completed evidence.
 
 ---
 
 ## ✅ Implemented Now
+
+<details open>
+<summary><strong>📱 Device Readiness, Rooted & Non-Rooted Workflows</strong></summary>
+
+- Authorized Android transport detection with device identity, model, Android version/API level, ADB version, authorization state, and readiness history
+- Explicit root-status probing with `ROOT UID CONFIRMED` and `ROOT UID NOT AVAILABLE` outcomes, including Android Studio/userdebug `su 0 id` behavior
+- Non-rooted capability profile for device information, contacts, SMS/MMS, call logs, shared storage, media, documents, and downloads when the provider accepts the authorized ADB transport
+- Rooted capability profile that re-evaluates provider access after a confirmed root probe and exposes only policy-approved root-dependent options
+- Clear separation between supported, unavailable, blocked, unsupported, and research-only capabilities; private WhatsApp/Telegram data is not treated as universally available
+
+</details>
+
+<details open>
+<summary><strong>📞 Logical Collection & Media Evidence</strong></summary>
+
+- Preview and selective acquisition options for device information, selected contacts, selected SMS/MMS, and selected call logs
+- Shared-storage inventory with image, video, audio, document, download, and all-media filters
+- Select-one or select-many acquisition with durable jobs, progress, cancellation, SHA-256 hashes, manifests, and chain-of-custody registration
+- Case-scoped evidence explorer with metadata, file-type icons, safe image thumbnails, bounded previews, integrity verification, and local downloads for acquired evidence
+- Report views that list acquired files, evidence keys, hashes, source paths, acquisition status, and custody history
+
+</details>
+
+<details open>
+<summary><strong>🖥️ scrcpy Mirror, Control & Documentation</strong></summary>
+
+- Bundled and validated scrcpy integration for read-only mirror, interactive control, and documented screen sessions
+- Analyst acknowledgement before control or recording because taps, typing, and device-side actions can change device state
+- Sealed MP4 documentation sessions with source metadata, SHA-256 integrity, and case custody history
+- Screenshot capture remains available through ADB even when scrcpy control is unavailable
+
+</details>
+
+<details open>
+<summary><strong>📄 Reports, Downloads & Auditability</strong></summary>
+
+- Preliminary PDF, JSON, and CSV report outputs generated per case
+- Native desktop save dialogs for reports, audit logs, custody checkpoints, and acquired evidence in the packaged application
+- Separate workstation-wide and case-specific audit-log downloads
+- Append-only case events, custody transfers, verification records, correction-by-amendment, and hash-chain verification
+- Portable Windows, Linux, and macOS releases with bundled web UI, loopback backend, SBOM, release manifest, SHA-256 checksums, and GitHub Actions attestations
+
+</details>
 
 <details open>
 <summary><strong>🖥️ Frontend & API Foundation</strong></summary>
@@ -140,6 +164,16 @@ The implementation has started with the Phase 0 transport-validation and product
 - Experimental SQLite/WAL/rollback-journal recovery readiness and bounded fragment scanning on verified Evidence Twin copies, with sealed candidate records and no claim that fragments are proven deleted records
 - Optional, hash-pinned TestDisk/PhotoRec external recovery on verified raw ext4/F2FS Evidence Twin copies, with controlled output, individual hashes, and explicit candidate-only limitations
 - CI for frontend lint/type/test/build and backend Ruff/mypy/Pytest
+
+</details>
+
+<details open>
+<summary><strong>🔬 Legacy Android Research Scope</strong></summary>
+
+- The project documents a future research track for older Android 7-10 devices and devices with older security patch levels, including pre-October-2019 device-specific limitations
+- APK downgrade on older/pre-2019 devices is a research idea only and is **not implemented** in ForensiX 1.0.1
+- Temporary rooting, password brute force, lock bypassing, Qualcomm/EDL extraction, exploit chains, and proprietary Oxygen-style acquisition methods are **not implemented**
+- These topics must not be presented as supported product features until they have a lawful, device-specific implementation, validation evidence, and a separate safety review
 
 </details>
 
@@ -270,9 +304,9 @@ pnpm build
 
 ---
 
-## 🔒 Current Security Boundary
+## 🔒 Security and Evidence Handling
 
-The Phase 0 API implements local authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text or remote path from the browser.
+The local API implements authentication, case-level authorization, and session/CSRF/permission checks, but the service must remain bound to `127.0.0.1`. It exposes no arbitrary ADB shell operation and accepts no command text or remote path from the browser.
 
 A confirmed Quick Triage job can enumerate relative paths under one approved shared-storage root. An operator can then acquire one of those persisted inventory items; the browser submits only the opaque item ID. The backend revalidates device identity and root access, reconstructs the policy-approved path, uses shell-free `adb pull`, limits the transfer to 100 MiB, seals it into contained append-oriented storage, and writes file and manifest SHA-256 values.
 
