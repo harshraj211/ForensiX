@@ -967,6 +967,11 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
               <p className="mt-1 text-[11px] leading-5 text-slate-500">
                 {providerCollection.data.limitation}
               </p>
+              {providerCollection.data.profile !== "device_info" && (
+                <p className="mt-1 text-[11px] leading-5 text-amber-200/70">
+                  Phone-number fields are masked in the workstation preview; sealed evidence is unchanged.
+                </p>
+              )}
               <div className="mt-3 max-h-56 space-y-2 overflow-auto">
                 {providerCollection.data.records.map((record, index) => {
                   const recordId = String(record._id ?? index);
@@ -992,7 +997,9 @@ function CapabilityPanel({ assessment }: { assessment: DeviceCapabilityAssessmen
                         {Object.entries(record).map(([key, value]) => (
                           <div key={key} className="grid gap-1 sm:grid-cols-[8rem_1fr] sm:gap-2">
                             <dt className="font-mono text-slate-500">{key}</dt>
-                            <dd className="break-all text-slate-300">{value ?? "NULL"}</dd>
+                            <dd className="break-all text-slate-300">
+                              {maskProviderPreviewValue(providerCollection.data.profile, key, value)}
+                            </dd>
                           </div>
                         ))}
                       </dl>
@@ -1952,6 +1959,41 @@ function formatBytes(sizeBytes: number): string {
   if (sizeBytes < 1024 ** 2) return `${(sizeBytes / 1024).toFixed(1)} KiB`;
   if (sizeBytes < 1024 ** 3) return `${(sizeBytes / 1024 ** 2).toFixed(1)} MiB`;
   return `${(sizeBytes / 1024 ** 3).toFixed(1)} GiB`;
+}
+
+function maskProviderPreviewValue(
+  profile: string,
+  key: string,
+  value: unknown,
+): string {
+  let rendered: string;
+  if (value == null) {
+    rendered = "NULL";
+  } else if (typeof value === "object") {
+    const serialized = JSON.stringify(value);
+    rendered = typeof serialized === "string" ? serialized : "[object]";
+  } else if (typeof value === "string") {
+    rendered = value;
+  } else if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    rendered = value.toString();
+  } else {
+    rendered = "[unavailable]";
+  }
+  if (profile === "device_info" || !isPhoneNumberField(key)) return rendered;
+  return rendered.replace(/\d(?=\D*\d{2})/g, "•");
+}
+
+function isPhoneNumberField(key: string): boolean {
+  const normalized = key.toLowerCase().replaceAll("_", " ");
+  return (
+    normalized === "number" ||
+    normalized === "data1" ||
+    normalized === "data4" ||
+    normalized.includes("phone") ||
+    normalized.includes("tel") ||
+    normalized.includes("address") ||
+    normalized.includes("recipient")
+  );
 }
 
 function humanize(value: string): string {

@@ -256,6 +256,9 @@ class SystemAdbClient:
 
     async def probe_root_access(self, serial: str) -> RootAccessProbe:
         result = await self._run(AdbCommandPolicy.probe_root_access(serial))
+        if "invalid uid/gid" in result.stderr.lower():
+            # Some Android Studio userdebug images expose su with UID-first syntax.
+            result = await self._run(AdbCommandPolicy.probe_root_access_android_su(serial))
         identity = " ".join(result.stdout.split())[:240] or None
         uid_match = re.search(r"(?:^|\s)uid=(\d+)(?:\(|\s|$)", identity or "")
         uid = int(uid_match.group(1)) if uid_match else None

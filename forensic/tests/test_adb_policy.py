@@ -425,6 +425,30 @@ async def test_system_root_probe_requires_confirmed_uid_zero() -> None:
 
 
 @pytest.mark.asyncio
+async def test_system_root_probe_supports_android_studio_uid_syntax() -> None:
+    runner = RecordingRunner(
+        [
+            _result(255, stderr="su: invalid uid/gid '-c'"),
+            _result(0, stdout="uid=0(root) gid=0(root)"),
+        ]
+    )
+    probe = await SystemAdbClient(cast(SubprocessAdbRunner, runner)).probe_root_access(
+        "FX-DEMO-001"
+    )
+
+    assert probe.status is RootAccessStatus.AVAILABLE
+    assert probe.uid == 0
+    assert runner.calls[1][0] == (
+        "-s",
+        "FX-DEMO-001",
+        "shell",
+        "su",
+        "0",
+        "id",
+    )
+
+
+@pytest.mark.asyncio
 async def test_system_inventory_parses_paths_without_running_path_derived_commands() -> None:
     output = "/sdcard/DCIM/IMG_1.jpg:128:1784160000\n/sdcard/Download/report.pdf:256:1784246400\n"
     runner = RecordingRunner([_result(0, stdout=output)])

@@ -16,6 +16,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { DownloadLink } from "../../components/DownloadLink";
 import {
   assessEvidenceRecoveryCandidates,
   carveEvidenceRecoveryCandidates,
@@ -397,14 +398,14 @@ function EvidenceSourceCard({
               <ExternalLink size={14} />
               View screenshot
             </a>
-            <a
+            <DownloadLink
               href={getEvidenceSourceContentUrl(caseId, source.id, true)}
-              download={source.source_name}
+              filename={source.source_name}
               className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-cyan-300 px-3 text-xs font-semibold text-slate-950"
             >
               <Download size={14} />
               Download PNG
-            </a>
+            </DownloadLink>
           </>
         )}
         <button

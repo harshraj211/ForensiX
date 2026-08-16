@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from forensix_api.desktop import _select_port, create_desktop_app
+from forensix_api.desktop import DesktopDownloadApi, _select_port, create_desktop_app
 from forensix_server.config import Settings
 
 
@@ -42,3 +42,31 @@ def test_desktop_launcher_skips_a_busy_port() -> None:
         selected = _select_port("127.0.0.1", busy_port)
 
     assert selected != busy_port
+
+
+def test_native_download_api_streams_to_the_selected_path(tmp_path: Path) -> None:
+    target = tmp_path / "exports" / "audit.json"
+
+    class FakeWindow:
+        def create_file_dialog(self, _dialog_type: object, *, save_filename: str) -> tuple[str]:
+            assert save_filename == "audit.json"
+            target.parent.mkdir()
+            return (str(target),)
+
+    class FakeWebView:
+        SAVE_DIALOG = object()
+        windows = [FakeWindow()]
+
+    api = DesktopDownloadApi(FakeWebView())
+    started = api.start_download("audit.json")
+    assert started["status"] == "ready"
+    download_id = started["download_id"]
+    assert isinstance(download_id, str)
+
+    import base64
+
+    api.append_download(download_id, base64.b64encode(b'{"ok":true}').decode("ascii"))
+    finished = api.finish_download(download_id)
+
+    assert finished["status"] == "saved"
+    assert target.read_bytes() == b'{"ok":true}'

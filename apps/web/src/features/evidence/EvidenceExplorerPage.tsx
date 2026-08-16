@@ -17,6 +17,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { DownloadLink } from "../../components/DownloadLink";
 import { FileTypeIcon } from "../../components/FileTypeIcon";
 import {
   getArtifact,
@@ -381,12 +382,13 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
               <Eye size={13} /> {showOriginal ? "Close viewer" : "View file"}
             </button>
           )}
-          <a
+          <DownloadLink
             href={artifactContentUrl(caseId, artifact.id)}
+            filename={downloadFilename(artifact)}
             className="inline-flex min-h-9 items-center gap-2 rounded border border-white/12 px-3 text-[11px] text-slate-200 hover:border-cyan-200/25 hover:text-cyan-100"
           >
             <Download size={13} /> Download original
-          </a>
+          </DownloadLink>
         </div>
         {showOriginal && inlineKind !== null && (
           <InlineEvidenceViewer
@@ -522,6 +524,11 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
       </section>
     </aside>
   );
+}
+
+function downloadFilename(artifact: Artifact): string {
+  const sourceName = artifact.source_relative_path.split(/[\\/]/).at(-1);
+  return sourceName || artifact.title || "forensix-evidence";
 }
 
 function Detail({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {

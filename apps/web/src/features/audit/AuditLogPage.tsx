@@ -3,6 +3,7 @@ import { CheckCircle2, Download, FileClock, LoaderCircle, Search, ShieldAlert } 
 import { useMemo, useState } from "react";
 
 import { auditLogDownloadUrl, listAuditLogs, verifyAuditChain } from "../../lib/api";
+import { DownloadLink } from "../../components/DownloadLink";
 import { formatUtcAsLocal } from "../../lib/time";
 import { CaseError } from "../cases/CasesPage";
 
@@ -57,9 +58,9 @@ export function AuditLogPage() {
                   ? `${String(verification.data.record_count)} records verified`
                   : `Chain broken at #${String(verification.data.broken_sequence ?? "unknown")}`}
               </span>
-              <a href={auditLogDownloadUrl()} className="inline-flex min-h-9 items-center gap-2 rounded border border-cyan-300/20 px-3 text-xs font-semibold text-cyan-100">
+              <DownloadLink href={auditLogDownloadUrl()} filename="forensix-audit-log.json" className="inline-flex min-h-9 items-center gap-2 rounded border border-cyan-300/20 px-3 text-xs font-semibold text-cyan-100">
                 <Download size={14} /> Download audit log
-              </a>
+              </DownloadLink>
             </div>
           )}
         </div>

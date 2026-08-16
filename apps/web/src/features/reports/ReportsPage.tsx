@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { DownloadLink } from "../../components/DownloadLink";
 import { FileTypeIcon } from "../../components/FileTypeIcon";
 import {
   artifactPreviewContentUrl,
@@ -112,12 +113,12 @@ export function CaseReportsPage() {
           <button type="button" disabled={generation.isPending} onClick={() => { generation.mutate(); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-cyan-300 px-5 text-sm font-semibold text-slate-950 disabled:cursor-wait disabled:opacity-50">
             {generation.isPending ? <LoaderCircle size={17} className="animate-spin" /> : <FileCheck2 size={17} />} Generate preliminary report
           </button>
-          <a href={caseAuditLogDownloadUrl(caseId)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-cyan-300/20 px-4 text-xs font-semibold text-cyan-100">
+          <DownloadLink href={caseAuditLogDownloadUrl(caseId)} filename="forensix-case-audit-log.json" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-cyan-300/20 px-4 text-xs font-semibold text-cyan-100">
             <Download size={14} /> Download this case audit log
-          </a>
-          <a href={auditLogDownloadUrl()} className="inline-flex min-h-9 items-center justify-center gap-2 px-4 text-xs font-medium text-slate-400 hover:text-cyan-100">
+          </DownloadLink>
+          <DownloadLink href={auditLogDownloadUrl()} filename="forensix-audit-log.json" className="inline-flex min-h-9 items-center justify-center gap-2 px-4 text-xs font-medium text-slate-400 hover:text-cyan-100">
             <Download size={13} /> Download all workstation audit logs
-          </a>
+          </DownloadLink>
         </div>
       </div>
       <div className="mt-6 flex gap-3 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm leading-6 text-amber-100/80">
@@ -189,9 +190,9 @@ export function CaseReportsPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {report.outputs.map((output) => (
-                  <a key={output.format} href={reportDownloadUrl(caseId, report.id, output.format)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-3 text-xs font-semibold uppercase text-cyan-100">
+                  <DownloadLink key={output.format} href={reportDownloadUrl(caseId, report.id, output.format)} filename={output.filename} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-cyan-300/20 bg-cyan-300/7 px-3 text-xs font-semibold uppercase text-cyan-100">
                     <Download size={14} /> {output.format}
-                  </a>
+                  </DownloadLink>
                 ))}
               </div>
             </div>

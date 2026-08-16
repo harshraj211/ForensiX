@@ -27,6 +27,7 @@ import { authKeys } from "../auth/authKeys";
 import { CaseError, StatusBadge } from "./CasesPage";
 import { caseKeys } from "./caseKeys";
 import { AcquisitionCompletenessPanel } from "./AcquisitionCompletenessPanel";
+import { DownloadLink } from "../../components/DownloadLink";
 
 export function CaseDetailPage() {
   const { caseId = "" } = useParams();
@@ -436,13 +437,13 @@ export function CaseDetailPage() {
                           not externally anchored
                         </p>
                       </div>
-                      <a
+                      <DownloadLink
                         href={custodyCheckpointDownloadUrl(caseId, checkpoint.id)}
-                        download={checkpoint.filename}
+                        filename={checkpoint.filename}
                         className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-xs font-semibold text-slate-300"
                       >
                         <ArrowDownToLine size={14} aria-hidden="true" /> Download JSON
-                      </a>
+                      </DownloadLink>
                     </div>
                     <CheckpointAnchorPanel caseId={caseId} checkpoint={checkpoint} />
                     <CheckpointSignaturePanel caseId={caseId} checkpoint={checkpoint} />

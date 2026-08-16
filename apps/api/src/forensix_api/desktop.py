@@ -1,17 +1,22 @@
 """Loopback-only desktop launcher and bundled single-origin web host."""
 
 import argparse
+import base64
+import binascii
 import hashlib
 import importlib
 import os
+import re
+import secrets
 import socket
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import uvicorn
 from fastapi import FastAPI
@@ -37,6 +42,97 @@ class SpaStaticFiles(StaticFiles):
         if response.status_code == 404 and not Path(path).suffix:
             return await super().get_response("index.html", scope)
         return response
+
+
+@dataclass
+class _DownloadSession:
+    target: Path
+    temporary: Path
+    stream: BinaryIO
+    bytes_written: int = 0
+
+
+class DesktopDownloadApi:
+    """Save authenticated WebView downloads through a native file dialog."""
+
+    def __init__(self, webview: Any) -> None:
+        self._webview = webview
+        self._downloads: dict[str, _DownloadSession] = {}
+        self._lock = threading.Lock()
+
+    def start_download(self, filename: str = "forensix-download") -> dict[str, str]:
+        window = self._window()
+        safe_name = _safe_download_filename(filename)
+        selected = window.create_file_dialog(
+            self._webview.SAVE_DIALOG,
+            save_filename=safe_name,
+        )
+        if not selected:
+            return {"status": "cancelled"}
+        target = Path(selected[0] if isinstance(selected, (list, tuple)) else selected).expanduser()
+        if not target.parent.is_dir():
+            raise RuntimeError("The selected download folder is not available.")
+
+        download_id = secrets.token_urlsafe(18)
+        temporary = target.with_name(f".{target.name}.{download_id}.part")
+        stream = temporary.open("xb")
+        with self._lock:
+            self._downloads[download_id] = _DownloadSession(target, temporary, stream)
+        return {"status": "ready", "download_id": download_id}
+
+    def append_download(self, download_id: str, chunk_base64: str) -> dict[str, int]:
+        try:
+            chunk = base64.b64decode(chunk_base64, validate=True)
+        except (ValueError, binascii.Error) as error:
+            raise ValueError("The native download chunk is invalid.") from error
+        if len(chunk) > 2 * 1024 * 1024:
+            raise ValueError("The native download chunk is too large.")
+        with self._lock:
+            session = self._downloads.get(download_id)
+            if session is None:
+                raise ValueError("The native download session is no longer active.")
+            session.stream.write(chunk)
+            session.bytes_written += len(chunk)
+            return {"bytes_written": session.bytes_written}
+
+    def finish_download(self, download_id: str) -> dict[str, str | int]:
+        with self._lock:
+            session = self._downloads.pop(download_id, None)
+        if session is None:
+            raise ValueError("The native download session is no longer active.")
+        try:
+            session.stream.flush()
+            session.stream.close()
+            os.replace(session.temporary, session.target)
+        except Exception:
+            session.stream.close()
+            session.temporary.unlink(missing_ok=True)
+            raise
+        return {
+            "status": "saved",
+            "path": str(session.target),
+            "bytes_written": session.bytes_written,
+        }
+
+    def cancel_download(self, download_id: str) -> dict[str, str]:
+        with self._lock:
+            session = self._downloads.pop(download_id, None)
+        if session is not None:
+            session.stream.close()
+            session.temporary.unlink(missing_ok=True)
+        return {"status": "cancelled"}
+
+    def _window(self) -> Any:
+        windows = getattr(self._webview, "windows", [])
+        if not windows:
+            raise RuntimeError("The native workstation window is not ready.")
+        return windows[0]
+
+
+def _safe_download_filename(filename: str) -> str:
+    candidate = Path(filename or "forensix-download").name
+    candidate = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", candidate).strip(" .")
+    return candidate or "forensix-download"
 
 
 def create_desktop_app(web_root: Path, settings: Settings) -> FastAPI:
@@ -157,6 +253,7 @@ def _run_in_native_window(app: FastAPI, origin: str, host: str, port: int) -> No
     server_thread.start()
     _wait_for_server(origin)
     try:
+        download_api = DesktopDownloadApi(webview)
         webview.create_window(
             "ForensiX Workstation",
             origin,
@@ -164,6 +261,7 @@ def _run_in_native_window(app: FastAPI, origin: str, host: str, port: int) -> No
             height=920,
             min_size=(1024, 700),
             text_select=True,
+            js_api=download_api,
         )
         webview.start()
     except Exception as error:  # noqa: BLE001

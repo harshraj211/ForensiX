@@ -337,6 +337,16 @@ class AdbCommandPolicy:
         )
 
     @staticmethod
+    def probe_root_access_android_su(serial: str) -> ApprovedAdbCommand:
+        """Use the fixed UID form accepted by Android Studio's userdebug su binary."""
+        _validate_serial(serial)
+        return ApprovedAdbCommand(
+            AdbOperation.PROBE_ROOT_ACCESS,
+            ("-s", serial, "shell", "su", "0", "id"),
+            8.0,
+        )
+
+    @staticmethod
     def capture_rooted_bundle(serial: str, profile: RootedCollectionProfile) -> ApprovedAdbCommand:
         """Build one literal provider-bundle command from a closed profile enum."""
         _validate_serial(serial)
