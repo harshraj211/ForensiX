@@ -6,6 +6,9 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![ADB](https://img.shields.io/badge/Transport-ADB-3DDC84?style=for-the-badge&logo=android&logoColor=white)](#local-setup)
+[![Platform](https://img.shields.io/badge/Platform-Windows_|_Linux_|_macOS-555?style=for-the-badge)](#downloads)
+
+**A local investigator workstation for capability-gated, forensically-sound Android evidence triage.**
 
 </div>
 
@@ -15,23 +18,27 @@
 
 ForensiX is a cross-platform Android rapid evidence triage and forensic preview workstation. It runs locally on an investigator workstation and uses Android Debug Bridge (ADB) to perform capability-gated logical collection from connected Android devices.
 
-## Downloads
-
-Download the latest portable build for your workstation:
-
-- [Windows portable build](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Windows-Portable.zip)
-- [Linux portable build](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Linux-Portable.zip)
-- [macOS portable build](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-macOS-Portable.zip)
-
-Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`ForensiX.exe` on Windows). The application starts its loopback backend and bundled web interface automatically and opens the workstation in its own desktop window. No public hosting or internet connection is required after download.
-
-The distributions are portable rather than installers. They do not silently install Android USB drivers or ADB. The Windows bundle includes the official scrcpy runtime; scrcpy is started only when an analyst requests live mirror, interactive control, or documented screen recording. PhotoRec remains optional and external. See the [technical repository](TECHNICAL_REPOSITORY.md) for workstation setup and `SHA256SUMS.txt` in the release for checksums.
+> 🧾 ForensiX is a controlled logical triage workstation. The UI and reports identify what was supported, blocked, or unavailable for the connected device instead of presenting unsupported extraction as completed evidence.
 
 The current release combines local authentication, case management, device readiness, rooted/non-rooted capability assessment, supported logical previews, selected evidence acquisition, scrcpy-based documentation, reports, downloads, and case-specific audit and custody records.
 
-See the [technical repository document](TECHNICAL_REPOSITORY.md) for the complete source map, architecture, API route families, database schema, dependencies, deployment instructions, and validation process.
+📘 See the [technical repository document](TECHNICAL_REPOSITORY.md) for the complete source map, architecture, API route families, database schema, dependencies, deployment instructions, and validation process.
 
-> ForensiX is a controlled logical triage workstation. The UI and reports identify what was supported, blocked, or unavailable for the connected device instead of presenting unsupported extraction as completed evidence.
+---
+
+## 📥 Downloads
+
+<div align="center">
+
+[![Windows](https://img.shields.io/badge/⬇_Windows-Portable_ZIP-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Windows-Portable.zip)
+[![Linux](https://img.shields.io/badge/⬇_Linux-Portable_ZIP-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-Linux-Portable.zip)
+[![macOS](https://img.shields.io/badge/⬇_macOS-Portable_ZIP-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/harshraj211/ForensiX/releases/latest/download/ForensiX-macOS-Portable.zip)
+
+</div>
+
+Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`ForensiX.exe` on Windows). The application starts its loopback backend and bundled web interface automatically and opens the workstation in its own desktop window. **No public hosting or internet connection is required after download.**
+
+> The distributions are **portable, not installers**. They do not silently install Android USB drivers or ADB. The Windows bundle includes the official scrcpy runtime; scrcpy is started only when an analyst requests live mirror, interactive control, or documented screen recording. PhotoRec remains optional and external. See the [technical repository](TECHNICAL_REPOSITORY.md) for workstation setup and `SHA256SUMS.txt` in the release for checksums.
 
 ---
 
@@ -227,11 +234,11 @@ On Windows, after installing dependencies, the launcher can start both services 
 .\scripts\start-forensix.ps1 -AdbPath "C:\platform-tools\adb.exe"
 ```
 
-### Portable Windows application
+### 💻 Portable Windows Application
 
 For the GitHub download, extract the ZIP and launch `ForensiX.exe`. The desktop launcher starts the local API and web application as one process, binds only to `127.0.0.1`, opens a native ForensiX window, and uses `%LOCALAPPDATA%\ForensiX` for the database, evidence vault, logs, and generated exports. Close the application window or terminate `ForensiX.exe` to stop the local service.
 
-On first use:
+**On first use:**
 
 1. Install Android SDK Platform-Tools and the correct USB driver for the Android device.
 2. Enable Developer options and USB debugging on the device.
@@ -247,7 +254,7 @@ If ADB is not on `PATH`, launch the desktop executable with an explicit path:
 .\ForensiX.exe --adb-path "C:\platform-tools\adb.exe"
 ```
 
-Use `--browser` to open the workstation in the default browser instead of the native window. Use `--no-browser` for a terminal-only readiness check.
+> Use `--browser` to open the workstation in the default browser instead of the native window. Use `--no-browser` for a terminal-only readiness check.
 
 The application does not need a separate **Start services** action during normal use. Its status and integration diagnostics show whether the local API, ADB, device transport, evidence storage, and optional scrcpy integration are ready. ADB is started on demand by the Android tooling. scrcpy is started only when an analyst explicitly requests mirroring, control, or recording.
 
@@ -318,3 +325,10 @@ On explicit request, a separate worker checks bounded magic bytes and may decode
 
 Later integrity checks independently re-hash both sealed objects and append a result without replacing expected hashes. Evidence registration, integrity outcomes, transfers, amendments, preview outcomes, recovery decisions, and custody checkpoint downloads are hash-chained in custody/audit history. Checkpoint packages can be exported only after chain verification and are hash-sealed before download, but they remain not externally anchored unless preserved, signed, or published outside the workstation. These chains are tamper-evident, not immutable or tamper-proof, because the database and application remain on one workstation.
 
+---
+
+<div align="center">
+
+Built for controlled, auditable, and explainable Android evidence triage. 🔎
+
+</div>
