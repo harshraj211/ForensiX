@@ -29,6 +29,8 @@ The distributions are portable rather than installers. They do not silently inst
 
 The current release combines local authentication, case management, device readiness, rooted/non-rooted capability assessment, supported logical previews, selected evidence acquisition, scrcpy-based documentation, reports, downloads, and case-specific audit and custody records.
 
+See the [technical repository document](docs/TECHNICAL_REPOSITORY.md) for the complete source map, architecture, API route families, database schema, dependencies, deployment instructions, and validation process.
+
 > ForensiX is a controlled logical triage workstation. The UI and reports identify what was supported, blocked, or unavailable for the connected device instead of presenting unsupported extraction as completed evidence.
 
 ---
