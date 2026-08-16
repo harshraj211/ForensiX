@@ -1,6 +1,33 @@
-# ForensiX Technical Repository
+<div align="center">
+
+# 📘 ForensiX — Technical Repository
+
+### Complete technical handover: source map, architecture, API surface, schema, and deployment
+
+[![Docs](https://img.shields.io/badge/Type-Technical_Handover-blue?style=for-the-badge)](#)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?style=for-the-badge&logo=fastapi)](#5-api-documentation)
+[![SQLite](https://img.shields.io/badge/DB-SQLite_+_Alembic-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](#6-database-schema)
+
+</div>
+
+---
 
 This document is the technical handover for the ForensiX repository. It maps the source code, runtime architecture, API surface, database schema, dependencies, deployment process, and validation commands.
+
+## 📚 Table of Contents
+
+1. [Complete Source Code](#1-complete-source-code)
+2. [Project Folder Structure](#2-project-folder-structure)
+3. [System Architecture](#3-system-architecture)
+4. [Major Code Flows](#4-major-code-flows)
+5. [API Documentation](#5-api-documentation)
+6. [Database Schema](#6-database-schema)
+7. [Dependencies and Requirements](#7-dependencies-and-requirements)
+8. [Installation and Deployment](#8-installation-and-deployment)
+9. [Validation and Quality Checks](#9-validation-and-quality-checks)
+10. [Capability and Research Boundaries](#10-capability-and-research-boundaries)
+
+---
 
 ## 1. Complete Source Code
 
@@ -8,15 +35,17 @@ The complete source is contained in this repository. The primary implementation 
 
 | Area | Location | Responsibility |
 | --- | --- | --- |
-| Web application | `apps/web/src` | React, TypeScript, routing, workstation UI, evidence and report screens |
-| Local API | `apps/api/src/forensix_api` | FastAPI composition root, routers, request validation, authentication dependencies |
-| Domain services | `server/src/forensix_server` | Cases, authentication, jobs, acquisitions, evidence, reports, custody, recovery, integrations |
-| Android/forensic adapters | `forensic/src/forensix_forensic` | ADB policy, device parsing, artifact providers, media processing, scrcpy and PhotoRec adapters |
-| Database schema | `server/src/forensix_server/db` | SQLAlchemy models, SQLite lifecycle, session management, durability settings |
-| Migrations | `server/alembic/versions` | Versioned schema migrations `0001` through `0041` |
-| Desktop launcher | `apps/api/src/forensix_api/desktop.py` | Loopback server, native WebView window, native file-download bridge |
-| Packaging | `packaging`, `scripts/build-release.py` | PyInstaller bundle, web assets, migrations, SBOM, manifest, checksums |
-| Tests | `apps/web/src/**/*.test.*`, `apps/api/tests`, `server/tests`, `forensic/tests`, `tests` | Frontend, API, service, adapter, integration, and validation coverage |
+| 🎨 Web application | `apps/web/src` | React, TypeScript, routing, workstation UI, evidence and report screens |
+| 🌐 Local API | `apps/api/src/forensix_api` | FastAPI composition root, routers, request validation, authentication dependencies |
+| 🧩 Domain services | `server/src/forensix_server` | Cases, authentication, jobs, acquisitions, evidence, reports, custody, recovery, integrations |
+| 📱 Android/forensic adapters | `forensic/src/forensix_forensic` | ADB policy, device parsing, artifact providers, media processing, scrcpy and PhotoRec adapters |
+| 🗄️ Database schema | `server/src/forensix_server/db` | SQLAlchemy models, SQLite lifecycle, session management, durability settings |
+| 🔀 Migrations | `server/alembic/versions` | Versioned schema migrations `0001` through `0041` |
+| 🖥️ Desktop launcher | `apps/api/src/forensix_api/desktop.py` | Loopback server, native WebView window, native file-download bridge |
+| 📦 Packaging | `packaging`, `scripts/build-release.py` | PyInstaller bundle, web assets, migrations, SBOM, manifest, checksums |
+| 🧪 Tests | `apps/web/src/**/*.test.*`, `apps/api/tests`, `server/tests`, `forensic/tests`, `tests` | Frontend, API, service, adapter, integration, and validation coverage |
+
+---
 
 ## 2. Project Folder Structure
 
@@ -40,7 +69,9 @@ ForensiX/
 └── requirements-release.txt  Portable-build dependencies
 ```
 
-The `build/`, `data/`, `.venv/`, `node_modules/`, and `release-*` directories are local working or generated directories. They are not required source modules and should not be treated as the application architecture.
+> The `build/`, `data/`, `.venv/`, `node_modules/`, and `release-*` directories are local working or generated directories. They are not required source modules and should not be treated as the application architecture.
+
+---
 
 ## 3. System Architecture
 
@@ -68,7 +99,7 @@ flowchart LR
     Scrcpy --> Device
 ```
 
-### Runtime boundaries
+### 🧭 Runtime Boundaries
 
 - The default desktop application binds the API to `127.0.0.1` and serves the bundled React application from the same origin.
 - Authentication, CSRF checks, permissions, case membership, and device ownership are enforced by the API rather than trusted to the browser.
@@ -77,9 +108,11 @@ flowchart LR
 - ADB is the Android transport. scrcpy is started only for an explicitly selected device and requested mirror, control, or documentation action.
 - Optional external tools are hash-pinned and capability-gated. Their absence does not prevent the core workstation from starting.
 
+---
+
 ## 4. Major Code Flows
 
-### Application startup
+### 🚀 Application Startup
 
 1. `forensix_api.desktop:main` selects a loopback port and data directory.
 2. `create_app` composes routers, services, middleware, error handlers, and the database.
@@ -87,7 +120,7 @@ flowchart LR
 4. Alembic upgrades the workstation schema to the current revision and performs restart recovery for jobs and evidence processing.
 5. The desktop launcher opens the bundled UI in a native WebView. `--browser` enables browser fallback and `--no-browser` runs the API only.
 
-### Device readiness
+### 📱 Device Readiness
 
 1. ADB discovery validates the selected executable and transport state.
 2. The device is detected and linked to a case through a case-scoped readiness record.
@@ -95,7 +128,7 @@ flowchart LR
 4. The explicit root probe records whether a root UID is available.
 5. The UI exposes only capabilities supported by the current transport, device state, root result, and provider policy.
 
-### Acquisition and evidence
+### 🗂️ Acquisition and Evidence
 
 1. An immutable plan binds scope, operator, case, device, and readiness snapshot.
 2. A durable job inventories or previews approved providers.
@@ -104,12 +137,14 @@ flowchart LR
 5. Files are streamed into contained storage, hashed, sealed atomically, and registered as evidence with a manifest.
 6. Evidence metadata, thumbnails, previews, bookmarks, tags, notes, and verification results remain case-scoped.
 
-### Reports and custody
+### 📄 Reports and Custody
 
 1. A report snapshot reads the case, acquired files, hashes, capability results, and custody history.
 2. PDF, JSON, and CSV outputs are sealed and linked to the case.
 3. The analyst can download reports, acquired evidence, custody checkpoints, and either the global or case-specific audit log.
 4. Custody and audit events use append-only hash chains. Checkpoint exports are tamper-evident and are not externally anchored until an agency-controlled process preserves or publishes them.
+
+---
 
 ## 5. API Documentation
 
@@ -121,9 +156,9 @@ http://127.0.0.1:8765/redoc
 http://127.0.0.1:8765/openapi.json
 ```
 
-The desktop launcher uses its selected loopback port instead of always using `8765`. The generated OpenAPI document is the authoritative request/response reference.
+> The desktop launcher uses its selected loopback port instead of always using `8765`. The generated OpenAPI document is the authoritative request/response reference.
 
-### API route families
+### 🔌 API Route Families
 
 | Prefix or route family | Purpose |
 | --- | --- |
@@ -144,13 +179,15 @@ The desktop launcher uses its selected loopback port instead of always using `87
 | `/api/v1/validation/*` | Controlled validation records and known-answer checks |
 | `/api/v1/cases/{case_id}/extractions/*` | Experimental, explicitly gated extraction research endpoints |
 
-Protected routes require the local session and the relevant permission. State-changing requests also require the CSRF token returned by the authentication flow. Errors use the API's structured error envelope and include a request ID for investigation.
+> Protected routes require the local session and the relevant permission. State-changing requests also require the CSRF token returned by the authentication flow. Errors use the API's structured error envelope and include a request ID for investigation.
+
+---
 
 ## 6. Database Schema
 
-The default database is SQLite at `<data_dir>/forensix.db`. The portable Windows application uses `%LOCALAPPDATA%\\ForensiX`; source runs default to `data/`.
+The default database is SQLite at `<data_dir>/forensix.db`. The portable Windows application uses `%LOCALAPPDATA%\ForensiX`; source runs default to `data/`.
 
-### Schema groups
+### 🗃️ Schema Groups
 
 | Group | Representative tables/models | Purpose |
 | --- | --- | --- |
@@ -164,30 +201,35 @@ The default database is SQLite at `<data_dir>/forensix.db`. The portable Windows
 | Reporting and custody | `reports`, `report_outputs`, `report_review_events`, `custody_events`, `custody_checkpoints`, anchors, signatures, `audit_logs` | Report outputs, chain of custody, audit chains, and external-anchor metadata |
 | Media and recordings | `media_analyses`, `screen_recording_sessions` | Bounded media analysis and documented scrcpy sessions |
 
-Schema changes are applied by Alembic. Do not edit an existing migration after it has been used; add a new migration under `server/alembic/versions` and run the migration test suite.
+> Schema changes are applied by Alembic. Do not edit an existing migration after it has been used; add a new migration under `server/alembic/versions` and run the migration test suite.
+
+---
 
 ## 7. Dependencies and Requirements
 
-### Development
+### 🧑‍💻 Development
 
-- Node.js 24+ and pnpm 11+
-- Python 3.12+
-- React 19, TypeScript 6, Vite, Tailwind CSS, TanStack Query, and `lucide-react`
-- FastAPI, Uvicorn, Pydantic Settings, SQLAlchemy, Alembic, SQLite, Argon2, ReportLab, and pywebview
-- Pytest, pytest-asyncio, HTTPX, Ruff, mypy, PyInstaller, and CycloneDX tooling
+| Category | Stack |
+| --- | --- |
+| Runtimes | Node.js 24+, pnpm 11+, Python 3.12+ |
+| Frontend | React 19, TypeScript 6, Vite, Tailwind CSS, TanStack Query, `lucide-react` |
+| Backend | FastAPI, Uvicorn, Pydantic Settings, SQLAlchemy, Alembic, SQLite, Argon2, ReportLab, pywebview |
+| Tooling | Pytest, pytest-asyncio, HTTPX, Ruff, mypy, PyInstaller, CycloneDX |
 
-The authoritative manifests are `package.json`, `pnpm-lock.yaml`, `requirements-dev.txt`, `requirements-release.txt`, and the `pyproject.toml` files in the Python packages.
+> The authoritative manifests are `package.json`, `pnpm-lock.yaml`, `requirements-dev.txt`, `requirements-release.txt`, and the `pyproject.toml` files in the Python packages.
 
-### Workstation integrations
+### 🔗 Workstation Integrations
 
 - Android SDK Platform-Tools/ADB is required for real-device work.
 - The Windows portable release bundles the official scrcpy runtime.
 - ALEAPP and PhotoRec are optional external tools and are enabled only with explicit path and SHA-256 configuration.
 - USB drivers, device authorization, and Developer Options remain operating-system/device prerequisites.
 
+---
+
 ## 8. Installation and Deployment
 
-### Source checkout
+### 💻 Source Checkout
 
 ```powershell
 pnpm install
@@ -203,9 +245,9 @@ $env:FORENSIX_MOCK_ADB_SCENARIO = "authorized"
 pnpm dev
 ```
 
-For real-device development, use `scripts/start-forensix.ps1 -AdbPath <path>` on Windows or `scripts/start-forensix.sh` on Linux/macOS.
+> For real-device development, use `scripts/start-forensix.ps1 -AdbPath <path>` on Windows or `scripts/start-forensix.sh` on Linux/macOS.
 
-### Portable release
+### 📦 Portable Release
 
 1. Download the platform ZIP from the GitHub Releases page.
 2. Verify `SHA256SUMS.txt` or the archive sidecar checksum.
@@ -215,9 +257,9 @@ For real-device development, use `scripts/start-forensix.ps1 -AdbPath <path>` on
 6. Run `ForensiX.exe` on Windows or the platform executable on Linux/macOS.
 7. Complete local administrator bootstrap, detect the device, create a case, assess capabilities, and acquire only supported items.
 
-The application is intentionally a local workstation deployment. Plain HTTP is restricted to loopback; it should not be exposed through a public reverse proxy or hosted as an internet-facing service. See [workstation setup](WORKSTATION_SETUP.md) and [release packaging](RELEASE_PACKAGING.md).
+> The application is intentionally a local workstation deployment. Plain HTTP is restricted to loopback; it should not be exposed through a public reverse proxy or hosted as an internet-facing service. See [workstation setup](WORKSTATION_SETUP.md) and [release packaging](RELEASE_PACKAGING.md).
 
-### Building a release
+### 🏗️ Building a Release
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-release.txt
@@ -225,6 +267,8 @@ The application is intentionally a local workstation deployment. Plain HTTP is r
 ```
 
 The tagged GitHub Actions workflow builds Windows, Linux, and macOS bundles, generates SBOMs and attestations, writes checksums, and publishes the normalized release assets.
+
+---
 
 ## 9. Validation and Quality Checks
 
@@ -239,10 +283,20 @@ pnpm build
 .\.venv\Scripts\pytest.exe
 ```
 
-The CI workflow runs the frontend checks and backend checks on every push and pull request. Physical-device validation records are separate from mock validation and must not be represented as equivalent coverage.
+> The CI workflow runs the frontend checks and backend checks on every push and pull request. Physical-device validation records are separate from mock validation and must not be represented as equivalent coverage.
+
+---
 
 ## 10. Capability and Research Boundaries
 
 The current product supports capability-gated logical workflows for authorized rooted and non-rooted devices. It does not claim universal private-app extraction, hardware write blocking, locked-device bypass, deleted-data recovery, or support for every OEM/Android security patch level.
 
-The older Android 7-10 and pre-October-2019 track is research-only. APK downgrade, temporary rooting, password brute force, lock bypassing, Qualcomm/EDL extraction, and proprietary Oxygen-style acquisition are not implemented product features. They must remain labelled research or planned until lawful, device-specific implementations and validation evidence exist.
+> The older Android 7-10 and pre-October-2019 track is research-only. APK downgrade, temporary rooting, password brute force, lock bypassing, Qualcomm/EDL extraction, and proprietary Oxygen-style acquisition are not implemented product features. They must remain labelled research or planned until lawful, device-specific implementations and validation evidence exist.
+
+---
+
+<div align="center">
+
+Reviewer and handover documentation for the ForensiX workstation. 📘
+
+</div>
