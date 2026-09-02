@@ -76,8 +76,9 @@ Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`Fo
 </details>
 
 <details open>
-<summary><strong>🔐 Passcode Assessment & Offline Hashcat Integration</strong></summary>
+<summary><strong>🔐 Passcode Assessment, Lock Bypass & Offline Hashcat Integration</strong></summary>
 
+- **Screen Lock Bypass Engine**: `screen_lock_bypass.py` implements forensic lock bypass via `/data/system/locksettings.db` key clearing (`lockscreen.disabled=1`), Gatekeeper key removal, RAM disk boot overlay patching (`ro.secure=0`, `ro.debuggable=1`), and automated restoration.
 - **Offline Hash Extractor**: `offline_hash_extractor.py` extracts Gatekeeper enrolled hashes, synthetic password blobs (`spblob`), and legacy salt keys from rooted devices.
 - **Hashcat Subprocess Launcher**: `hashcat_launcher.py` manages Hashcat execution for Android modes 10 (MD5 pattern), 13800 (FBE/Gatekeeper), and 18800 (FDE).
 - **Lock Screen Assessment**: `screen_lock_assessment.py` reads `locksettings.db`, classifies credential types, calculates search space sizes, and enforces wipe-risk attempt limits.
