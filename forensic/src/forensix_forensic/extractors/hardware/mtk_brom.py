@@ -108,6 +108,45 @@ class MtkPartitionInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class MtkDaEntry:
+    """Download Agent entry in the MediaTek chipset registry."""
+
+    chipset_id: int
+    chipset_name: str
+    recommended_da_file: str
+    requires_sla_auth: bool
+    flash_type: str
+
+
+class MtkDaRegistry:
+    """Registry mapping MediaTek chipset IDs to Download Agent parameters."""
+
+    _REGISTRY: dict[int, MtkDaEntry] = {
+        0x6580: MtkDaEntry(0x6580, "MT6580", "MTK_AllInOne_DA_v5.bin", False, "emmc"),
+        0x6737: MtkDaEntry(0x6737, "MT6737", "MTK_AllInOne_DA_v5.bin", False, "emmc"),
+        0x6739: MtkDaEntry(0x6739, "MT6739", "MTK_AllInOne_DA_v5.bin", False, "emmc"),
+        0x6753: MtkDaEntry(0x6753, "MT6753", "MTK_AllInOne_DA_v5.bin", False, "emmc"),
+        0x6761: MtkDaEntry(0x6761, "MT6761", "MTK_AllInOne_DA_v6.bin", True, "emmc"),
+        0x6765: MtkDaEntry(0x6765, "MT6765", "MTK_AllInOne_DA_v6.bin", True, "emmc"),
+        0x6771: MtkDaEntry(0x6771, "MT6771", "MTK_AllInOne_DA_v6.bin", True, "emmc"),
+        0x6785: MtkDaEntry(0x6785, "MT6785", "MTK_AllInOne_DA_v6.bin", True, "ufs"),
+        0x6833: MtkDaEntry(0x6833, "MT6833", "MTK_AllInOne_DA_v6.bin", True, "ufs"),
+        0x6873: MtkDaEntry(0x6873, "MT6873", "MTK_AllInOne_DA_v6.bin", True, "ufs"),
+    }
+
+    @classmethod
+    def lookup(cls, chipset_id: int) -> MtkDaEntry | None:
+        """Lookup DA metadata by 16-bit MTK Chipset ID."""
+        return cls._REGISTRY.get(chipset_id)
+
+    @classmethod
+    def is_auth_required(cls, chipset_id: int) -> bool:
+        """Return True if the chipset requires SLA/DAA authentication bypass."""
+        entry = cls.lookup(chipset_id)
+        return entry.requires_sla_auth if entry else True
+
+
+@dataclass(frozen=True, slots=True)
 class MtkBromAcquisitionResult:
     """Sealed result of a BROM physical acquisition."""
 
