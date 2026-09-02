@@ -93,6 +93,39 @@ class FdlPartitionEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class UnisocFdlEntry:
+    """FDL loader entry in the Unisoc/Spreadtrum registry."""
+
+    chipset: str
+    fdl1_addr: int
+    fdl2_addr: int
+    storage_type: str
+
+
+class UnisocFdlRegistry:
+    """Registry mapping Unisoc SoC models to FDL load addresses."""
+
+    _REGISTRY: dict[str, UnisocFdlEntry] = {
+        "SC7731E": UnisocFdlEntry("SC7731E", 0x50000000, 0x9F000000, "emmc"),
+        "SC9832E": UnisocFdlEntry("SC9832E", 0x50000000, 0x9F000000, "emmc"),
+        "SC9863A": UnisocFdlEntry("SC9863A", 0x50000000, 0x9F000000, "emmc"),
+        "T606": UnisocFdlEntry("T606", 0x50000000, 0x9F000000, "ufs"),
+        "T610": UnisocFdlEntry("T610", 0x50000000, 0x9F000000, "ufs"),
+        "T618": UnisocFdlEntry("T618", 0x50000000, 0x9F000000, "ufs"),
+        "T700": UnisocFdlEntry("T700", 0x50000000, 0x9F000000, "ufs"),
+    }
+
+    @classmethod
+    def lookup(cls, chipset: str) -> UnisocFdlEntry | None:
+        """Lookup FDL entry by chipset model string."""
+        upper = chipset.upper().strip()
+        for key, entry in cls._REGISTRY.items():
+            if key in upper:
+                return entry
+        return None
+
+
+@dataclass(frozen=True, slots=True)
 class UnisocFdlAcquisitionResult:
     """Sealed result of a Unisoc/Spreadtrum FDL physical acquisition."""
 
