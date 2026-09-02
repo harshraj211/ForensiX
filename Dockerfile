@@ -1,4 +1,7 @@
 # syntax=docker/dockerfile:1
+# Official Genymobile scrcpy release used when bundling the Linux runtime.
+# Keep in sync with scripts/install-scrcpy.ps1.
+ARG SCRCPY_VERSION=4.1
 
 ###############################################################################
 # Stage 1: Build the React/TypeScript web application.
@@ -46,10 +49,34 @@ COPY apps/api apps/api
 # copied source trees under /opt/forensix (via PYTHONPATH) so the source-relative
 # Alembic migration resolution keeps working.
 RUN python -m pip install --upgrade pip \
-    && python -m pip install --no-cache-dir ./forensic ./server ./apps/api
+    && python -m pip install --no-cache-dir ./forensic ./server ./apps/api \
+    # Hardware physical-acquisition handlers (USB) and cloud backup downloaders.
+    && python -m pip install --no-cache-dir \
+        pyusb \
+        aiohttp \
+        # Media-analysis OCR path.
+        pytesseract
 
 ###############################################################################
-# Stage 3: Production runtime.
+# Stage 3: Stage the scrcpy Linux runtime (official release).
+###############################################################################
+FROM python:3.12-slim AS scrcpy-stage
+
+ARG SCRCPY_VERSION
+
+# Download the official x86_64 Linux scrcpy release. The digest is checked
+# before the archive is used; the digest must be updated when SCRCPY_VERSION
+# changes.
+ADD https://github.com/Genymobile/scrcpy/releases/download/v${SCRCPY_VERSION}/scrcpy-linux-x86_64-v${SCRCPY_VERSION}.tar.gz /tmp/scrcpy.tar.gz
+RUN set -eu \
+    && echo "ad56ae8bfeedf41e824945c11dbf55fcb092b3e615b9b486f48a50e30d389635  /tmp/scrcpy.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/scrcpy \
+    && tar -xzf /tmp/scrcpy.tar.gz -C /opt/scrcpy --strip-components=1 \
+    && rm /tmp/scrcpy.tar.gz \
+    && test -x /opt/scrcpy/scrcpy
+
+###############################################################################
+# Stage 4: Production runtime.
 ###############################################################################
 FROM python:3.12-slim AS runtime
 
@@ -57,9 +84,22 @@ LABEL org.opencontainers.image.title="ForensiX"
 LABEL org.opencontainers.image.description="Local Android evidence-triage workstation"
 LABEL org.opencontainers.image.version="1.0.0"
 
-# curl for health checks; android-tools-adb provides the device transport.
+# curl for health checks; android-tools-adb provides the device transport;
+# tesseract-ocr enables the media-analysis OCR path; usbutils/libusb provide
+# the USB tooling used by the hardware physical-acquisition handlers.
+# SDL2/FFmpeg runtime libraries support the bundled scrcpy binary.
 RUN apt-get update \
-    && apt-get install --no-install-recommends --yes curl android-tools-adb \
+    && apt-get install --no-install-recommends --yes \
+        curl \
+        android-tools-adb \
+        tesseract-ocr \
+        usbutils \
+        libusb-1.0-0 \
+        libsdl2-2.0-0 \
+        libavcodec-dev \
+        libavformat-dev \
+        libavutil-dev \
+        libswscale-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a dedicated, non-root user.
@@ -75,9 +115,13 @@ COPY --from=python-deps /install/server /opt/forensix/server
 COPY --from=python-deps /install/apps /opt/forensix/apps
 COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=python-deps /usr/local/bin /usr/local/bin
-# Verify the source trees are importable before continuing.
+# Verify the source trees and the optional hardware/cloud/OCR modules are
+# importable before continuing.
 RUN PYTHONPATH=/opt/forensix/forensic/src:/opt/forensix/server/src:/opt/forensix/apps/api/src \
-    python -c "import forensix_api, forensix_server, forensix_forensic"
+    python -c "import forensix_api, forensix_server, forensix_forensic, usb.core, aiohttp, pytesseract"
+
+# Bundle the official scrcpy Linux runtime.
+COPY --from=scrcpy-stage /opt/scrcpy /opt/scrcpy
 
 # The API serves the SPA through Starlette's StaticFiles.
 COPY --from=web-build /build/apps/web/dist /opt/forensix/web/dist
@@ -99,7 +143,9 @@ ENV PYTHONUNBUFFERED=1 \
     FORENSIX_API_PORT=8765 \
     FORENSIX_DATA_DIR=/data \
     FORENSIX_ALLOWED_ORIGINS='["http://127.0.0.1:5173"]' \
-    PYTHONPATH=/opt/forensix/forensic/src:/opt/forensix/server/src:/opt/forensix/apps/api/src
+    PYTHONPATH=/opt/forensix/forensic/src:/opt/forensix/server/src:/opt/forensix/apps/api/src \
+    # Bundled scrcpy Linux runtime.
+    FORENSIX_SCRCPY_PATH=/opt/scrcpy/scrcpy
 
 # Persistent case database and evidence.
 VOLUME ["/data"]
