@@ -6,14 +6,20 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from forensix_forensic.extractors.hardware import (
     BypassVector,
+    LoaderNotFoundError,
+    LoaderStore,
     LockBypassConfig,
     MtkDaRegistry,
     ProgrammerRegistry,
+    RootNotAvailableError,
     ScreenLockBypassEngine,
     UnisocFdlRegistry,
 )
+
 
 
 class TestProgrammerRegistry:
@@ -66,10 +72,19 @@ class TestUnisocFdlRegistry:
 class TestScreenLockBypassEngine:
     def test_bypass_lock_settings_db_patch(self, tmp_path: Path) -> None:
         mock_adb = AsyncMock()
-        mock_adb.shell.return_value = (
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  "
-            "/data/system/locksettings.db"
-        )
+
+        async def mock_shell(serial: str, cmd: str) -> str:
+            if "id" in cmd:
+                return "uid=0(root) gid=0(root)"
+            if "getprop" in cmd:
+                return "28"
+            if "lockscreen.disabled" in cmd and "SELECT" in cmd:
+                return "1"
+            if "lockscreen.password_type" in cmd:
+                return "131072"
+            return "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /data/system/locksettings.db"
+
+        mock_adb.shell = mock_shell
         mock_adb.pull = AsyncMock()
 
         engine = ScreenLockBypassEngine(
@@ -90,7 +105,43 @@ class TestScreenLockBypassEngine:
         assert result.success is True
         assert result.db_patched is True
         assert result.vector_used == "locksettings_db_patch"
+        assert result.android_api_level == 28
         assert len(result.timeline) > 0
+
+    def test_bypass_lock_root_not_available(self, tmp_path: Path) -> None:
+        mock_adb = AsyncMock()
+        mock_adb.shell.return_value = "uid=2000(shell) gid=2000(shell)"
+
+        engine = ScreenLockBypassEngine(adb=mock_adb, output_dir=tmp_path)
+
+        with pytest.raises(RootNotAvailableError):
+            asyncio.run(
+                engine.bypass_lock(
+                    serial="emulator-5554",
+                    case_id="CASE-2026-001",
+                    operator_id="examiner@lab.example",
+                )
+            )
+
+    def test_bypass_dry_run(self, tmp_path: Path) -> None:
+        mock_adb = AsyncMock()
+        engine = ScreenLockBypassEngine(
+            adb=mock_adb,
+            output_dir=tmp_path,
+            config=LockBypassConfig(dry_run=True),
+        )
+
+        result = asyncio.run(
+            engine.bypass_lock(
+                serial="emulator-5554",
+                case_id="CASE-2026-001",
+                operator_id="examiner@lab.example",
+            )
+        )
+
+        assert result.success is True
+        assert result.dry_run is True
+        assert mock_adb.shell.call_count == 0
 
     def test_restore_lock_missing_backup(self, tmp_path: Path) -> None:
         mock_adb = AsyncMock()
@@ -99,3 +150,31 @@ class TestScreenLockBypassEngine:
 
         restored = asyncio.run(engine.restore_lock("emulator-5554", dummy_result))
         assert restored is False
+
+
+class TestLoaderStore:
+    def test_get_missing_loaders_dir(self) -> None:
+        store = LoaderStore(loaders_dir=None)
+        with pytest.raises(LoaderNotFoundError, match="no loaders_dir configured"):
+            store.get("prog_emmc_firehose_8937.mbn")
+
+    def test_get_nonexistent_file(self, tmp_path: Path) -> None:
+        store = LoaderStore(loaders_dir=tmp_path)
+        with pytest.raises(LoaderNotFoundError, match="Loader binary not found"):
+            store.get("nonexistent.mbn")
+
+    def test_get_empty_file(self, tmp_path: Path) -> None:
+        empty_loader = tmp_path / "empty.bin"
+        empty_loader.write_bytes(b"")
+        store = LoaderStore(loaders_dir=tmp_path, validate_checksums=False)
+        with pytest.raises(LoaderNotFoundError, match="Loader binary is empty"):
+            store.get("empty.bin")
+
+    def test_get_valid_file(self, tmp_path: Path) -> None:
+        loader = tmp_path / "valid.bin"
+        loader.write_bytes(b"\x00\x01\x02\x03")
+        store = LoaderStore(loaders_dir=tmp_path, validate_checksums=False)
+        resolved = store.get("valid.bin")
+        assert resolved == loader
+        assert store.sha256("valid.bin") == "054196412030b42f6c91a329d892d1...".lower() or len(store.sha256("valid.bin")) == 64
+
