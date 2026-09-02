@@ -17,6 +17,8 @@ import { Link, useParams } from "react-router-dom";
 import { caseKeys } from "../cases/caseKeys";
 import { CaseError } from "../cases/CasesPage";
 import { FileTypeIcon } from "../../components/FileTypeIcon";
+import { CaseSubnav } from "../../components/CaseSubnav";
+import { AdvancedExtractionsPanel } from "./AdvancedExtractionsPanel";
 import {
   cancelAcquisitionJob,
   artifactPreviewContentUrl,
@@ -225,6 +227,7 @@ export function AcquisitionPlanningPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
       <Link to={`/cases/${caseId}`} className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200">
         <ArrowLeft size={15} aria-hidden="true" /> Back to case
       </Link>
@@ -374,6 +377,8 @@ export function AcquisitionPlanningPage() {
           latestJob={latestJob}
         />
       </div>
+
+      <AdvancedExtractionsPanel caseId={caseId} />
 
       <PlanHistory
         plans={plansQuery.data?.items ?? []}

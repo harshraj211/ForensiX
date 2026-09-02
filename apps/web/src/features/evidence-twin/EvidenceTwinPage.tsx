@@ -16,7 +16,9 @@ import { Link, useParams } from "react-router-dom";
 
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { CaseSubnav } from "../../components/CaseSubnav";
 import { DownloadLink } from "../../components/DownloadLink";
+import { TakeoutImportPanel } from "../evidence/TakeoutImportPanel";
 import {
   assessEvidenceRecoveryCandidates,
   carveEvidenceRecoveryCandidates,
@@ -113,6 +115,7 @@ export function EvidenceTwinPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
       <Link
         to={`/cases/${caseId}`}
         className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200"
@@ -230,6 +233,8 @@ export function EvidenceTwinPage() {
           </div>
         </div>
       </section>
+
+      <TakeoutImportPanel caseId={caseId} />
 
       <section className="mt-8 rounded-2xl border border-white/8 bg-white/[0.02] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">

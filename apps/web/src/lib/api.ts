@@ -1801,6 +1801,159 @@ export function capturePhysicalBlock(
   );
 }
 
+export interface ExtractionTimelineEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+}
+
+export interface WhatsAppDowngradeResult {
+  extraction_id: string;
+  package_name: string;
+  original_version: string | null;
+  downgrade_version: string;
+  backup_file_size_bytes: number;
+  backup_sha256: string;
+  encryption_key_found: boolean;
+  encrypted_database_found: boolean;
+  decrypted_database_path: string | null;
+  key_file_path: string | null;
+  database_file_path: string | null;
+  timeline: ExtractionTimelineEntry[];
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface SignalExtractionResult {
+  extraction_id: string;
+  package_name: string;
+  passphrase_found: boolean;
+  passphrase_sha256: string;
+  encrypted_database_size_bytes: number;
+  encrypted_database_sha256: string;
+  decrypted_database_path: string | null;
+  timeline: ExtractionTimelineEntry[];
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface TelegramExtractionResult {
+  extraction_id: string;
+  package_name: string;
+  package_display_name: string;
+  database_files_copied: number;
+  database_total_size_bytes: number;
+  database_sha256: string;
+  database_path: string;
+  timeline: ExtractionTimelineEntry[];
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface CarvedFragment {
+  source_file: string;
+  offset_bytes: number;
+  length_bytes: number;
+  fragment_type: string;
+  confidence: string;
+  content_preview: string;
+  content_sha256: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface SQLiteCarvingResult {
+  carving_id: string;
+  source_files: string[];
+  source_total_bytes: number;
+  fragments_found: number;
+  fragments: CarvedFragment[];
+  wal_fragments_found: number;
+  freelist_fragments_found: number;
+  unallocated_fragments_found: number;
+  duration_seconds: number;
+  limitations: string[];
+}
+
+export function extractWhatsAppDowngrade(
+  caseId: string,
+  serial: string,
+  operatorId: string,
+): Promise<WhatsAppDowngradeResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/whatsapp-downgrade`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        case_id: caseId,
+        operator_id: operatorId,
+        downgrade_acknowledged: true,
+      }),
+    },
+  );
+}
+
+export function extractSignalRooted(
+  caseId: string,
+  serial: string,
+  operatorId: string,
+): Promise<SignalExtractionResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/signal-rooted`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        case_id: caseId,
+        operator_id: operatorId,
+        root_acknowledged: true,
+      }),
+    },
+  );
+}
+
+export function extractTelegramRooted(
+  caseId: string,
+  serial: string,
+  operatorId: string,
+  packageName = "",
+): Promise<TelegramExtractionResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/telegram-rooted`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        case_id: caseId,
+        operator_id: operatorId,
+        package_name: packageName,
+        root_acknowledged: true,
+      }),
+    },
+  );
+}
+
+export function carveSqliteDatabase(
+  caseId: string,
+  sourcePaths: string[],
+  maxFragments = 10000,
+): Promise<SQLiteCarvingResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/sqlite-carve`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        source_paths: sourcePaths,
+        case_id: caseId,
+        max_fragments: maxFragments,
+      }),
+    },
+  );
+}
+
 export async function getCaseCompleteness(
   caseId: string,
 ): Promise<AcquisitionCompletenessResponse> {

@@ -121,7 +121,7 @@ if (-not (Test-ListeningPort $WebPort)) {
         -RedirectStandardError (Join-Path $logDirectory "web.err.log") | Out-Null
 }
 
-$deadline = (Get-Date).AddSeconds(20)
+$deadline = (Get-Date).AddSeconds(60)
 do {
     Start-Sleep -Milliseconds 250
     $apiReady = Test-ListeningPort $ApiPort
@@ -129,7 +129,7 @@ do {
 } until (($apiReady -and $webReady) -or (Get-Date) -ge $deadline)
 
 if (-not $apiReady -or -not $webReady) {
-    throw "ForensiX did not become ready within 20 seconds. Check the terminal and runtime logs."
+    throw "ForensiX did not become ready within 60 seconds. Check the terminal and runtime logs."
 }
 
 $previousPreference = $ErrorActionPreference

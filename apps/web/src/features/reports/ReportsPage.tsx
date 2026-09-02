@@ -5,8 +5,10 @@ import { useState } from "react";
 
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { CaseSubnav } from "../../components/CaseSubnav";
 import { DownloadLink } from "../../components/DownloadLink";
 import { FileTypeIcon } from "../../components/FileTypeIcon";
+import { AiNarrativePanel } from "../evidence/AiNarrativePanel";
 import {
   artifactPreviewContentUrl,
   auditLogDownloadUrl,
@@ -38,13 +40,13 @@ export function ReportsCasesPage() {
       </p>
       {casesQuery.isPending && <p role="status" className="mt-8 text-sm text-slate-500">Loading accessible cases...</p>}
       {casesQuery.isError && <div className="mt-6"><CaseError error={casesQuery.error} /></div>}
-      <ul className="mt-7 grid gap-3 sm:grid-cols-2">
+      <ul className="mt-8 space-y-3">
         {casesQuery.data?.items.map((item) => (
           <li key={item.id}>
             <Link to={`/cases/${item.id}/reports`} className="block rounded-md border border-neutral-300 bg-white p-5 transition hover:border-neutral-500 hover:bg-neutral-50">
-              <p className="font-mono text-[10px] font-medium text-[#246c44]">{item.case_number}</p>
-              <h2 className="mt-2 text-base font-semibold text-neutral-950">{item.title}</h2>
-              <p className="mt-2 text-xs font-medium uppercase tracking-wide text-neutral-600">{item.status}</p>
+              <p className="font-mono text-xs text-neutral-500">{item.case_number}</p>
+              <h2 className="mt-2 text-lg font-semibold text-neutral-900">{item.title}</h2>
+              <p className="mt-1 text-sm text-neutral-600">{item.description ?? "No description recorded"}</p>
             </Link>
           </li>
         ))}
@@ -76,7 +78,7 @@ export function CaseReportsPage() {
     enabled: Boolean(caseId),
   });
   const custodyQuery = useQuery({
-    queryKey: ["report-custody", caseId],
+    queryKey: caseKeys.custody(caseId),
     queryFn: () => listCustodyEvents(caseId),
     enabled: Boolean(caseId),
   });
@@ -95,6 +97,7 @@ export function CaseReportsPage() {
   if (caseQuery.isError) return <CaseError error={caseQuery.error} />;
   return (
     <div className="mx-auto max-w-5xl">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data.case_number} />
       <Link to={`/cases/${caseId}`} className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200"><ArrowLeft size={15} /> Back to case</Link>
       <div className="mt-6 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
@@ -113,6 +116,9 @@ export function CaseReportsPage() {
           <button type="button" disabled={generation.isPending} onClick={() => { generation.mutate(); }} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-cyan-300 px-5 text-sm font-semibold text-slate-950 disabled:cursor-wait disabled:opacity-50">
             {generation.isPending ? <LoaderCircle size={17} className="animate-spin" /> : <FileCheck2 size={17} />} Generate preliminary report
           </button>
+          <DownloadLink href={`/api/v1/cases/${encodeURIComponent(caseId)}/exports/uco`} filename={`forensix-case-${caseQuery.data.case_number}-uco.json`} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-purple-400/30 bg-purple-500/10 px-4 text-xs font-semibold text-purple-200 hover:bg-purple-500/20">
+            <Download size={14} /> Export CASE / UCO ontology (JSON-LD)
+          </DownloadLink>
           <DownloadLink href={caseAuditLogDownloadUrl(caseId)} filename="forensix-case-audit-log.json" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-cyan-300/20 px-4 text-xs font-semibold text-cyan-100">
             <Download size={14} /> Download this case audit log
           </DownloadLink>
@@ -125,6 +131,8 @@ export function CaseReportsPage() {
         <ShieldAlert className="mt-0.5 shrink-0 text-amber-300" size={19} />
         <p>Reports are marked Preliminary by default. ADB is not a hardware write blocker, and unsupported private application data is not claimed.</p>
       </div>
+
+      <AiNarrativePanel caseId={caseId} />
       <section className="mt-6 border-y border-white/10 py-6" aria-labelledby="acquired-evidence-heading">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>

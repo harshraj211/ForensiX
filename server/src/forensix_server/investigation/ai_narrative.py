@@ -9,11 +9,12 @@ gracefully when the API key is not configured.
 
 from __future__ import annotations
 
+import os
 import textwrap
 from dataclasses import dataclass
 from datetime import datetime
 
-_GROQ_MODEL = "llama-3.1-8b-instant"
+_GROQ_MODEL = os.getenv("FORENSIX_GROQ_MODEL", "qwen/qwen3.8-27b")
 _MAX_TOKENS = 1024
 _TEMPERATURE = 0.2  # Low temperature for factual, deterministic output
 

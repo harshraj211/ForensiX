@@ -38,6 +38,7 @@ import {
   type ArtifactStatus,
 } from "../../lib/api";
 import { MediaAnalysisPanel } from "./MediaAnalysisPanel";
+import { CaseSubnav } from "../../components/CaseSubnav";
 import { PromoteToKeyEvidence } from "./PromoteToKeyEvidence";
 
 const categories: Array<{ value: ArtifactCategory | ""; label: string }> = [
@@ -135,6 +136,7 @@ export function EvidenceExplorerPage() {
 
   return (
     <div className="mx-auto max-w-7xl">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
       <Link to={`/cases/${caseId}`} className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200">
         <ArrowLeft size={15} aria-hidden="true" /> Back to case
       </Link>

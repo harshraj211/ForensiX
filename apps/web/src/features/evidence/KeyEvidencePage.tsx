@@ -28,6 +28,7 @@ import {
 } from "../../lib/api";
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { CaseSubnav } from "../../components/CaseSubnav";
 
 const PRIORITIES: Array<{ value: KeyEvidencePriority | ""; label: string }> = [
   { value: "", label: "All priorities" },
@@ -92,6 +93,7 @@ export function KeyEvidencePage() {
 
   return (
     <div className="mx-auto max-w-[1320px]">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
       <Link
         to={`/cases/${caseId}/command-center`}
         className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200"

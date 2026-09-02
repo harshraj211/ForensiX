@@ -6,6 +6,7 @@ import { Link, useParams } from "react-router-dom";
 import { getCase, searchSourceArtifacts, type EvidenceSourceArtifact } from "../../lib/api";
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { CaseSubnav } from "../../components/CaseSubnav";
 
 const CATEGORY_LABELS: Record<string, string> = {
   contact: "Contacts",
@@ -55,6 +56,7 @@ export function ArtifactSearchPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
       <Link
         to={`/cases/${caseId}`}
         className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200"

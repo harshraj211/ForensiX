@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from forensix_forensic.storage import EvidenceStore
-from forensix_server.auth import Permission, Principal
+from forensix_server.auth import Permission, Principal, RoleName
 from forensix_server.cases import CaseAccessDeniedError, CaseInvalidStateError, CaseService
 from forensix_server.custody import AuditService
 from forensix_server.db import (
@@ -138,6 +138,39 @@ class MediaAnalysisService:
                 matches.append(SimilarMedia(analysis=candidate, distance=distance))
         matches.sort(key=lambda item: (item.distance, item.analysis.id))
         return base, matches[:limit]
+
+    def backfill_unprocessed(self, database: Database) -> int:
+        """Automatically process pending unanalyzed image artifacts."""
+        with database.session() as session:
+            unprocessed = session.execute(
+                select(ArtifactRecord.id, ArtifactRecord.case_id)
+                .outerjoin(MediaAnalysisRecord, MediaAnalysisRecord.artifact_id == ArtifactRecord.id)
+                .where(
+                    ArtifactRecord.category == "image",
+                    ArtifactRecord.status == "active",
+                    MediaAnalysisRecord.id.is_(None),
+                )
+            ).all()
+
+        if not unprocessed:
+            return 0
+
+        system_principal = Principal(
+            user_id="system-worker",
+            username="system",
+            display_name="ForensiX Automation",
+            roles=frozenset({RoleName.ADMINISTRATOR}),
+            permissions=frozenset(Permission),
+        )
+
+        processed = 0
+        for artifact_id, case_id in unprocessed:
+            try:
+                self.analyze(database, system_principal, case_id, artifact_id)
+                processed += 1
+            except Exception:
+                continue
+        return processed
 
     def analyze(
         self,

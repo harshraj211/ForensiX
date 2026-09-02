@@ -27,6 +27,7 @@ import { authKeys } from "../auth/authKeys";
 import { CaseError, StatusBadge } from "./CasesPage";
 import { caseKeys } from "./caseKeys";
 import { AcquisitionCompletenessPanel } from "./AcquisitionCompletenessPanel";
+import { CaseSubnav } from "../../components/CaseSubnav";
 import { DownloadLink } from "../../components/DownloadLink";
 
 export function CaseDetailPage() {
@@ -103,6 +104,7 @@ export function CaseDetailPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
+      <CaseSubnav caseId={caseId} caseNumber={item.case_number} />
       <Link to="/cases" className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200">
         <ArrowLeft size={15} aria-hidden="true" /> Back to cases
       </Link>

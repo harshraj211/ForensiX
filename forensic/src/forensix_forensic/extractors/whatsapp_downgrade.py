@@ -310,31 +310,36 @@ class WhatsAppDowngradeExtractor:
         return match.group(1) if match else None
 
     async def _download_vulnerable_apk(self) -> Path:
-        """Download the vulnerable WhatsApp APK to the work directory.
-
-        In production this would fetch from a forensic-approved repository.
-        For the implementation we assume the APK is pre-staged in the work dir.
-        """
-        apk_path = self._work_dir / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk"
-        if apk_path.exists():
-            return apk_path
+        """Download or locate the vulnerable WhatsApp APK."""
+        candidates = [
+            self._work_dir / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk",
+            Path("tools") / "apks" / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk",
+            Path("data") / "tools" / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk",
+            Path("tools") / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
         raise FileNotFoundError(
-            f"Pre-staged vulnerable APK not found at {apk_path}. "
-            "Download the WhatsApp APK v2.11.431 and place it in the work directory."
+            f"Vulnerable WhatsApp APK (v{VULNERABLE_VERSION_CODE}) not found in tools/apks/ or work directory. "
+            "To perform downgrade extraction, place whatsapp_2.11.431.apk into tools/apks/."
         )
 
     async def _download_current_apk(self, version: str) -> Path:
-        """Locate a pre-staged current WhatsApp APK in the work directory.
-
-        The APK must be manually placed in the work directory before calling this method;
-        automatic downloading is not supported.
-        """
-        apk_path = self._work_dir / f"whatsapp_current_{version}.apk"
-        if apk_path.exists():
-            return apk_path
+        """Locate a pre-staged current WhatsApp APK for post-extraction restoration."""
+        candidates = [
+            self._work_dir / f"whatsapp_current_{version}.apk",
+            Path("tools") / "apks" / f"whatsapp_current_{version}.apk",
+            Path("data") / "tools" / f"whatsapp_current_{version}.apk",
+            Path("tools") / f"whatsapp_{version}.apk",
+            Path("tools") / f"whatsapp_current_{version}.apk",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
         raise FileNotFoundError(
-            f"Pre-staged current APK not found at {apk_path}. "
-            "Place the current WhatsApp APK in the work directory."
+            f"Current WhatsApp APK (v{version}) not found in tools/apks/ or work directory. "
+            f"Place whatsapp_current_{version}.apk into tools/apks/ to enable automated restoration."
         )
 
     @staticmethod

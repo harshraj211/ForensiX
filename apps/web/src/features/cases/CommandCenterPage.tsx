@@ -32,6 +32,7 @@ import {
 } from "../../lib/api";
 import { CaseError, StatusBadge } from "./CasesPage";
 import { caseKeys } from "./caseKeys";
+import { CaseSubnav } from "../../components/CaseSubnav";
 
 const NEXT_ACTIONS: Record<
   CommandCenterNextAction,
@@ -136,6 +137,7 @@ export function CommandCenterPage() {
 
   return (
     <div className="mx-auto max-w-[1240px]">
+      <CaseSubnav caseId={caseId} caseNumber={caseRecord.case_number} />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <Link
           to={`/cases/${caseId}`}

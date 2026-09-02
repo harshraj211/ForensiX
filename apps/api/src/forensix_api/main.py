@@ -49,6 +49,7 @@ from forensix_server.config import Settings
 from forensix_server.db import Database
 from forensix_server.evidence import ArtifactService, TimelineService
 from forensix_server.jobs import JobService
+from forensix_server.media import MediaAnalysisService
 
 
 def create_app(
@@ -77,6 +78,7 @@ def create_app(
         with database.session() as session:
             ArtifactService().backfill_completed(session)
             TimelineService().backfill(session)
+        MediaAnalysisService().backfill_unprocessed(database)
         yield
         database.dispose()
 

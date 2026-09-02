@@ -11,6 +11,7 @@ import {
 } from "../../lib/api";
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { CaseSubnav } from "../../components/CaseSubnav";
 
 interface Position {
   x: number;
@@ -43,6 +44,7 @@ export function CorrelationGraphPage() {
 
   return (
     <div className="mx-auto max-w-7xl">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
       <Link
         to={`/cases/${caseId}`}
         className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200"

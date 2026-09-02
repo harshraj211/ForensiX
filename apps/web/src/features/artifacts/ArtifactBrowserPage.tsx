@@ -14,12 +14,15 @@ import {
   Globe,
   Bell,
   FileText,
+  PackageOpen,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { CaseSubnav } from "../../components/CaseSubnav";
+import { ApkAnalysisPanel } from "../evidence/ApkAnalysisPanel";
 import {
   getCase,
   listEvidenceSources,
@@ -138,6 +141,12 @@ const CATEGORIES: Category[] = [
     label: "System",
     icon: Settings,
     match: (a) => a.category === "system" && !["wifi_network", "bluetooth_device"].includes(a.subtype),
+  },
+  {
+    id: "apk_analysis",
+    label: "Static APK Scanner",
+    icon: PackageOpen,
+    match: () => false,
   },
 ];
 
@@ -291,6 +300,7 @@ export function ArtifactBrowserPage() {
 
   return (
     <div className="flex h-[calc(100vh-73px)] flex-col">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
       <div className="border-b border-white/8 px-5 py-4 lg:px-10">
         <Link
           to={`/cases/${caseId}`}
@@ -301,7 +311,9 @@ export function ArtifactBrowserPage() {
         <div className="mt-3 flex items-end justify-between gap-4">
           <div>
             <p className="font-mono text-xs text-cyan-300/65">{caseQuery.data?.case_number}</p>
-            <h1 className="mt-1 text-2xl font-semibold text-white">Artifact browser</h1>
+            <h1 className="mt-1 text-2xl font-semibold text-white">
+              {activeCategoryId === "apk_analysis" ? "Static APK Analysis" : "Artifact browser"}
+            </h1>
           </div>
           {isPending && (
             <p className="flex items-center gap-2 text-sm text-slate-500">
@@ -349,69 +361,77 @@ export function ArtifactBrowserPage() {
           })}
         </aside>
 
-        {/* Artifact list */}
-        <div className="flex min-h-0 flex-col overflow-hidden border-r border-white/8">
-          <div className="border-b border-white/8 px-4 py-3">
-            <input
-              type="search"
-              placeholder="Search artifacts…"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); }}
-              className="w-full rounded-lg border border-white/10 bg-white/4 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-cyan-300/30 focus:outline-none"
-            />
+        {activeCategoryId === "apk_analysis" ? (
+          <div className="col-span-1 overflow-y-auto p-6 lg:col-span-2">
+            <ApkAnalysisPanel caseId={caseId} />
           </div>
-          <ol className="flex-1 overflow-y-auto divide-y divide-white/5">
-            {filtered.length === 0 && !isPending && (
-              <li className="px-4 py-8 text-center text-sm text-slate-600">
-                No artifacts in this category.
-              </li>
-            )}
-            {filtered.map((artifact) => (
-              <li key={artifact.id}>
-                <button
-                  type="button"
-                  onClick={() => { setSelectedId(artifact.id === selectedId ? null : artifact.id); }}
-                  className={`w-full px-4 py-3 text-left transition ${
-                    selectedId === artifact.id
-                      ? "bg-cyan-300/8"
-                      : "hover:bg-white/4"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium leading-snug text-white line-clamp-1">
-                      {artifact.title}
-                    </p>
-                    {artifact.status === "deleted" && (
-                      <span className="shrink-0 rounded border border-rose-300/20 px-1.5 py-0.5 text-[9px] uppercase text-rose-300">
-                        deleted
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500 line-clamp-2">{artifact.summary}</p>
-                  {artifact.event_time && (
-                    <p className="mt-1.5 font-mono text-[10px] text-cyan-300/60">
-                      {new Date(artifact.event_time).toLocaleString()}
-                    </p>
-                  )}
-                </button>
-              </li>
-            ))}
-          </ol>
-          <div className="border-t border-white/8 px-4 py-2 text-[11px] text-slate-600">
-            {filtered.length} artifact{filtered.length !== 1 ? "s" : ""}
-          </div>
-        </div>
-
-        {/* Detail panel — hidden on small screens */}
-        <div className="hidden overflow-hidden lg:block">
-          {selected ? (
-            <DetailPanel artifact={selected} caseId={caseId} />
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm text-slate-600">
-              Select an artifact to inspect
+        ) : (
+          <>
+            {/* Artifact list */}
+            <div className="flex min-h-0 flex-col overflow-hidden border-r border-white/8">
+              <div className="border-b border-white/8 px-4 py-3">
+                <input
+                  type="search"
+                  placeholder="Search artifacts…"
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); }}
+                  className="w-full rounded-lg border border-white/10 bg-white/4 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-cyan-300/30 focus:outline-none"
+                />
+              </div>
+              <ol className="flex-1 overflow-y-auto divide-y divide-white/5">
+                {filtered.length === 0 && !isPending && (
+                  <li className="px-4 py-8 text-center text-sm text-slate-600">
+                    No artifacts in this category.
+                  </li>
+                )}
+                {filtered.map((artifact) => (
+                  <li key={artifact.id}>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedId(artifact.id === selectedId ? null : artifact.id); }}
+                      className={`w-full px-4 py-3 text-left transition ${
+                        selectedId === artifact.id
+                          ? "bg-cyan-300/8"
+                          : "hover:bg-white/4"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium leading-snug text-white line-clamp-1">
+                          {artifact.title}
+                        </p>
+                        {artifact.status === "deleted" && (
+                          <span className="shrink-0 rounded border border-rose-300/20 px-1.5 py-0.5 text-[9px] uppercase text-rose-300">
+                            deleted
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500 line-clamp-2">{artifact.summary}</p>
+                      {artifact.event_time && (
+                        <p className="mt-1.5 font-mono text-[10px] text-cyan-300/60">
+                          {new Date(artifact.event_time).toLocaleString()}
+                        </p>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ol>
+              <div className="border-t border-white/8 px-4 py-2 text-[11px] text-slate-600">
+                {filtered.length} artifact{filtered.length !== 1 ? "s" : ""}
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Detail panel — hidden on small screens */}
+            <div className="hidden overflow-hidden lg:block">
+              {selected ? (
+                <DetailPanel artifact={selected} caseId={caseId} />
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-slate-600">
+                  Select an artifact to inspect
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

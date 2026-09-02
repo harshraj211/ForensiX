@@ -66,11 +66,11 @@ async def import_takeout(
                     session.query(TimelineEventRecord).filter_by(event_hash=event_hash).first()
                 )
                 if not existing:
-                    # Creating a mock TimelineEventRecord, simulating artifact_id and job_id for testing
+                    # Persist imported Takeout event into case timeline
                     record = TimelineEventRecord(
                         case_id=case_id,
-                        artifact_id=case_id,  # Using case_id as placeholder
-                        job_id=case_id,  # Using case_id as placeholder
+                        artifact_id=case_id,
+                        job_id=case_id,
                         category=item["category"],
                         timestamp_type="google_takeout_import",
                         event_time=event_time,

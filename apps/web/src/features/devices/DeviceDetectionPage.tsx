@@ -24,6 +24,7 @@ import { Link, useParams } from "react-router-dom";
 import { useState } from "react";
 
 import { caseKeys } from "../cases/caseKeys";
+import { CaseSubnav } from "../../components/CaseSubnav";
 import { useLiveScreenPreview } from "./liveScreenContext";
 import {
   ApiError,
@@ -144,14 +145,17 @@ export function DeviceDetectionPage() {
   return (
     <div className="mx-auto max-w-6xl">
       {caseId && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm">
-          <Link to={`/cases/${caseId}`} className="text-slate-500 transition hover:text-cyan-200">
-            ← Back to case
-          </Link>
-          <span className="font-mono text-xs text-cyan-300/60">
-            {caseQuery.data?.case_number ?? "Loading case context…"}
-          </span>
-        </div>
+        <>
+          <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <Link to={`/cases/${caseId}`} className="text-slate-500 transition hover:text-cyan-200">
+              ← Back to case
+            </Link>
+            <span className="font-mono text-xs text-cyan-300/60">
+              {caseQuery.data?.case_number ?? "Loading case context…"}
+            </span>
+          </div>
+        </>
       )}
       <div className="flex flex-col justify-between gap-6 border-b border-white/8 pb-8 md:flex-row md:items-end">
         <div className="min-w-0">

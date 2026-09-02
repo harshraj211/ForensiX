@@ -24,6 +24,8 @@ import {
   type StoryboardFinding,
   type StoryboardGap,
 } from "../../lib/api";
+import { CaseSubnav } from "../../components/CaseSubnav";
+import { AiNarrativePanel } from "./AiNarrativePanel";
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
 
@@ -68,6 +70,7 @@ export function InvestigationStoryboardPage() {
 
   return (
     <div className="mx-auto max-w-[1380px] print:max-w-none">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
       <Link
         to={`/cases/${caseId}/command-center`}
         className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200 print:hidden"
@@ -154,6 +157,8 @@ export function InvestigationStoryboardPage() {
           </div>
         </div>
       </section>
+
+      <AiNarrativePanel caseId={caseId} />
 
       <section className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="rounded-2xl border border-white/8 bg-white/[0.025] p-5 sm:p-6">

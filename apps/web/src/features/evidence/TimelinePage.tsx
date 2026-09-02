@@ -6,6 +6,7 @@ import { Link, useParams } from "react-router-dom";
 import { getCase, getTimeline } from "../../lib/api";
 import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
+import { CaseSubnav } from "../../components/CaseSubnav";
 
 // Helper to get local date string YYYY-MM-DD
 function toDateString(isoString: string) {
@@ -102,6 +103,7 @@ export function TimelinePage() {
 
   return (
     <div className="mx-auto max-w-5xl">
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
       <Link to={`/cases/${caseId}`} className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200">
         <ArrowLeft size={15} /> Back to case
       </Link>
