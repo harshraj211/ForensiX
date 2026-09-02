@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">ForensiX Agent</string>
+    <string name="channel_name">Extraction Service</string>
+    <string name="channel_desc">ForensiX data extraction in progress</string>
+    <string name="notif_title">ForensiX Agent</string>
+    <string name="notif_text">Extracting device data...</string>
+</resources>
