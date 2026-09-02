@@ -9,7 +9,10 @@ Provides chipset-specific physical acquisition protocol handlers:
 * :mod:`.samsung_download` — Samsung Odin / LOKE Download Mode + PIT parser
 * :mod:`.physical_acquisition` — Top-level auto-routing pipeline
 * :mod:`.screen_lock_assessment` — Lock screen forensic assessment service
+* :mod:`.screen_lock_bypass` — Forensic screen lock bypass engine
 * :mod:`.keystore_reader` — Android Keystore key blob metadata inspector
+* :mod:`.usb_transport` — Shared pyusb bulk-transfer wrapper (retry, timeout)
+* :mod:`.loader_registry` — Lab loader binary store with SHA-256 validation
 """
 
 from .chipset_detector import (
@@ -40,6 +43,11 @@ from .kirin_hisi import (
     build_erecovery_packet,
     parse_partition_table,
     verify_erecovery_handshake,
+)
+from .loader_registry import (
+    LoaderChecksumError,
+    LoaderNotFoundError,
+    LoaderStore,
 )
 from .mtk_brom import (
     BromProtocolError,
@@ -106,10 +114,14 @@ from .screen_lock_assessment import (
     _estimate_search_space,
 )
 from .screen_lock_bypass import (
+    AndroidApiPath,
     BypassVector,
+    BypassVerificationError,
     LockBypassConfig,
+    RootNotAvailableError,
     ScreenLockBypassEngine,
     ScreenLockBypassResult,
+    WipeRiskTooHighError,
 )
 from .unisoc_fdl import (
     FdlPartitionEntry,
@@ -122,6 +134,13 @@ from .unisoc_fdl import (
     build_read_partition_cmd,
     hdlc_decode,
     hdlc_encode,
+)
+from .usb_transport import (
+    UsbBulkTransport,
+    UsbDeviceNotFoundError,
+    UsbStallError,
+    UsbTimeoutError,
+    UsbTransportError,
 )
 
 __all__ = [
@@ -162,6 +181,10 @@ __all__ = [
     "KeystoreExtractor",
     "KeystoreInspectionResult",
     "parse_keyblob_header",
+    # Loader registry
+    "LoaderChecksumError",
+    "LoaderNotFoundError",
+    "LoaderStore",
     # MTK BROM
     "BromProtocolError",
     "MtkBromAcquisitionResult",
@@ -199,15 +222,19 @@ __all__ = [
     "build_odin_packet",
     "parse_pit",
     # Screen lock assessment & bypass
+    "AndroidApiPath",
     "AuthorisedEntryResult",
     "BypassVector",
+    "BypassVerificationError",
     "LockBypassConfig",
     "LockScreenProfile",
     "LockType",
+    "RootNotAvailableError",
     "ScreenLockAssessmentService",
     "ScreenLockBypassEngine",
     "ScreenLockBypassResult",
     "WipeRisk",
+    "WipeRiskTooHighError",
     "_estimate_search_space",
     # Unisoc FDL
     "FdlPartitionEntry",
@@ -220,4 +247,10 @@ __all__ = [
     "build_read_partition_cmd",
     "hdlc_decode",
     "hdlc_encode",
+    # USB transport
+    "UsbBulkTransport",
+    "UsbDeviceNotFoundError",
+    "UsbStallError",
+    "UsbTimeoutError",
+    "UsbTransportError",
 ]
