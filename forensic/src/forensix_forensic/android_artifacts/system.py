@@ -624,17 +624,25 @@ class AndroidWifiProfilesParser:
     )
 
     def can_parse(self, tables: frozenset[str]) -> bool:
-        return "wifi_profiles" in tables or "wifi_configurations" in tables or "wifi_networks" in tables
+        return (
+            "wifi_profiles" in tables
+            or "wifi_configurations" in tables
+            or "wifi_networks" in tables
+        )
 
     def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
         tables = reader.table_names()
-        table_name = "wifi_profiles" if "wifi_profiles" in tables else (
-            "wifi_configurations" if "wifi_configurations" in tables else "wifi_networks"
+        table_name = (
+            "wifi_profiles"
+            if "wifi_profiles" in tables
+            else ("wifi_configurations" if "wifi_configurations" in tables else "wifi_networks")
         )
         columns = reader.column_names(table_name)
         id_col = '"_id"' if "_id" in columns else '"id"'
-        time_col = '"last_connected"' if "last_connected" in columns else (
-            '"timestamp"' if "timestamp" in columns else id_col
+        time_col = (
+            '"last_connected"'
+            if "last_connected" in columns
+            else ('"timestamp"' if "timestamp" in columns else id_col)
         )
         selected = [
             f"{id_col} AS _id",
@@ -706,9 +714,13 @@ class AndroidBluetoothDevicesParser:
         table_name = "bluetooth_devices" if "bluetooth_devices" in tables else "paired_devices"
         columns = reader.column_names(table_name)
         id_col = '"_id"' if "_id" in columns else '"id"'
-        time_col = '"last_connected"' if "last_connected" in columns else (
-            '"paired_time"' if "paired_time" in columns else (
-                '"timestamp"' if "timestamp" in columns else id_col
+        time_col = (
+            '"last_connected"'
+            if "last_connected" in columns
+            else (
+                '"paired_time"'
+                if "paired_time" in columns
+                else ('"timestamp"' if "timestamp" in columns else id_col)
             )
         )
         selected = [
@@ -849,9 +861,13 @@ class AndroidUsersParser:
         table_name = "users" if "users" in tables else "user_profiles"
         columns = reader.column_names(table_name)
         id_col = '"id"' if "id" in columns else ('"_id"' if "_id" in columns else '"user_id"')
-        time_col = '"created_at"' if "created_at" in columns else (
-            '"creation_time"' if "creation_time" in columns else (
-                '"last_logged_in"' if "last_logged_in" in columns else id_col
+        time_col = (
+            '"created_at"'
+            if "created_at" in columns
+            else (
+                '"creation_time"'
+                if "creation_time" in columns
+                else ('"last_logged_in"' if "last_logged_in" in columns else id_col)
             )
         )
         selected = [
@@ -881,14 +897,18 @@ class AndroidUsersParser:
     def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
         user_id = integer(row.get("id"))
         name = text(row.get("name")) or (
-            "Primary Owner" if user_id == 0 else (
-                "Work Profile" if user_id == 10 else (
-                    "Dual App Clone Profile" if user_id in (11, 999) else f"User {user_id}"
-                )
+            "Primary Owner"
+            if user_id == 0
+            else (
+                "Work Profile"
+                if user_id == 10
+                else ("Dual App Clone Profile" if user_id in (11, 999) else f"User {user_id}")
             )
         )
         u_type = text(row.get("user_type")) or (
-            "android.os.usertype.full.SYSTEM" if user_id == 0 else "android.os.usertype.profile.MANAGED"
+            "android.os.usertype.full.SYSTEM"
+            if user_id == 0
+            else "android.os.usertype.profile.MANAGED"
         )
         sandbox_path = f"/data/user/{user_id}/"
 

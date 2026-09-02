@@ -72,8 +72,7 @@ def test_sqlite_carver_on_deleted_records(tmp_path: Path):
         "INSERT INTO messages VALUES (1, 'Alice', 'Target coordinates 37.77, -122.41', 1700000000)"
     )
     conn.execute(
-        "INSERT INTO messages VALUES (2, 'Bob', "
-        "'Confidential passphrase AlphaOmega99', 1700000001)"
+        "INSERT INTO messages VALUES (2, 'Bob', 'Confidential passphrase AlphaOmega99', 1700000001)"
     )
     conn.execute(
         "INSERT INTO messages VALUES (3, 'Charlie', "
@@ -91,8 +90,6 @@ def test_sqlite_carver_on_deleted_records(tmp_path: Path):
 
     assert len(carved) > 0
     # Verify we carved records
-    all_texts = [
-        str(col) for r in carved for col in r.columns if isinstance(col, str)
-    ]
+    all_texts = [str(col) for r in carved for col in r.columns if isinstance(col, str)]
     # Check that text records are recovered
     assert any("Alice" in t or "AlphaOmega99" in t or "Charlie" in t for t in all_texts)

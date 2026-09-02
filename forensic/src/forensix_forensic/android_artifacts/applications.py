@@ -54,8 +54,10 @@ class WhatsAppMessageParser:
             raise AndroidArtifactParserError("WhatsApp table missing primary key identifier.")
 
         id_col = '"_id"' if "_id" in columns else '"key_id"'
-        time_col = '"timestamp"' if "timestamp" in columns else (
-            '"received_timestamp"' if "received_timestamp" in columns else id_col
+        time_col = (
+            '"timestamp"'
+            if "timestamp" in columns
+            else ('"received_timestamp"' if "received_timestamp" in columns else id_col)
         )
 
         selected = [
@@ -111,7 +113,9 @@ class WhatsAppMessageParser:
         row: Mapping[str, object], context: ParserContext, jid_map: dict[int, str]
     ) -> ParsedArtifact:
         identifier = integer(row.get("_id"))
-        from_me_val = row.get("from_me") if row.get("from_me") is not None else row.get("key_from_me")
+        from_me_val = (
+            row.get("from_me") if row.get("from_me") is not None else row.get("key_from_me")
+        )
         outgoing = integer(from_me_val) == 1
         body = (
             text(row.get("text_data"))
@@ -121,7 +125,9 @@ class WhatsAppMessageParser:
         )
         sender_jid_id = integer(row.get("sender_jid_row_id"))
         chat_jid_id = integer(row.get("chat_row_id"))
-        sender_jid = jid_map.get(sender_jid_id, "") if sender_jid_id else text(row.get("key_remote_jid"))
+        sender_jid = (
+            jid_map.get(sender_jid_id, "") if sender_jid_id else text(row.get("key_remote_jid"))
+        )
         chat_jid = jid_map.get(chat_jid_id, "") if chat_jid_id else ""
 
         direction = "outgoing" if outgoing else "incoming_or_system"
@@ -475,9 +481,13 @@ class DiscordMessageParser:
         table_name = "discord_messages" if "discord_messages" in tables else "messages"
         columns = reader.column_names(table_name)
         id_col = '"_id"' if "_id" in columns else ('"id"' if "id" in columns else '"mid"')
-        time_col = '"timestamp_ms"' if "timestamp_ms" in columns else (
-            '"timestamp"' if "timestamp" in columns else (
-                '"date"' if "date" in columns else id_col
+        time_col = (
+            '"timestamp_ms"'
+            if "timestamp_ms" in columns
+            else (
+                '"timestamp"'
+                if "timestamp" in columns
+                else ('"date"' if "date" in columns else id_col)
             )
         )
         selected = [
@@ -681,8 +691,10 @@ class WeChatMessageParser:
         table_name = "wechat_message" if "wechat_message" in tables else "message"
         columns = reader.column_names(table_name)
         id_col = '"msgId"' if "msgId" in columns else ('"_id"' if "_id" in columns else '"id"')
-        time_col = '"createTime"' if "createTime" in columns else (
-            '"timestamp"' if "timestamp" in columns else id_col
+        time_col = (
+            '"createTime"'
+            if "createTime" in columns
+            else ('"timestamp"' if "timestamp" in columns else id_col)
         )
         selected = [
             f"{id_col} AS _id",

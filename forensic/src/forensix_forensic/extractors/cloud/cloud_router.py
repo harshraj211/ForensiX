@@ -55,13 +55,16 @@ class CloudBackupRouter:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("router_start", {
-            "router_id": router_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "has_google_token": str(tokens.google_token is not None),
-            "has_whatsapp_token": str(tokens.whatsapp_token is not None),
-        })
+        self._log(
+            "router_start",
+            {
+                "router_id": router_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "has_google_token": str(tokens.google_token is not None),
+                "has_whatsapp_token": str(tokens.whatsapp_token is not None),
+            },
+        )
 
         google_task = None
         whatsapp_task = None
@@ -95,10 +98,13 @@ class CloudBackupRouter:
         w_ok = whatsapp_res.success if whatsapp_res else True
         overall_success = g_ok and w_ok
 
-        self._log("router_complete", {
-            "success": str(overall_success),
-            "duration_seconds": f"{duration:.2f}",
-        })
+        self._log(
+            "router_complete",
+            {
+                "success": str(overall_success),
+                "duration_seconds": f"{duration:.2f}",
+            },
+        )
 
         return CloudBackupRouterResult(
             router_id=router_id,
@@ -112,8 +118,10 @@ class CloudBackupRouter:
         )
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )

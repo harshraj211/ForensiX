@@ -258,7 +258,9 @@ class SignalRootedExtractor:
             passphrase_sha256=passphrase_hash,
             encrypted_database_size_bytes=db_path.stat().st_size if db_path.exists() else 0,
             encrypted_database_sha256=db_hash if db_path.exists() else "",
-            decrypted_database_path=str(decrypted_path) if decrypted_path and decrypted_path.exists() else None,
+            decrypted_database_path=str(decrypted_path)
+            if decrypted_path and decrypted_path.exists()
+            else None,
             preferences_file_path=str(prefs_path),
             database_file_path=str(db_path),
             timeline=timeline,
@@ -372,7 +374,11 @@ class SignalRootedExtractor:
                         capture_output=True,
                         timeout=60,
                     )
-                    if result.returncode == 0 and result.stdout and b"CREATE TABLE" in result.stdout:
+                    if (
+                        result.returncode == 0
+                        and result.stdout
+                        and b"CREATE TABLE" in result.stdout
+                    ):
                         out_path.write_bytes(result.stdout)
                         return out_path
         except Exception:

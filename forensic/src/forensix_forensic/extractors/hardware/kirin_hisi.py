@@ -185,12 +185,15 @@ class KirinExtractor:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("acquisition_start", {
-            "acquisition_id": acquisition_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "recovery_path": str(self._recovery_path),
-        })
+        self._log(
+            "acquisition_start",
+            {
+                "acquisition_id": acquisition_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "recovery_path": str(self._recovery_path),
+            },
+        )
 
         try:
             recovery_sha = self._validate_recovery()
@@ -301,11 +304,13 @@ class KirinExtractor:
         return hasher.hexdigest()
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )
 
     def _aggregate_hash(self, image_sha256: dict[str, str]) -> str:
         h = hashlib.sha256()

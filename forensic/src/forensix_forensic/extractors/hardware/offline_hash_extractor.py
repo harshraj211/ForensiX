@@ -73,18 +73,19 @@ class OfflineHashExtractor:
         self._output_dir = output_dir
         self._timeline: list[dict[str, str]] = []
 
-    async def extract(
-        self, serial: str, case_id: str, operator_id: str
-    ) -> HashDump:
+    async def extract(self, serial: str, case_id: str, operator_id: str) -> HashDump:
         """Run extraction of locksettings, Gatekeeper blobs, and synthetic password blobs."""
         dump_id = str(uuid4())
         dumped_at = datetime.now(UTC).isoformat()
-        self._log("extract_start", {
-            "dump_id": dump_id,
-            "serial": serial,
-            "case_id": case_id,
-            "operator_id": operator_id,
-        })
+        self._log(
+            "extract_start",
+            {
+                "dump_id": dump_id,
+                "serial": serial,
+                "case_id": case_id,
+                "operator_id": operator_id,
+            },
+        )
 
         self._output_dir.mkdir(parents=True, exist_ok=True)
         gk_blobs: list[GatekeeperBlob] = []
@@ -116,12 +117,15 @@ class OfflineHashExtractor:
 
         agg_hash = self._aggregate_hash(gk_blobs, sp_files, pattern_bytes)
 
-        self._log("extract_complete", {
-            "success": str(success),
-            "gatekeeper_count": str(len(gk_blobs)),
-            "spblob_count": str(len(sp_files)),
-            "has_pattern": str(pattern_bytes is not None),
-        })
+        self._log(
+            "extract_complete",
+            {
+                "success": str(success),
+                "gatekeeper_count": str(len(gk_blobs)),
+                "spblob_count": str(len(sp_files)),
+                "has_pattern": str(pattern_bytes is not None),
+            },
+        )
 
         return HashDump(
             dump_id=dump_id,
@@ -143,7 +147,7 @@ class OfflineHashExtractor:
         settings: dict[str, str] = {}
         try:
             cmd = (
-                "su -c \"sqlite3 /data/system/locksettings.db "  # noqa: S608
+                'su -c "sqlite3 /data/system/locksettings.db '  # noqa: S608
                 "'SELECT name,value FROM locksettings;'\""
             )
             output = await self._adb.shell(serial, cmd)  # type: ignore[attr-defined]
@@ -233,8 +237,10 @@ class OfflineHashExtractor:
         return h.hexdigest()
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )

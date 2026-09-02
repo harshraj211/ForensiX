@@ -259,14 +259,17 @@ class MtkBromExtractor:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("acquisition_start", {
-            "acquisition_id": acquisition_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "partitions_requested": ", ".join(partitions),
-            "da_binary": str(self._da_path),
-            "output_dir": str(self._output_dir),
-        })
+        self._log(
+            "acquisition_start",
+            {
+                "acquisition_id": acquisition_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "partitions_requested": ", ".join(partitions),
+                "da_binary": str(self._da_path),
+                "output_dir": str(self._output_dir),
+            },
+        )
 
         try:
             return await self._run_pipeline(
@@ -338,11 +341,14 @@ class MtkBromExtractor:
             sha = await self._acquire_partition(device, part, img_path)
             output_images.append(str(img_path))
             image_sha256[part.name] = sha
-            self._log("partition_acquired", {
-                "partition": part.name,
-                "size_bytes": str(part.size_bytes),
-                "sha256": sha,
-            })
+            self._log(
+                "partition_acquired",
+                {
+                    "partition": part.name,
+                    "size_bytes": str(part.size_bytes),
+                    "sha256": sha,
+                },
+            )
 
         # Stage 8 — aggregate hash
         aggregate = self._compute_aggregate_hash(image_sha256)
@@ -353,10 +359,13 @@ class MtkBromExtractor:
         chipset_name = _chipset_name(chipset_id)
         flash_type = all_partitions[0].partition_type if all_partitions else "unknown"
 
-        self._log("acquisition_complete", {
-            "aggregate_sha256": aggregate,
-            "duration_seconds": f"{duration:.2f}",
-        })
+        self._log(
+            "acquisition_complete",
+            {
+                "aggregate_sha256": aggregate,
+                "duration_seconds": f"{duration:.2f}",
+            },
+        )
 
         return MtkBromAcquisitionResult(
             acquisition_id=acquisition_id,
@@ -386,11 +395,14 @@ class MtkBromExtractor:
         if not self._da_path.exists():
             raise DaBinaryError(f"DA binary not found: {self._da_path}")
         da_sha256 = sha256_file(self._da_path)
-        self._log("da_binary_validated", {
-            "path": str(self._da_path),
-            "size_bytes": str(self._da_path.stat().st_size),
-            "sha256": da_sha256,
-        })
+        self._log(
+            "da_binary_validated",
+            {
+                "path": str(self._da_path),
+                "size_bytes": str(self._da_path.stat().st_size),
+                "sha256": da_sha256,
+            },
+        )
         return da_sha256
 
     def _detect_brom_usb_device(self) -> object:
@@ -402,17 +414,18 @@ class MtkBromExtractor:
         try:
             import usb.core  # type: ignore
         except ImportError as exc:
-            raise ImportError(
-                "pyusb is required for BROM acquisition: pip install pyusb"
-            ) from exc
+            raise ImportError("pyusb is required for BROM acquisition: pip install pyusb") from exc
 
         for pid in (BROM_USB_PID_BROM, BROM_USB_PID_PRELOADER):
             device = usb.core.find(idVendor=BROM_USB_VID, idProduct=pid)
             if device is not None:
-                self._log("usb_device_found", {
-                    "vid": hex(BROM_USB_VID),
-                    "pid": hex(pid),
-                })
+                self._log(
+                    "usb_device_found",
+                    {
+                        "vid": hex(BROM_USB_VID),
+                        "pid": hex(pid),
+                    },
+                )
                 return device
 
         raise RuntimeError(
@@ -448,9 +461,10 @@ class MtkBromExtractor:
             MtkChipset.MT6771.value,
         }
         if chipset_id in secured_chipsets:
-            self._log("auth_disable_skipped", {
-                "reason": "Chipset requires lab-approved SLA bypass payload"
-            })
+            self._log(
+                "auth_disable_skipped",
+                {"reason": "Chipset requires lab-approved SLA bypass payload"},
+            )
         else:
             self._log("auth_disable", {"chipset_id": hex(chipset_id)})
         await asyncio.sleep(0)
@@ -458,10 +472,13 @@ class MtkBromExtractor:
     async def _inject_da(self, device: object, da_sha256: str) -> None:
         """Upload the Download Agent binary over USB and verify the BROM ack."""
         da_bytes = self._da_path.read_bytes()
-        self._log("da_inject_start", {
-            "size_bytes": str(len(da_bytes)),
-            "sha256": da_sha256,
-        })
+        self._log(
+            "da_inject_start",
+            {
+                "size_bytes": str(len(da_bytes)),
+                "sha256": da_sha256,
+            },
+        )
         # Real implementation: send DA header, write chunks over bulk-out,
         # read ACK (0x5A) after each 512-byte chunk.
         await asyncio.sleep(0)
@@ -519,11 +536,13 @@ class MtkBromExtractor:
 
     def _log(self, event: str, details: dict[str, str]) -> None:
         """Append a timeline entry with an ISO-8601 timestamp."""
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )
 
     @staticmethod
     def _compute_aggregate_hash(image_sha256: dict[str, str]) -> str:

@@ -314,13 +314,16 @@ class KeystoreExtractor:
         t0 = asyncio.get_event_loop().time()
         user_ids = user_ids or [0]
 
-        self._log("inspection_start", {
-            "inspection_id": inspection_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "serial": serial,
-            "user_ids": ", ".join(str(u) for u in user_ids),
-        })
+        self._log(
+            "inspection_start",
+            {
+                "inspection_id": inspection_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "serial": serial,
+                "user_ids": ", ".join(str(u) for u in user_ids),
+            },
+        )
 
         try:
             return await self._run(
@@ -364,11 +367,14 @@ class KeystoreExtractor:
         for user_id in user_ids:
             remote_dir = KEYSTORE_USER_DIR.format(user_id=user_id)
             blobs = await self._list_key_blobs(serial, remote_dir)
-            self._log("blobs_listed", {
-                "user_id": str(user_id),
-                "remote_dir": remote_dir,
-                "count": str(len(blobs)),
-            })
+            self._log(
+                "blobs_listed",
+                {
+                    "user_id": str(user_id),
+                    "remote_dir": remote_dir,
+                    "count": str(len(blobs)),
+                },
+            )
 
             for blob_name in blobs:
                 remote_path = f"{remote_dir}/{blob_name}"
@@ -380,10 +386,13 @@ class KeystoreExtractor:
         finished_at = datetime.now(UTC).isoformat()
         duration = asyncio.get_event_loop().time() - t0
 
-        self._log("inspection_complete", {
-            "keys_found": str(len(all_metadata)),
-            "aggregate_sha256": aggregate,
-        })
+        self._log(
+            "inspection_complete",
+            {
+                "keys_found": str(len(all_metadata)),
+                "aggregate_sha256": aggregate,
+            },
+        )
 
         return KeystoreInspectionResult(
             inspection_id=inspection_id,

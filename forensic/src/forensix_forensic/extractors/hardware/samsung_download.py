@@ -52,8 +52,8 @@ CMD_DEVICE_INFO = 0x61  # Query device info
 
 # Sub-commands for CMD_PIT
 OPT_PIT_REQUEST = 0x00  # Request PIT data from device
-OPT_PIT_BEGIN = 0x01    # Begin PIT receive
-OPT_PIT_DONE = 0x02     # PIT transfer complete
+OPT_PIT_BEGIN = 0x01  # Begin PIT receive
+OPT_PIT_DONE = 0x02  # PIT transfer complete
 
 # PIT record constants
 PIT_RECORD_SIZE = 132  # bytes per partition entry
@@ -174,23 +174,32 @@ def parse_pit(data: bytes) -> tuple[int, list[PitRecord]]:
         if offset + PIT_RECORD_SIZE > len(data):
             raise ValueError(f"PIT truncated at record {i}")
         (
-            binary_type, device_type, partition_id, attributes, _update_attr,
-            block_size, block_count, _file_offset, _file_size,
+            binary_type,
+            device_type,
+            partition_id,
+            attributes,
+            _update_attr,
+            block_size,
+            block_count,
+            _file_offset,
+            _file_size,
         ) = struct.unpack_from("<IIIIIIIII", data, offset)
-        name_raw = data[offset + 36: offset + 68]
-        file_raw = data[offset + 68: offset + 100]
+        name_raw = data[offset + 36 : offset + 68]
+        file_raw = data[offset + 68 : offset + 100]
         partition_name = name_raw.split(b"\x00", 1)[0].decode("ascii", errors="replace")
         file_name = file_raw.split(b"\x00", 1)[0].decode("ascii", errors="replace")
-        records.append(PitRecord(
-            binary_type=binary_type,
-            device_type=device_type,
-            partition_id=partition_id,
-            attributes=attributes,
-            block_size=block_size,
-            block_count=block_count,
-            partition_name=partition_name,
-            file_name=file_name,
-        ))
+        records.append(
+            PitRecord(
+                binary_type=binary_type,
+                device_type=device_type,
+                partition_id=partition_id,
+                attributes=attributes,
+                block_size=block_size,
+                block_count=block_count,
+                partition_name=partition_name,
+                file_name=file_name,
+            )
+        )
         offset += PIT_RECORD_SIZE
     return count, records
 
@@ -258,12 +267,15 @@ class SamsungDownloadModeExtractor:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("acquisition_start", {
-            "acquisition_id": acquisition_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "partitions": ", ".join(partitions),
-        })
+        self._log(
+            "acquisition_start",
+            {
+                "acquisition_id": acquisition_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "partitions": ", ".join(partitions),
+            },
+        )
 
         try:
             return await self._pipeline(
@@ -310,11 +322,14 @@ class SamsungDownloadModeExtractor:
             sha = await self._read_partition(device, record, img_path)
             output_images.append(str(img_path))
             image_sha256[record.partition_name] = sha
-            self._log("partition_acquired", {
-                "partition": record.partition_name,
-                "size_bytes": str(record.size_bytes),
-                "sha256": sha,
-            })
+            self._log(
+                "partition_acquired",
+                {
+                    "partition": record.partition_name,
+                    "size_bytes": str(record.size_bytes),
+                    "sha256": sha,
+                },
+            )
 
         aggregate = self._aggregate_hash(image_sha256)
         self._state = OdinState.COMPLETE
@@ -372,9 +387,7 @@ class SamsungDownloadModeExtractor:
         await asyncio.sleep(0)
         return (b"", "")
 
-    async def _read_partition(
-        self, device: object, record: PitRecord, output_path: Path
-    ) -> str:
+    async def _read_partition(self, device: object, record: PitRecord, output_path: Path) -> str:
         hasher = hashlib.sha256()
         _read_cmd = build_odin_packet(CMD_FILE, 0, record.partition_id)
         # Real: write CMD_FILE packet, read record.size_bytes of raw data

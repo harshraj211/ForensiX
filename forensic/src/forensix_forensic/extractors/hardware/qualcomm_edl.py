@@ -158,16 +158,19 @@ def decode_sahara_hello(data: bytes) -> SaharaHello:
 
 def build_sahara_hello_response(version: int, mode: int) -> bytes:
     """Build the 48-byte Hello Response packet sent back to the device."""
-    return struct.pack(
-        "<IIIIIII",
-        SAHARA_HELLO_RESP,
-        48,
-        version,
-        2,       # version_min
-        0x800,   # max_packet_size = 2 KiB
-        mode,
-        0,       # image_tx_status
-    ) + b"\x00" * 20
+    return (
+        struct.pack(
+            "<IIIIIII",
+            SAHARA_HELLO_RESP,
+            48,
+            version,
+            2,  # version_min
+            0x800,  # max_packet_size = 2 KiB
+            mode,
+            0,  # image_tx_status
+        )
+        + b"\x00" * 20
+    )
 
 
 def build_sahara_done() -> bytes:
@@ -298,14 +301,17 @@ class QualcommEdlExtractor:
         t0 = asyncio.get_event_loop().time()
         luns = luns or [0]
 
-        self._log("acquisition_start", {
-            "acquisition_id": acquisition_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "partitions": ", ".join(partitions),
-            "luns": ", ".join(str(lun) for lun in luns),
-            "programmer": str(self._programmer),
-        })
+        self._log(
+            "acquisition_start",
+            {
+                "acquisition_id": acquisition_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "partitions": ", ".join(partitions),
+                "luns": ", ".join(str(lun) for lun in luns),
+                "programmer": str(self._programmer),
+            },
+        )
 
         try:
             return await self._run_pipeline(
@@ -371,21 +377,27 @@ class QualcommEdlExtractor:
             sha = await self._read_partition(device, part, img_path)
             output_images.append(str(img_path))
             image_sha256[part.label] = sha
-            self._log("partition_acquired", {
-                "label": part.label,
-                "num_sectors": str(part.num_sectors),
-                "sha256": sha,
-            })
+            self._log(
+                "partition_acquired",
+                {
+                    "label": part.label,
+                    "num_sectors": str(part.num_sectors),
+                    "sha256": sha,
+                },
+            )
 
         aggregate = self._aggregate_hash(image_sha256)
         self._state = EdlState.COMPLETE
         finished_at = datetime.now(UTC).isoformat()
         duration = asyncio.get_event_loop().time() - t0
 
-        self._log("acquisition_complete", {
-            "aggregate_sha256": aggregate,
-            "duration_seconds": f"{duration:.2f}",
-        })
+        self._log(
+            "acquisition_complete",
+            {
+                "aggregate_sha256": aggregate,
+                "duration_seconds": f"{duration:.2f}",
+            },
+        )
 
         return QualcommEdlAcquisitionResult(
             acquisition_id=acquisition_id,
@@ -418,11 +430,14 @@ class QualcommEdlExtractor:
             for chunk in iter(lambda: fh.read(1024 * 1024), b""):
                 h.update(chunk)
         sha = h.hexdigest()
-        self._log("programmer_validated", {
-            "path": str(self._programmer),
-            "sha256": sha,
-            "size_bytes": str(self._programmer.stat().st_size),
-        })
+        self._log(
+            "programmer_validated",
+            {
+                "path": str(self._programmer),
+                "sha256": sha,
+                "size_bytes": str(self._programmer.stat().st_size),
+            },
+        )
         return sha
 
     def _detect_edl_device(self) -> object:
@@ -440,9 +455,7 @@ class QualcommEdlExtractor:
         self._log("edl_device_detected", {"vid": "0x05C6", "pid": "0x9008"})
         return device
 
-    async def _sahara_handshake_and_upload(
-        self, device: object, prog_sha256: str
-    ) -> str:
+    async def _sahara_handshake_and_upload(self, device: object, prog_sha256: str) -> str:
         """Complete Sahara Hello/End-of-Image sequence and upload programmer MBN.
 
         Real implementation:
@@ -457,10 +470,13 @@ class QualcommEdlExtractor:
         self._state = EdlState.SAHARA_HELLO_RECEIVED
         self._state = EdlState.PROGRAMMER_UPLOADED
         prog_size = self._programmer.stat().st_size
-        self._log("programmer_uploaded", {
-            "sha256": prog_sha256,
-            "size_bytes": str(prog_size),
-        })
+        self._log(
+            "programmer_uploaded",
+            {
+                "sha256": prog_sha256,
+                "size_bytes": str(prog_size),
+            },
+        )
         self._state = EdlState.SAHARA_DONE
         soc_model = "unknown"  # real: parse SoC model from programmer name
         self._log("sahara_done", {"soc_model": soc_model})
@@ -473,9 +489,7 @@ class QualcommEdlExtractor:
         await asyncio.sleep(0)  # real: bulk-out write + bulk-in read ACK
         self._log("firehose_ready", {})
 
-    async def _get_partition_table(
-        self, device: object, lun: int
-    ) -> list[FirehosePartitionInfo]:
+    async def _get_partition_table(self, device: object, lun: int) -> list[FirehosePartitionInfo]:
         """Query GPT partition table for *lun* via Firehose XML."""
         _cmd = build_firehose_getpartitiontable(lun)
         await asyncio.sleep(0)  # real: write cmd, parse XML GPT response
@@ -513,11 +527,13 @@ class QualcommEdlExtractor:
     # ------------------------------------------------------------------
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )
 
     @staticmethod
     def _aggregate_hash(image_sha256: dict[str, str]) -> str:

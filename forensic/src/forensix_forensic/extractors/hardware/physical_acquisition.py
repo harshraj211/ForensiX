@@ -150,12 +150,15 @@ class PhysicalAcquisitionRouter:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("router_start", {
-            "router_id": router_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "partitions": ", ".join(partitions),
-        })
+        self._log(
+            "router_start",
+            {
+                "router_id": router_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "partitions": ", ".join(partitions),
+            },
+        )
 
         # Detect chipset
         probe = detect_chipset_from_usb()
@@ -168,12 +171,15 @@ class PhysicalAcquisitionRouter:
             self._log("detection_failed", {"reason": msg})
             return self._error_result(router_id, started_at, t0, msg, probe)
 
-        self._log("chipset_detected", {
-            "family": probe.chipset_family,
-            "model": probe.chipset_model or "unknown",
-            "method": probe.detection_method,
-            "protocol": probe.acquisition_protocol,
-        })
+        self._log(
+            "chipset_detected",
+            {
+                "family": probe.chipset_family,
+                "model": probe.chipset_model or "unknown",
+                "method": probe.detection_method,
+                "protocol": probe.acquisition_protocol,
+            },
+        )
 
         protocol = probe.acquisition_protocol
         try:
@@ -185,11 +191,14 @@ class PhysicalAcquisitionRouter:
         duration = asyncio.get_event_loop().time() - t0
 
         success = getattr(inner, "success", False)
-        self._log("router_complete", {
-            "protocol": protocol,
-            "success": str(success),
-            "duration_seconds": f"{duration:.2f}",
-        })
+        self._log(
+            "router_complete",
+            {
+                "protocol": protocol,
+                "success": str(success),
+                "duration_seconds": f"{duration:.2f}",
+            },
+        )
 
         return PhysicalAcquisitionRouterResult(
             router_id=router_id,
@@ -235,8 +244,7 @@ class PhysicalAcquisitionRouter:
 
         if self._cfg.mtk_da_path is None:
             raise ValueError(
-                "mtk_da_path not configured in RouterConfig. "
-                "Supply a lab-approved DA binary."
+                "mtk_da_path not configured in RouterConfig. Supply a lab-approved DA binary."
             )
         extractor = MtkBromExtractor(
             da_binary_path=self._cfg.mtk_da_path,
@@ -330,11 +338,13 @@ class PhysicalAcquisitionRouter:
     # ------------------------------------------------------------------
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )
 
     def _error_result(
         self,

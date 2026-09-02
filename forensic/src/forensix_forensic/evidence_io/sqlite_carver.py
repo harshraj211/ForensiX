@@ -160,9 +160,7 @@ class SQLiteCarver:
     def __init__(self, page_size: int = 4096) -> None:
         self.page_size = page_size
 
-    def carve_file(
-        self, db_path: Path, *, source_locator: str = ""
-    ) -> list[CarvedSQLiteRecord]:
+    def carve_file(self, db_path: Path, *, source_locator: str = "") -> list[CarvedSQLiteRecord]:
         path = db_path.expanduser().resolve()
         if not path.is_file():
             return []
@@ -194,12 +192,8 @@ class SQLiteCarver:
             first_freeblock = int.from_bytes(
                 page_data[header_offset + 1 : header_offset + 3], "big"
             )
-            cell_count = int.from_bytes(
-                page_data[header_offset + 3 : header_offset + 5], "big"
-            )
-            content_start = int.from_bytes(
-                page_data[header_offset + 5 : header_offset + 7], "big"
-            )
+            cell_count = int.from_bytes(page_data[header_offset + 3 : header_offset + 5], "big")
+            content_start = int.from_bytes(page_data[header_offset + 5 : header_offset + 7], "big")
             if content_start == 0:
                 content_start = 65536
 
@@ -334,8 +328,7 @@ class SQLiteCarver:
 
         # Ensure at least one text or non-trivial column is present to filter random bytes
         has_meaningful_data = any(
-            st >= 13 and (st % 2 != 0) and serial_type_length(st) >= 3
-            for st in serial_types
+            st >= 13 and (st % 2 != 0) and serial_type_length(st) >= 3 for st in serial_types
         )
         if not has_meaningful_data and total_payload_needed < 8:
             return None

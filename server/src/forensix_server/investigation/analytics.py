@@ -275,9 +275,7 @@ class SocialGraphAnalyticsService:
             # Determine contact identity
             direction = str(meta.get("direction") or "incoming")
             is_outgoing = (
-                direction.startswith("out")
-                or meta.get("from_me") == 1
-                or meta.get("isSend") == 1
+                direction.startswith("out") or meta.get("from_me") == 1 or meta.get("isSend") == 1
             )
 
             peer = (

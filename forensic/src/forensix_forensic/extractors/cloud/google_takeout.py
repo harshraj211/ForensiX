@@ -59,12 +59,15 @@ class GoogleTakeoutDownloader:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("download_start", {
-            "download_id": download_id,
-            "account_email": token.account_email,
-            "case_id": case_id,
-            "operator_id": operator_id,
-        })
+        self._log(
+            "download_start",
+            {
+                "download_id": download_id,
+                "account_email": token.account_email,
+                "case_id": case_id,
+                "operator_id": operator_id,
+            },
+        )
 
         try:
             has_aiohttp = True
@@ -138,7 +141,12 @@ class GoogleTakeoutDownloader:
     ) -> list[dict[str, str]]:
         # In a full live network connection, this issues a GET request to Google Backup API
         await asyncio.sleep(0)
-        return [{"id": token.device_id or "default_set", "download_url": "https://backup.googleapis.com/v1/download"}]
+        return [
+            {
+                "id": token.device_id or "default_set",
+                "download_url": "https://backup.googleapis.com/v1/download",
+            }
+        ]
 
     async def _download_backup_file(
         self, session: object, url: str, dest_path: Path
@@ -152,11 +160,13 @@ class GoogleTakeoutDownloader:
         return hasher.hexdigest(), len(data)
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )
 
     def _aggregate_hash(self, file_sha256: dict[str, str]) -> str:
         h = hashlib.sha256()

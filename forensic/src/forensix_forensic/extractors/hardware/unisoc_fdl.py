@@ -244,12 +244,15 @@ class SpreadtrumBootromExtractor:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("acquisition_start", {
-            "acquisition_id": acquisition_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "partitions": ", ".join(partitions),
-        })
+        self._log(
+            "acquisition_start",
+            {
+                "acquisition_id": acquisition_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "partitions": ", ".join(partitions),
+            },
+        )
 
         try:
             return await self._pipeline(
@@ -301,11 +304,14 @@ class SpreadtrumBootromExtractor:
             sha = await self._read_partition(device, part, img_path)
             output_images.append(str(img_path))
             image_sha256[part.name] = sha
-            self._log("partition_acquired", {
-                "partition": part.name,
-                "size_bytes": str(part.size_bytes),
-                "sha256": sha,
-            })
+            self._log(
+                "partition_acquired",
+                {
+                    "partition": part.name,
+                    "size_bytes": str(part.size_bytes),
+                    "sha256": sha,
+                },
+            )
 
         aggregate = self._aggregate_hash(image_sha256)
         self._state = FdlState.COMPLETE
@@ -352,9 +358,7 @@ class SpreadtrumBootromExtractor:
             if device is not None:
                 self._log("device_detected", {"vid": hex(SPRD_USB_VID), "pid": hex(pid)})
                 return device
-        raise RuntimeError(
-            "No Unisoc FDL device detected. Power off device and hold Vol+."
-        )
+        raise RuntimeError("No Unisoc FDL device detected. Power off device and hold Vol+.")
 
     async def _upload_fdl1(self, device: object, sha256: str) -> str:
         self._log("fdl1_upload_start", {"sha256": sha256})

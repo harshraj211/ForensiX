@@ -187,12 +187,14 @@ def test_social_graph_analytics_service(database: Database) -> None:
             provenance_json="{}",
             artifact_hash="3" * 64,
             event_time=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
-            metadata_json=json.dumps({
-                "resolved_sender": "suspect_bob",
-                "from_me": 1,
-                "direction": "outgoing",
-                "application": "whatsapp",
-            }),
+            metadata_json=json.dumps(
+                {
+                    "resolved_sender": "suspect_bob",
+                    "from_me": 1,
+                    "direction": "outgoing",
+                    "application": "whatsapp",
+                }
+            ),
         )
         # Add incoming Signal message
         msg2 = EvidenceSourceArtifactRecord(
@@ -212,12 +214,14 @@ def test_social_graph_analytics_service(database: Database) -> None:
             provenance_json="{}",
             artifact_hash="4" * 64,
             event_time=datetime(2024, 1, 1, 12, 5, 0, tzinfo=UTC),
-            metadata_json=json.dumps({
-                "address": "+15550001111",
-                "from_me": 0,
-                "direction": "incoming",
-                "application": "signal",
-            }),
+            metadata_json=json.dumps(
+                {
+                    "address": "+15550001111",
+                    "from_me": 0,
+                    "direction": "incoming",
+                    "application": "signal",
+                }
+            ),
         )
         session.add_all([msg1, msg2])
         session.commit()

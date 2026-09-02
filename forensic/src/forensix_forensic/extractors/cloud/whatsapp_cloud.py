@@ -61,12 +61,15 @@ class WhatsAppCloudDownloader:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("download_start", {
-            "download_id": download_id,
-            "jid": token.whatsapp_jid,
-            "case_id": case_id,
-            "operator_id": operator_id,
-        })
+        self._log(
+            "download_start",
+            {
+                "download_id": download_id,
+                "jid": token.whatsapp_jid,
+                "case_id": case_id,
+                "operator_id": operator_id,
+            },
+        )
 
         try:
             has_aiohttp = True
@@ -110,9 +113,7 @@ class WhatsAppCloudDownloader:
                 if backup_info:
                     file_id = backup_info.get("id", "msgstore.db.crypt15")
                     dest_db = self._output_dir / "msgstore.db.crypt15"
-                    sha_db, size_db = await self._download_file(
-                        None, file_id, dest_db, token
-                    )
+                    sha_db, size_db = await self._download_file(None, file_id, dest_db, token)
                     backup_file_path = dest_db
                     file_sha256[dest_db.name] = sha_db
                     total_bytes += size_db
@@ -180,11 +181,13 @@ class WhatsAppCloudDownloader:
         return dest_path.name
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )
 
     def _aggregate_hash(self, file_sha256: dict[str, str]) -> str:
         h = hashlib.sha256()

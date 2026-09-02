@@ -68,9 +68,7 @@ class AgentCollector:
             call_log_data = await self._pull_and_parse_json(serial, "call_logs.json")
             apps_data = await self._pull_and_parse_json(serial, "installed_apps.json")
 
-            contacts = (
-                contacts_from_json(contacts_data) if isinstance(contacts_data, list) else ()
-            )
+            contacts = contacts_from_json(contacts_data) if isinstance(contacts_data, list) else ()
             sms_msgs = sms_from_json(sms_data) if isinstance(sms_data, list) else ()
             call_logs = (
                 call_logs_from_json(call_log_data) if isinstance(call_log_data, list) else ()
@@ -141,11 +139,13 @@ class AgentCollector:
         return None
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )
 
     def _error_result(
         self, ext_id: str, serial: str, case_id: str, started_at: str, t0: float, message: str

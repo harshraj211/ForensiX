@@ -200,12 +200,15 @@ class RockchipExtractor:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("acquisition_start", {
-            "acquisition_id": acquisition_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "loader_path": str(self._loader_path),
-        })
+        self._log(
+            "acquisition_start",
+            {
+                "acquisition_id": acquisition_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "loader_path": str(self._loader_path),
+            },
+        )
 
         try:
             loader_sha = self._validate_loader()
@@ -301,9 +304,7 @@ class RockchipExtractor:
         await asyncio.sleep(0)
         return []
 
-    async def _read_partition(
-        self, device: object, part: RkPartitionEntry, out_file: Path
-    ) -> str:
+    async def _read_partition(self, device: object, part: RkPartitionEntry, out_file: Path) -> str:
         hasher = hashlib.sha256()
         with out_file.open("wb") as fh:
             chunk = b"\x00" * (SECTORS_PER_CMD * SECTOR_SIZE)
@@ -318,11 +319,13 @@ class RockchipExtractor:
         return hasher.hexdigest()
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )
 
     def _aggregate_hash(self, image_sha256: dict[str, str]) -> str:
         h = hashlib.sha256()

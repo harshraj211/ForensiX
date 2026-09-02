@@ -77,16 +77,40 @@ _DIGIT_KEYCODE: dict[str, int] = {
 
 # Most-common 4-digit PINs (FBI/NIST frequency order, first 20)
 COMMON_PINS_4: tuple[str, ...] = (
-    "1234", "0000", "1111", "1212", "7777",
-    "1004", "2000", "4444", "2222", "6969",
-    "9999", "3333", "5555", "6666", "1122",
-    "1313", "8888", "4321", "2001", "1010",
+    "1234",
+    "0000",
+    "1111",
+    "1212",
+    "7777",
+    "1004",
+    "2000",
+    "4444",
+    "2222",
+    "6969",
+    "9999",
+    "3333",
+    "5555",
+    "6666",
+    "1122",
+    "1313",
+    "8888",
+    "4321",
+    "2001",
+    "1010",
 )
 
 # Most-common 6-digit PINs
 COMMON_PINS_6: tuple[str, ...] = (
-    "123456", "000000", "111111", "123123", "666666",
-    "112233", "121212", "789456", "159753", "123321",
+    "123456",
+    "000000",
+    "111111",
+    "123123",
+    "666666",
+    "112233",
+    "121212",
+    "789456",
+    "159753",
+    "123321",
 )
 
 
@@ -109,9 +133,9 @@ class LockType(StrEnum):
 class WipeRisk(StrEnum):
     """Wipe risk level based on device settings."""
 
-    LOW = "low"        # no automatic wipe configured
+    LOW = "low"  # no automatic wipe configured
     MEDIUM = "medium"  # MDM policy or 10-attempt wipe
-    HIGH = "high"      # Samsung Knox or strict MDM
+    HIGH = "high"  # Samsung Knox or strict MDM
 
 
 # ---------------------------------------------------------------------------
@@ -263,12 +287,15 @@ class ScreenLockAssessmentService:
         gk_present = await self._path_exists(serial, GATEKEEPER_DIR)
         spblob_present = await self._path_exists(serial, SPBLOB_DIR)
 
-        self._log("assess_complete", {
-            "lock_type": lock_type,
-            "pin_length": str(pin_length),
-            "wipe_risk": wipe_risk,
-            "search_space": str(search_space),
-        })
+        self._log(
+            "assess_complete",
+            {
+                "lock_type": lock_type,
+                "pin_length": str(pin_length),
+                "wipe_risk": wipe_risk,
+                "search_space": str(search_space),
+            },
+        )
 
         return LockScreenProfile(
             lock_type=lock_type,
@@ -327,13 +354,16 @@ class ScreenLockAssessmentService:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("authorised_entry_start", {
-            "attempt_id": attempt_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "credential_type": credential_type,
-            "attempt_number": str(self._attempt_count + 1),
-        })
+        self._log(
+            "authorised_entry_start",
+            {
+                "attempt_id": attempt_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "credential_type": credential_type,
+                "attempt_number": str(self._attempt_count + 1),
+            },
+        )
 
         # Safeguard: attempt limit
         if self._attempt_count >= self.MAX_ATTEMPTS:
@@ -380,11 +410,14 @@ class ScreenLockAssessmentService:
         finished_at = datetime.now(UTC).isoformat()
         duration = asyncio.get_event_loop().time() - t0
 
-        self._log("authorised_entry_result", {
-            "attempt_id": attempt_id,
-            "success": str(success),
-            "attempts_total": str(self._attempt_count),
-        })
+        self._log(
+            "authorised_entry_result",
+            {
+                "attempt_id": attempt_id,
+                "success": str(success),
+                "attempts_total": str(self._attempt_count),
+            },
+        )
 
         return AuthorisedEntryResult(
             attempt_id=attempt_id,
@@ -407,7 +440,7 @@ class ScreenLockAssessmentService:
         settings: dict[str, str] = {}
         try:
             cmd = (
-                f"su -c \"sqlite3 {LOCK_SETTINGS_DB} "  # noqa: S608
+                f'su -c "sqlite3 {LOCK_SETTINGS_DB} '  # noqa: S608
                 "'SELECT name,value FROM locksettings;'\""
             )
             output = await self._adb.shell(serial, cmd)
@@ -433,9 +466,7 @@ class ScreenLockAssessmentService:
     async def _path_exists(self, serial: str, path: str) -> bool:
         """Return True if *path* exists on the device."""
         try:
-            output = await self._adb.shell(
-                serial, f"su -c '[ -e {path} ] && echo YES || echo NO'"
-            )
+            output = await self._adb.shell(serial, f"su -c '[ -e {path} ] && echo YES || echo NO'")
             return "YES" in output
         except Exception:  # noqa: BLE001
             return False
@@ -525,9 +556,7 @@ class ScreenLockAssessmentService:
             return None
 
     @staticmethod
-    def _classify_wipe_risk(
-        max_attempts: int | None, settings: dict[str, str]
-    ) -> str:
+    def _classify_wipe_risk(max_attempts: int | None, settings: dict[str, str]) -> str:
         if max_attempts is not None and max_attempts <= 5:
             return WipeRisk.HIGH
         if "knox" in str(settings).lower():
@@ -557,11 +586,11 @@ def _estimate_search_space(
         return 0
     if lock_type == LockType.PIN:
         length = pin_length or 4
-        return int(10 ** length)
+        return int(10**length)
     if lock_type == LockType.PATTERN:
         # 3x3 grid: ~389,112 valid patterns; 3-9 nodes
         return 389_112
     if lock_type == LockType.PASSWORD:
         # Estimated average: 8-char alphanumeric space
-        return 62 ** 8
+        return 62**8
     return 0

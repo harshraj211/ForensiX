@@ -406,7 +406,8 @@ class WhatsAppDowngradeExtractor:
         for path in files:
             path_str = str(path).replace("\\", "/")
             if "key" in path_str and any(
-                part in path_str for part in ("/files/key", "/f/key", "whatsapp/files/key", "key.cryptkey")
+                part in path_str
+                for part in ("/files/key", "/f/key", "whatsapp/files/key", "key.cryptkey")
             ):
                 return path
         for path in files:
@@ -499,7 +500,10 @@ class WhatsAppDowngradeExtractor:
                         except zlib.error:
                             pass
 
-                if decompressed.startswith(b"SQLite format 3\x00") or b"SQLite format 3\x00" in decompressed[:100]:
+                if (
+                    decompressed.startswith(b"SQLite format 3\x00")
+                    or b"SQLite format 3\x00" in decompressed[:100]
+                ):
                     out_path = dest_dir / "msgstore_decrypted.db"
                     # Align to start of SQLite header if needed
                     sqlite_offset = decompressed.find(b"SQLite format 3\x00")

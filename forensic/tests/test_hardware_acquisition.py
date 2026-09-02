@@ -222,16 +222,19 @@ class TestMtkBrom:
 
 class TestQualcommEdl:
     def _make_hello(self, version: int = 2, mode: int = 0) -> bytes:
-        return struct.pack(
-            "<IIIIIII",
-            SAHARA_HELLO,
-            48,
-            version,
-            1,
-            0x800,
-            mode,
-            0,
-        ) + b"\x00" * 20
+        return (
+            struct.pack(
+                "<IIIIIII",
+                SAHARA_HELLO,
+                48,
+                version,
+                1,
+                0x800,
+                mode,
+                0,
+            )
+            + b"\x00" * 20
+        )
 
     def test_decode_sahara_hello_basic(self) -> None:
         raw = self._make_hello(version=2, mode=0)

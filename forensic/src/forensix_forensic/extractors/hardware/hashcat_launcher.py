@@ -162,13 +162,9 @@ class HashcatLauncher:
 
     def _validate_hashcat_binary(self) -> None:
         if not self._cfg.hashcat_binary.exists():
-            raise FileNotFoundError(
-                f"Hashcat binary not found at: {self._cfg.hashcat_binary}"
-            )
+            raise FileNotFoundError(f"Hashcat binary not found at: {self._cfg.hashcat_binary}")
 
-    def _build_command(
-        self, hash_file: Path, mode: HashcatMode, potfile: Path
-    ) -> list[str]:
+    def _build_command(self, hash_file: Path, mode: HashcatMode, potfile: Path) -> list[str]:
         cmd = [
             str(self._cfg.hashcat_binary),
             "-m",
