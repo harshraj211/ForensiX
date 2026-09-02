@@ -45,6 +45,57 @@ Extract the ZIP to a trusted local folder and run the `ForensiX` executable (`Fo
 ## ✅ Implemented Now
 
 <details open>
+<summary><strong>⚡ Hardware-Level Physical Acquisition (BootROM / EDL / Download Mode)</strong></summary>
+
+- **Qualcomm EDL (Sahara / Firehose)**: Full protocol handler (`qualcomm_edl.py`) supporting image download and raw sector reading via programmer MBNs.
+- **MediaTek (MTK) BROM Bypass**: SP Flash Tool protocol suite (`mtk_brom.py`) streaming raw eMMC/UFS partition blocks.
+- **Unisoc / Spreadtrum BootROM**: 2-stage bootloader protocol (`unisoc_fdl.py`) supporting HDLC-framed FDL1/FDL2 physical extraction.
+- **Samsung Download Mode (Odin/LOKE)**: Native LOKE/Odin protocol parser (`samsung_download.py`) with automatic binary PIT table decoding.
+- **Huawei Kirin / HiSilicon**: HiSilicon eRecovery download protocol handler (`kirin_hisi.py`) supporting Kirin 659, 710, 810, 980, 990, 9000.
+- **Rockchip DFU**: USB DFU / MaskROM protocol handler (`rockchip_rkdfu.py`) supporting RK3399, RK3568, RK3588, RK3326.
+- **Auto-Routing Physical Pipeline**: `physical_acquisition.py` auto-detects USB VID/PID (`chipset_detector.py`) and routes connected devices to the matching hardware module.
+
+</details>
+
+<details open>
+<summary><strong>☁️ Cloud Backup Downloaders & Token Recovery</strong></summary>
+
+- **Google Takeout GMS Backup**: `google_takeout.py` downloads Android device backup archives using extracted OAuth and GSF tokens.
+- **WhatsApp Cloud Backup**: `whatsapp_cloud.py` queries Google Drive AppData space and downloads `msgstore.db.crypt15` archives and metadata.
+- **Cloud Backup Router**: `cloud_router.py` orchestrates parallel cloud backup downloads across extracted device token bundles.
+
+</details>
+
+<details open>
+<summary><strong>📱 Non-Rooted Agent & APK Downgrade Extraction</strong></summary>
+
+- **Android Agent Application**: Built-in Android app (`agent_apk/forensix_agent`) executing foreground data collection for Contacts, SMS, Call Logs, and Installed Packages via standard Android `ContentResolver` APIs.
+- **Agent Orchestrator**: `agent_installer.py` handles ADB installation, permission grants (`READ_CONTACTS`, `READ_SMS`, `READ_CALL_LOG`), intent triggers, and post-collection uninstalls; `agent_collector.py` polls staging areas (`/sdcard/forensix_out/`) and deserializes JSON artifacts.
+- **App Downgrade Catalog**: `apk_downgrade.py` supports automated rollback attacks for 29+ target app profiles, preserving app sandbox data while extracting backups via ADB.
+
+</details>
+
+<details open>
+<summary><strong>🔐 Passcode Assessment & Offline Hashcat Integration</strong></summary>
+
+- **Offline Hash Extractor**: `offline_hash_extractor.py` extracts Gatekeeper enrolled hashes, synthetic password blobs (`spblob`), and legacy salt keys from rooted devices.
+- **Hashcat Subprocess Launcher**: `hashcat_launcher.py` manages Hashcat execution for Android modes 10 (MD5 pattern), 13800 (FBE/Gatekeeper), and 18800 (FDE).
+- **Lock Screen Assessment**: `screen_lock_assessment.py` reads `locksettings.db`, classifies credential types, calculates search space sizes, and enforces wipe-risk attempt limits.
+
+</details>
+
+<details open>
+<summary><strong>🔓 Deep Messenger Decryption & Forensic Carving</strong></summary>
+
+- **Signal SQLCipher 4 Decryption**: `signal_rooted.py` derives database decryption keys on rooted devices and parses message databases.
+- **WhatsApp Crypt14/15 Engine**: `whatsapp_downgrade.py` decrypts modern AES-GCM WhatsApp backup databases.
+- **Telegram MTProto Deserializer**: `telegram_rooted.py` parses local TL binary caches and message stores.
+- **SQLite B-Tree & WAL Carving**: `sqlite_carver.py` carves unallocated B-Tree slack space and freeblocks; `SafeSQLiteReader` recovers active and deleted log frames from Write-Ahead Logs (WAL).
+- **OCR Intelligence & Crypto Seed Scanner**: Heuristic regex scanner detecting BIP-39 mnemonic seed phrases, PEM keys, ETH private keys, and credit card numbers across files.
+
+</details>
+
+<details open>
 <summary><strong>📱 Device Readiness, Rooted & Non-Rooted Workflows</strong></summary>
 
 - Authorized Android transport detection with device identity, model, Android version/API level, ADB version, authorization state, and readiness history
