@@ -98,13 +98,16 @@ class ScreenLockBypassEngine:
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
 
-        self._log("bypass_start", {
-            "bypass_id": bypass_id,
-            "case_id": case_id,
-            "operator_id": operator_id,
-            "serial": serial,
-            "vector": vector.value,
-        })
+        self._log(
+            "bypass_start",
+            {
+                "bypass_id": bypass_id,
+                "case_id": case_id,
+                "operator_id": operator_id,
+                "serial": serial,
+                "vector": vector.value,
+            },
+        )
 
         try:
             return await self._execute_bypass(
@@ -272,11 +275,13 @@ class ScreenLockBypassEngine:
         return "UNKNOWN_HASH"
 
     def _log(self, event: str, details: dict[str, str]) -> None:
-        self._timeline.append({
-            "ts": datetime.now(UTC).isoformat(),
-            "event": event,
-            **details,
-        })
+        self._timeline.append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "event": event,
+                **details,
+            }
+        )
 
     def _error_result(
         self,
