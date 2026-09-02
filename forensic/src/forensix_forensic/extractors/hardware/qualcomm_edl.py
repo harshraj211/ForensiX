@@ -100,6 +100,73 @@ class FirehosePartitionInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class ProgrammerEntry:
+    """Programmer metadata entry in the Qualcomm SoC registry."""
+
+    soc_model: str
+    msm_id: str
+    programmer_name: str
+    storage_type: str  # 'emmc' | 'ufs'
+    default_luns: tuple[int, ...]
+
+
+class ProgrammerRegistry:
+    """Registry mapping Qualcomm SoC models to expected Firehose programmers."""
+
+    _MAPPING: dict[str, ProgrammerEntry] = {
+        "MSM8916": ProgrammerEntry(
+            "Snapdragon 410", "MSM8916", "prog_emmc_firehose_8916.mbn", "emmc", (0,)
+        ),
+        "MSM8937": ProgrammerEntry(
+            "Snapdragon 430", "MSM8937", "prog_emmc_firehose_8937.mbn", "emmc", (0,)
+        ),
+        "MSM8953": ProgrammerEntry(
+            "Snapdragon 625", "MSM8953", "prog_emmc_firehose_8953.mbn", "emmc", (0,)
+        ),
+        "SDM660": ProgrammerEntry(
+            "Snapdragon 660", "SDM660", "prog_emmc_firehose_sdm660.mbn", "emmc", (0,)
+        ),
+        "SM6115": ProgrammerEntry(
+            "Snapdragon 662", "SM6115", "prog_ufs_firehose_sm6115.elf", "ufs", (0, 1, 2, 3, 4, 5)
+        ),
+        "SM8250": ProgrammerEntry(
+            "Snapdragon 865", "SM8250", "prog_ufs_firehose_sm8250.elf", "ufs", (0, 1, 2, 3, 4, 5)
+        ),
+        "SM8350": ProgrammerEntry(
+            "Snapdragon 888", "SM8350", "prog_ufs_firehose_sm8350.elf", "ufs", (0, 1, 2, 3, 4, 5)
+        ),
+        "SM8450": ProgrammerEntry(
+            "Snapdragon 8 Gen 1",
+            "SM8450",
+            "prog_ufs_firehose_sm8450.elf",
+            "ufs",
+            (0, 1, 2, 3, 4, 5),
+        ),
+        "SM8550": ProgrammerEntry(
+            "Snapdragon 8 Gen 2",
+            "SM8550",
+            "prog_ufs_firehose_sm8550.elf",
+            "ufs",
+            (0, 1, 2, 3, 4, 5),
+        ),
+    }
+
+    @classmethod
+    def lookup(cls, soc_model: str) -> ProgrammerEntry | None:
+        """Lookup programmer metadata by SoC model or MSM identifier string."""
+        upper = soc_model.upper().strip()
+        for key, entry in cls._MAPPING.items():
+            if key in upper or entry.msm_id in upper or entry.soc_model.upper() in upper:
+                return entry
+        return None
+
+    @classmethod
+    def list_supported_socs(cls) -> tuple[str, ...]:
+        """Return tuple of all registered SoC models."""
+        return tuple(cls._MAPPING.keys())
+
+
+@dataclass(frozen=True, slots=True)
 class QualcommEdlAcquisitionResult:
     """Sealed result of a Qualcomm EDL physical acquisition."""
 
