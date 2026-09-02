@@ -47,6 +47,8 @@ from .mtk_brom import (
     MtkBromExtractor,
     MtkBromState,
     MtkChipset,
+    MtkDaEntry,
+    MtkDaRegistry,
     MtkPartitionInfo,
     build_read_command,
     parse_flash_id_response,
@@ -65,6 +67,8 @@ from .physical_acquisition import (
 )
 from .qualcomm_edl import (
     FirehosePartitionInfo,
+    ProgrammerEntry,
+    ProgrammerRegistry,
     QualcommEdlAcquisitionResult,
     QualcommEdlExtractor,
     SaharaHello,
@@ -101,11 +105,19 @@ from .screen_lock_assessment import (
     WipeRisk,
     _estimate_search_space,
 )
+from .screen_lock_bypass import (
+    BypassVector,
+    LockBypassConfig,
+    ScreenLockBypassEngine,
+    ScreenLockBypassResult,
+)
 from .unisoc_fdl import (
     FdlPartitionEntry,
     FdlState,
     SpreadtrumBootromExtractor,
     UnisocFdlAcquisitionResult,
+    UnisocFdlEntry,
+    UnisocFdlRegistry,
     build_fdl_packet,
     build_read_partition_cmd,
     hdlc_decode,
@@ -156,6 +168,8 @@ __all__ = [
     "MtkBromExtractor",
     "MtkBromState",
     "MtkChipset",
+    "MtkDaEntry",
+    "MtkDaRegistry",
     "MtkPartitionInfo",
     "build_read_command",
     "parse_flash_id_response",
@@ -166,6 +180,8 @@ __all__ = [
     "RouterConfig",
     # Qualcomm EDL
     "FirehosePartitionInfo",
+    "ProgrammerEntry",
+    "ProgrammerRegistry",
     "QualcommEdlAcquisitionResult",
     "QualcommEdlExtractor",
     "SaharaHello",
@@ -182,11 +198,15 @@ __all__ = [
     "SamsungDownloadModeResult",
     "build_odin_packet",
     "parse_pit",
-    # Screen lock assessment
+    # Screen lock assessment & bypass
     "AuthorisedEntryResult",
+    "BypassVector",
+    "LockBypassConfig",
     "LockScreenProfile",
     "LockType",
     "ScreenLockAssessmentService",
+    "ScreenLockBypassEngine",
+    "ScreenLockBypassResult",
     "WipeRisk",
     "_estimate_search_space",
     # Unisoc FDL
@@ -194,6 +214,8 @@ __all__ = [
     "FdlState",
     "SpreadtrumBootromExtractor",
     "UnisocFdlAcquisitionResult",
+    "UnisocFdlEntry",
+    "UnisocFdlRegistry",
     "build_fdl_packet",
     "build_read_partition_cmd",
     "hdlc_decode",
