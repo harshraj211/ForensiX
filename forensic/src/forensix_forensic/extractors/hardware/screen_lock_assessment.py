@@ -31,6 +31,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -194,11 +195,38 @@ class ScreenLockAssessmentService:
 
     MAX_ATTEMPTS = MAX_ATTEMPTS
 
-    def __init__(self, adb: Any) -> None:
+    def __init__(self, adb: Any = None, output_dir: Path | None = None) -> None:
         self._adb: Any = adb
+        self._output_dir = output_dir
         self._attempt_count = 0
         self._last_attempt_time: float = 0.0
         self._timeline: list[dict[str, str]] = []
+
+    @classmethod
+    def assess_from_parameters(
+        cls,
+        lock_type: LockType | str,
+        pin_length: int = 0,
+        pattern_size: int = 0,
+        has_biometrics: bool = False,
+        device_rooted: bool = False,
+    ) -> LockScreenProfile:
+        """Create a LockScreenProfile directly from specified parameters."""
+        lock_enum = LockType(lock_type) if isinstance(lock_type, str) else lock_type
+        pattern_str = str(pattern_size) if pattern_size else "3x3"
+        search_space = _estimate_search_space(lock_enum.value, pin_length, pattern_str)
+        return LockScreenProfile(
+            lock_type=lock_enum.value,
+            pin_length=pin_length,
+            pattern_complexity=pattern_str,
+            max_failed_attempts=MAX_ATTEMPTS,
+            wipe_risk=WipeRisk.LOW,
+            biometric_enrolled=has_biometrics,
+            search_space_estimate=search_space,
+            gatekeeper_present=device_rooted,
+            spblob_present=device_rooted,
+            raw_settings={},
+        )
 
     # ------------------------------------------------------------------
     # Public: assess

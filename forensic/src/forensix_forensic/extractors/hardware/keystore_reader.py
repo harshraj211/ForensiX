@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import struct
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import IntEnum
@@ -175,7 +176,17 @@ class KeystoreInspectionResult:
 # ---------------------------------------------------------------------------
 
 
-def parse_keyblob_header(data: bytes, alias: str, user_id: int) -> KeyBlobMetadata | None:
+class KmTagResult(dict[str, Any]):
+    """Authorization tag scan result supporting both dictionary and tuple unpacking access."""
+
+    def __iter__(self) -> Iterator[Any]:
+        yield self.get("algorithm", "UNKNOWN")
+        yield self.get("key_size_bits", 0)
+        yield self.get("purposes", ())
+        yield self.get("origin", "UNKNOWN")
+
+
+def parse_keyblob_header(data: bytes, alias: str, user_id: int = 0) -> KeyBlobMetadata | None:
     """Attempt to parse Keymaster key blob metadata from raw bytes.
 
     Supports Keymaster v1 (plain) and v2/v3/v4 (encrypted with AES-GCM
@@ -190,16 +201,17 @@ def parse_keyblob_header(data: bytes, alias: str, user_id: int) -> KeyBlobMetada
     blob_type = data[0]
     blob_version = data[1] if len(data) > 1 else 0xFF
 
-    # Keymaster v1 plain blob: [type(1)] [version(1)] [flags(1)] [keydata...]
-    # Keymaster v2-v4 encrypted: [type(1)] [version(1)] [nonce(12)] [tag(16)] [enc_data...]
     algorithm = "UNKNOWN"
     key_size_bits = 0
     purposes: tuple[str, ...] = ()
     origin = "UNKNOWN"
 
-    # For non-encrypted blobs (type=0) attempt a simple tag-value scan
     if blob_type == KM_BLOB_TYPE_KEY_MATERIAL and len(data) > 8:
-        algorithm, key_size_bits, purposes, origin = _scan_km_tags(data[4:])
+        tag_res = _scan_km_tags(data[4:])
+        algorithm = str(tag_res.get("algorithm", "UNKNOWN"))
+        key_size_bits = int(tag_res.get("key_size_bits", 0))
+        purposes = tuple(tag_res.get("purposes", ()))
+        origin = str(tag_res.get("origin", "UNKNOWN"))
 
     sha256 = hashlib.sha256(data).hexdigest()
     return KeyBlobMetadata(
@@ -217,17 +229,8 @@ def parse_keyblob_header(data: bytes, alias: str, user_id: int) -> KeyBlobMetada
     )
 
 
-def _scan_km_tags(
-    payload: bytes,
-) -> tuple[str, int, tuple[str, ...], str]:
-    """Scan a Keymaster authorization list for algorithm / purpose / origin tags.
-
-    The Keymaster serialisation format is a sequence of 8-byte TLV entries::
-
-        tag_id (4B, little-endian) | value (4B, little-endian)
-
-    This is a best-effort heuristic scan; it does not require a full schema.
-    """
+def _scan_km_tags(payload: bytes) -> KmTagResult:
+    """Scan a Keymaster authorization list for algorithm / purpose / origin tags."""
     algorithm = "UNKNOWN"
     key_size_bits = 0
     purposes: list[str] = []
@@ -254,11 +257,15 @@ def _scan_km_tags(
             origin = _ORIGIN_NAMES.get(value, f"ORIGIN_{value}")
 
         i += 8
-        # Skip variable-length data for non-enum tags (tag_type == 9 = BYTES)
         if tag_type == 9 and i + value <= len(payload):
             i += value
 
-    return algorithm, key_size_bits, tuple(purposes), origin
+    return KmTagResult(
+        algorithm=algorithm,
+        key_size_bits=key_size_bits,
+        purposes=tuple(purposes),
+        origin=origin,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -453,16 +460,16 @@ class KeystoreExtractor:
 
 
 def _blob_name_to_alias(blob_name: str) -> str:
-    """Extract key alias from a Keystore filename.
-
-    Keystore 1 filenames: ``{uid}_{alias}``
-    Keystore 2 filenames: ``0_{alias}.key`` (SQLite-backed, version 2+)
-    """
+    """Extract key alias from a Keystore filename."""
     name = blob_name
     if name.endswith(".key"):
         name = name[:-4]
-    # Strip UID prefix (e.g. "1000_")
-    parts = name.split("_", 1)
-    if len(parts) == 2 and parts[0].isdigit():
-        return parts[1]
+    parts = name.split("_")
+    if len(parts) >= 3 and parts[0].isdigit() and parts[1].startswith("USR"):
+        try:
+            return bytes.fromhex(parts[-1]).decode("utf-8")
+        except ValueError:
+            return parts[-1]
+    if len(parts) >= 2 and parts[0].isdigit():
+        return "_".join(parts[1:])
     return name

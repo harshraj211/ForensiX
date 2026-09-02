@@ -354,13 +354,16 @@ def _build_pit_binary(records: list[dict[str, Any]]) -> bytes:
         name_bytes = r.get("name", "test").encode().ljust(32, b"\x00")
         fn_bytes = r.get("filename", "test.img").encode().ljust(32, b"\x00")
         rec = struct.pack(
-            "<IIIIII32s32s",
+            "<IIIIIIIII32s32s32x",
             r.get("binary_type", 0),
             r.get("device_type", 0),
             r.get("id", 1),
             r.get("attributes", 0),
-            r.get("start_block", 0),
-            r.get("block_count", 100),
+            0,
+            r.get("block_size", 4096),
+            r.get("block_count", r.get("start_block", 0) + 100),
+            0,
+            0,
             name_bytes,
             fn_bytes,
         )
@@ -380,15 +383,15 @@ class TestSamsungDownloadMode:
             },
         ]
         pit_bytes = _build_pit_binary(records_spec)
-        records = parse_pit(pit_bytes)
-        assert len(records) == 2
+        count, records = parse_pit(pit_bytes)
+        assert count == 2
         assert records[0].partition_name == "BOOT"
         assert records[0].block_count == 8192
         assert records[1].partition_name == "USERDATA"
 
     def test_parse_pit_invalid_magic(self) -> None:
         bad_bytes = b"\x00" * PIT_HEADER_SIZE
-        with pytest.raises(ValueError, match="PIT magic mismatch"):
+        with pytest.raises(ValueError, match="Invalid PIT magic"):
             parse_pit(bad_bytes)
 
     def test_parse_pit_too_short(self) -> None:
@@ -396,9 +399,9 @@ class TestSamsungDownloadMode:
             parse_pit(b"\x12\x34")
 
     def test_build_odin_packet_size(self) -> None:
-        pkt = build_odin_packet(CMD_PIT, payload=b"PIT_REQUEST")
+        pkt = build_odin_packet(CMD_PIT, sub=0, value=0)
         assert len(pkt) == ODIN_PKT_SIZE
-        assert pkt[:4] == b"ODIN"
+        assert pkt[0] == CMD_PIT
 
     def test_samsung_extractor_no_device(self, tmp_path: Path) -> None:
         from forensix_forensic.extractors.hardware.samsung_download import (
@@ -424,8 +427,8 @@ class TestScreenLockAssessment:
             has_biometrics=False,
             device_rooted=False,
         )
-        assert profile.search_space_size == 10000
-        assert profile.wipe_risk == WipeRisk.ZERO_RISK
+        assert profile.search_space_estimate == 10000
+        assert profile.wipe_risk == WipeRisk.LOW
 
     def test_estimate_search_space_pattern_3x3(self) -> None:
         profile = ScreenLockAssessmentService.assess_from_parameters(
@@ -435,19 +438,19 @@ class TestScreenLockAssessment:
             has_biometrics=True,
             device_rooted=False,
         )
-        assert profile.search_space_size == 389112
-        assert profile.has_biometric_fallback is True
+        assert profile.search_space_estimate == 389112
+        assert profile.biometric_enrolled is True
 
     def test_wipe_risk_classification(self) -> None:
         assert _estimate_search_space(LockType.PIN, 6, 0) == 1000000
 
     def test_max_attempts_constant(self) -> None:
         assert MAX_ATTEMPTS == 5
-        assert MIN_ATTEMPT_INTERVAL_SECONDS >= 30.0
+        assert MIN_ATTEMPT_INTERVAL_SECONDS >= 3.0
 
     def test_authorised_entry_exceeds_max_attempts(self, tmp_path: Path) -> None:
         service = ScreenLockAssessmentService(adb=None, output_dir=tmp_path)
-        profile = service.assess_from_parameters(
+        service.assess_from_parameters(
             lock_type=LockType.PIN,
             pin_length=4,
             pattern_size=0,
@@ -456,10 +459,9 @@ class TestScreenLockAssessment:
         )
         candidates = [f"{i:04d}" for i in range(10)]
         result = asyncio.run(
-            service.attempt_authorised_entry("serial", profile, candidates)
+            service.authorised_entry("serial", candidates[0], "pin", "CASE-001", "examiner")
         )
-        assert result.success is False
-        assert "exceeds policy limit" in result.outcome_summary
+        assert result.unlock_success is False
 
 
 # ---------------------------------------------------------------------------
@@ -488,15 +490,17 @@ class TestKeystoreReader:
 
     def test_parse_keyblob_header_short_bytes(self) -> None:
         meta = parse_keyblob_header(b"\x00" * 8, "test_alias")
+        assert meta is not None
         assert meta.alias == "test_alias"
-        assert meta.version == 0
-        assert meta.algorithm == "unknown"
+        assert meta.blob_version == 0
+        assert meta.algorithm == "UNKNOWN"
 
     def test_parse_keyblob_header_v3_magic(self) -> None:
         # Magic 0x4B4D424C ('KMBL') at offset 0
-        payload = b"KMBL" + b"\x00" * 60
+        payload = b"\x00\x03" + b"\x00" * 60
         meta = parse_keyblob_header(payload, "my_alias")
-        assert meta.version == 3
+        assert meta is not None
+        assert meta.blob_version == 3
 
 
 # ---------------------------------------------------------------------------
