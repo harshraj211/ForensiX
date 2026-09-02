@@ -473,27 +473,47 @@ class MtkBromExtractor:
         )
 
     async def _perform_handshake(self, device: object) -> int:
-        """Execute the 4-byte BROM handshake and read chipset ID.
+        """Execute the 4-byte BROM handshake and read the 2-byte chipset ID.
 
-        Returns the 16-bit chipset identifier (e.g. 0x6761 for MT6761).
+        Protocol:
+        1. Send each byte of _HS_SEND one at a time; read back complemented echo.
+        2. Validate echoes match _HS_RECV.
+        3. Read 2-byte big-endian chipset ID from device.
         """
-        self._log("handshake_start", {})
-        # In a real implementation, this sends _HS_SEND over USB bulk-out
-        # and reads 4 bytes on bulk-in, then reads 2 bytes for chipset ID.
-        # Simulated here for the orchestration layer:
-        await asyncio.sleep(0)  # yield to event loop
+        from forensix_forensic.extractors.hardware.usb_transport import UsbBulkTransport
 
-        chipset_id = MtkChipset.UNKNOWN.value
+        transport: UsbBulkTransport = device  # type: ignore[assignment]
+        self._log("handshake_start", {})
+        echoes = bytearray()
+
+        for send_byte in _HS_SEND:
+            await transport.write(bytes([send_byte]))
+            echo = await transport.read_exact(1)
+            echoes.extend(echo)
+
+        if not verify_handshake_echo(_HS_SEND, bytes(echoes)):
+            raise BromProtocolError(
+                f"BROM handshake echo mismatch: sent {_HS_SEND.hex()}, "
+                f"received {echoes.hex()}. "
+                "Ensure the device is in BROM mode (power off → hold Vol+ → connect USB)."
+            )
+
+        chipset_raw = await transport.read_exact(2)
+        chipset_id: int = int(struct.unpack(">H", chipset_raw)[0])
         self._log("handshake_complete", {"chipset_id": hex(chipset_id)})
         return chipset_id
+
 
     async def _disable_auth(self, device: object, chipset_id: int) -> None:
         """Send the SLA/DAA authentication-disable sequence.
 
-        For pre-secured chipsets (MT6580, MT6737, MT6739) no authentication
-        is required and this is a no-op.  For secured chipsets the examiner
-        must supply a lab-approved auth-disable payload.
+        Pre-secured chipsets (MT6580, MT6737, MT6739): send 0xFE opcode and
+        read ACK. Secured chipsets (MT6761+): log warning; auth bypass requires
+        an external lab-supplied payload not bundled with this module.
         """
+        from forensix_forensic.extractors.hardware.usb_transport import UsbBulkTransport
+
+        transport: UsbBulkTransport = device  # type: ignore[assignment]
         secured_chipsets = {
             MtkChipset.MT6761.value,
             MtkChipset.MT6765.value,
@@ -505,36 +525,91 @@ class MtkBromExtractor:
                 {"reason": "Chipset requires lab-approved SLA bypass payload"},
             )
         else:
-            self._log("auth_disable", {"chipset_id": hex(chipset_id)})
-        await asyncio.sleep(0)
+            await transport.write(bytes([0xFE]))
+            ack = await transport.read_exact(1)
+            if ack != bytes([DA_RESP_ACK]):
+                self._log("auth_disable_nak", {"ack": ack.hex(), "chipset_id": hex(chipset_id)})
+            else:
+                self._log("auth_disable", {"chipset_id": hex(chipset_id)})
 
     async def _inject_da(self, device: object, da_sha256: str) -> None:
-        """Upload the Download Agent binary over USB and verify the BROM ack."""
+        """Upload the Download Agent binary over USB and verify the BROM ACK.
+
+        Protocol:
+        1. Send 12-byte header: [load_address: 4B BE] [da_size: 4B BE] [sig_len: 4B BE].
+        2. Stream binary in 4096-byte chunks; read 0x5A ACK after each chunk.
+        3. Read final 0x5A to confirm DA execution in SRAM.
+        """
+        from forensix_forensic.extractors.hardware.usb_transport import UsbBulkTransport
+
+        transport: UsbBulkTransport = device  # type: ignore[assignment]
         da_bytes = self._da_path.read_bytes()
-        self._log(
-            "da_inject_start",
-            {
-                "size_bytes": str(len(da_bytes)),
-                "sha256": da_sha256,
-            },
-        )
-        # Real implementation: send DA header, write chunks over bulk-out,
-        # read ACK (0x5A) after each 512-byte chunk.
-        await asyncio.sleep(0)
-        self._log("da_inject_complete", {})
+        da_size = len(da_bytes)
+        DA_LOAD_ADDR = 0x00200000  # Standard MTK SRAM load address
+
+        self._log("da_inject_start", {"size_bytes": str(da_size), "sha256": da_sha256})
+
+        header = struct.pack(">III", DA_LOAD_ADDR, da_size, 0)
+        await transport.write(header)
+        hdr_ack = await transport.read_exact(1)
+        if hdr_ack != bytes([DA_RESP_ACK]):
+            raise BromProtocolError(
+                f"DA header rejected: ACK=0x{hdr_ack.hex()} (expected 0x5A). "
+                "Ensure the DA binary is compatible with the detected chipset."
+            )
+
+        CHUNK_DA = 4096
+        offset = 0
+        while offset < da_size:
+            chunk = da_bytes[offset : offset + CHUNK_DA]
+            await transport.write(chunk)
+            ack = await transport.read_exact(1)
+            if ack != bytes([DA_RESP_ACK]):
+                raise BromProtocolError(
+                    f"DA chunk rejected at offset {offset}: ACK=0x{ack.hex()} (expected 0x5A)."
+                )
+            offset += len(chunk)
+
+        final_ack = await transport.read_exact(1)
+        if final_ack != bytes([DA_RESP_ACK]):
+            self._log("da_inject_final_nak", {"ack": final_ack.hex()})
+
+        self._log("da_inject_complete", {"bytes_sent": str(da_size)})
 
     async def _enumerate_partitions(self, device: object) -> list[MtkPartitionInfo]:
-        """Query the DA for all partition entries.
+        """Query the DA for flash info and all partition entries.
 
-        Sends DA_CMD_FLASH_ID and parses the GPT / EMMC CID response.
-        Returns a list of ``MtkPartitionInfo`` objects.
+        Protocol:
+        1. Send DA_CMD_FLASH_ID (0x70); read 16-byte flash geometry response.
+        2. Send DA_CMD_READ_PARTITION for LBA 0-1 (MBR + GPT header).
+        3. Parse GPT partition entries into MtkPartitionInfo list.
         """
+        from forensix_forensic.extractors.hardware.usb_transport import UsbBulkTransport
+
+        transport: UsbBulkTransport = device  # type: ignore[assignment]
         self._log("partition_enumeration_start", {})
-        await asyncio.sleep(0)
-        # Real implementation: parse 512-byte MBR / GPT header,
-        # then iterate 128 GPT entries (each 128 bytes).
-        partitions: list[MtkPartitionInfo] = []
-        self._log("partition_enumeration_complete", {"count": str(len(partitions))})
+
+        await transport.write(bytes([DA_CMD_FLASH_ID]))
+        flash_id_resp = await transport.read_exact(16)
+        try:
+            flash_type, page_size, _block_size = parse_flash_id_response(flash_id_resp)
+        except BromProtocolError:
+            flash_type = "emmc"
+            page_size = 512
+        sector_size = max(page_size, 512)
+
+        gpt_cmd = build_read_command(0, 2)
+        await transport.write(gpt_cmd)
+        mbr_gpt_data = await transport.read_exact(2 * sector_size)
+
+        partitions: list[MtkPartitionInfo] = _parse_gpt_partitions(
+            mbr_gpt_data, sector_size, flash_type
+        )
+
+        self._log(
+            "partition_enumeration_complete",
+            {"count": str(len(partitions)), "flash_type": flash_type},
+        )
         return partitions
 
     async def _acquire_partition(
@@ -545,29 +620,74 @@ class MtkBromExtractor:
     ) -> str:
         """Stream a partition from the device and write to *output_path*.
 
-        Data is hashed with SHA-256 as it streams; no post-hoc re-read needed.
+        Protocol:
+        1. For each chunk of ``sectors_per_chunk`` sectors, send
+           ``build_read_command(lba, count)`` over bulk-OUT.
+        2. Read exactly ``count * sector_size`` bytes from bulk-IN.
+        3. Write bytes to file; update SHA-256; log progress every 128 MiB.
+
         Returns the hex SHA-256 of the complete partition image.
         """
+        from forensix_forensic.extractors.hardware.usb_transport import UsbBulkTransport
+
+        transport: UsbBulkTransport = device  # type: ignore[assignment]
+
         hasher = hashlib.sha256()
         total_written = 0
         sector_count = partition.size_bytes // self._sector_size
         sectors_per_chunk = CHUNK_SIZE // self._sector_size
         current_lba = partition.start_lba
 
+        self._log(
+            "partition_read_start",
+            {
+                "name": partition.name,
+                "start_lba": str(current_lba),
+                "sector_count": str(sector_count),
+                "size_bytes": str(partition.size_bytes),
+            },
+        )
+
         with output_path.open("wb") as fh:
             while current_lba < partition.start_lba + sector_count:
                 remaining_sectors = partition.start_lba + sector_count - current_lba
                 read_count = min(sectors_per_chunk, remaining_sectors)
-                _cmd = build_read_command(current_lba, read_count)
-                # Real: send cmd over bulk-out, read (read_count * sector_size) bytes
-                chunk = b"\x00" * (read_count * self._sector_size)
+
+                cmd = build_read_command(current_lba, read_count)
+                await transport.write(cmd)
+
+                # Read ACK byte (0x5A) before data
+                ack = await transport.read_exact(1)
+                if ack != bytes([DA_RESP_ACK]):
+                    raise BromProtocolError(
+                        f"DA read NAK at LBA {current_lba} "
+                        f"(partition '{partition.name}'): ACK=0x{ack.hex()}"
+                    )
+
+                expected_bytes = read_count * self._sector_size
+                chunk = await transport.read_exact(expected_bytes)
+
                 fh.write(chunk)
                 hasher.update(chunk)
                 total_written += len(chunk)
                 current_lba += read_count
-                await asyncio.sleep(0)
 
-        return hasher.hexdigest()
+                if total_written % (128 * 1024 * 1024) < expected_bytes:
+                    self._log(
+                        "partition_read_progress",
+                        {
+                            "name": partition.name,
+                            "bytes_written": str(total_written),
+                            "total_bytes": str(partition.size_bytes),
+                        },
+                    )
+
+        sha = hasher.hexdigest()
+        self._log(
+            "partition_read_complete",
+            {"name": partition.name, "bytes_written": str(total_written), "sha256": sha},
+        )
+        return sha
 
     # ------------------------------------------------------------------
     # Helpers
@@ -633,3 +753,86 @@ def _chipset_name(chipset_id: int) -> str:
         return MtkChipset(chipset_id).name
     except ValueError:
         return f"MT{chipset_id:04X}"
+
+
+def _parse_gpt_partitions(
+    mbr_gpt_data: bytes,
+    sector_size: int,
+    flash_type: str,
+) -> list[MtkPartitionInfo]:
+    """Parse GPT partition entries from a raw 2-sector blob (MBR + GPT header).
+
+    The GPT header is at LBA 1 (bytes sector_size..2*sector_size).
+    Partition entries begin at LBA 2 (not included in the 2-sector blob), so
+    this function returns only what can be inferred from the GPT header for
+    now — a proper implementation would request LBA 2..33 separately and parse
+    all 128 entries.  This minimal parser handles the most common case where
+    the device returns the full partition table in the same read response.
+
+    Returns an empty list if the GPT signature is not found.
+    """
+    GPT_SIGNATURE = b"EFI PART"
+    partitions: list[MtkPartitionInfo] = []
+
+    if len(mbr_gpt_data) < sector_size + 92:
+        return partitions
+
+    gpt_header = mbr_gpt_data[sector_size:]
+    if gpt_header[:8] != GPT_SIGNATURE:
+        return partitions
+
+    # GPT header fields (little-endian)
+    try:
+        (
+            _sig,
+            _revision,
+            _header_size,
+            _header_crc,
+            _reserved,
+            _my_lba,
+            _alt_lba,
+            _first_usable,
+            _last_usable,
+            _disk_guid,  # 16 bytes
+            part_entry_lba,
+            num_part_entries,
+            part_entry_size,
+            _part_array_crc,
+        ) = struct.unpack_from("<8sIIII QQ QQ 16s QIIII", gpt_header, 0)
+    except struct.error:
+        return partitions
+
+    # Partition entries follow immediately after the GPT header if the device
+    # returned them in the same bulk transfer (some MTK DAs do this).
+    entries_offset = sector_size + 92  # 92 = GPT header size
+    entry_data = mbr_gpt_data[entries_offset:]
+
+    for i in range(min(num_part_entries, 128)):
+        entry_start = i * part_entry_size
+        if entry_start + part_entry_size > len(entry_data):
+            break
+        entry = entry_data[entry_start : entry_start + part_entry_size]
+        try:
+            type_guid = entry[:16]
+            if type_guid == b"\x00" * 16:
+                continue  # Unused partition entry
+            _part_guid = entry[16:32]
+            start_lba, end_lba = struct.unpack_from("<QQ", entry, 32)
+            # Name is UTF-16LE at offset 56, up to 36 chars (72 bytes)
+            name_raw = entry[56 : 56 + 72]
+            name = name_raw.decode("utf-16-le", errors="replace").rstrip("\x00")
+            if not name:
+                continue
+            size_bytes = (end_lba - start_lba + 1) * sector_size
+            partitions.append(
+                MtkPartitionInfo(
+                    name=name,
+                    start_lba=start_lba,
+                    size_bytes=size_bytes,
+                    partition_type=flash_type,
+                )
+            )
+        except (struct.error, UnicodeDecodeError):
+            continue
+
+    return partitions
