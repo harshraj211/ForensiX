@@ -324,9 +324,7 @@ class ScreenLockBypassEngine:
         except RootNotAvailableError:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise RootNotAvailableError(
-                f"Root probe failed for device {serial}: {exc}"
-            ) from exc
+            raise RootNotAvailableError(f"Root probe failed for device {serial}: {exc}") from exc
 
     async def _detect_api_level(self, serial: str) -> int:
         """Read ``ro.build.version.sdk`` and return as int (defaults to 28)."""

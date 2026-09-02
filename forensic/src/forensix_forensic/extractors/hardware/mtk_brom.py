@@ -503,7 +503,6 @@ class MtkBromExtractor:
         self._log("handshake_complete", {"chipset_id": hex(chipset_id)})
         return chipset_id
 
-
     async def _disable_auth(self, device: object, chipset_id: int) -> None:
         """Send the SLA/DAA authentication-disable sequence.
 

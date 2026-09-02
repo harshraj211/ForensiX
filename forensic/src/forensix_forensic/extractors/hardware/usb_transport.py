@@ -119,7 +119,6 @@ class UsbBulkTransport:
         self._ep_out: Any = None
         self._ep_in: Any = None
 
-
     # ------------------------------------------------------------------
     # Context manager
     # ------------------------------------------------------------------
@@ -181,23 +180,23 @@ class UsbBulkTransport:
             if not is_bulk:
                 continue
             direction = usb.util.endpoint_direction(ep.bEndpointAddress)
-            if direction == usb.util.ENDPOINT_OUT and ep_out is None and (
-                self._ep_out_addr is None or ep.bEndpointAddress == self._ep_out_addr
+            if (
+                direction == usb.util.ENDPOINT_OUT
+                and ep_out is None
+                and (self._ep_out_addr is None or ep.bEndpointAddress == self._ep_out_addr)
             ):
                 ep_out = ep
-            elif direction == usb.util.ENDPOINT_IN and ep_in is None and (
-                self._ep_in_addr is None or ep.bEndpointAddress == self._ep_in_addr
+            elif (
+                direction == usb.util.ENDPOINT_IN
+                and ep_in is None
+                and (self._ep_in_addr is None or ep.bEndpointAddress == self._ep_in_addr)
             ):
                 ep_in = ep
 
         if ep_out is None:
-            raise UsbTransportError(
-                f"No BULK OUT endpoint found on interface {self._interface}"
-            )
+            raise UsbTransportError(f"No BULK OUT endpoint found on interface {self._interface}")
         if ep_in is None:
-            raise UsbTransportError(
-                f"No BULK IN endpoint found on interface {self._interface}"
-            )
+            raise UsbTransportError(f"No BULK IN endpoint found on interface {self._interface}")
 
         self._device = device
         self._ep_out = ep_out
@@ -223,7 +222,6 @@ class UsbBulkTransport:
             self._ep_in = None
             logger.debug("USB device closed.")
 
-
     # ------------------------------------------------------------------
     # Synchronous bulk I/O (used inside executor for async callers)
     # ------------------------------------------------------------------
@@ -247,7 +245,6 @@ class UsbBulkTransport:
         """
         import usb.core
 
-
         if self._ep_out is None:
             raise UsbTransportError("Transport not opened. Call open() first.")
 
@@ -258,9 +255,7 @@ class UsbBulkTransport:
                 logger.debug("USB write: %d bytes (attempt %d)", written, attempt)
                 return written
             except usb.core.USBTimeoutError as exc:
-                raise UsbTimeoutError(
-                    f"USB write timed out after {self._timeout_ms} ms"
-                ) from exc
+                raise UsbTimeoutError(f"USB write timed out after {self._timeout_ms} ms") from exc
             except usb.core.USBError as exc:
                 last_exc = exc
                 if "STALL" in str(exc).upper() or "PIPE" in str(exc).upper():
@@ -325,11 +320,9 @@ class UsbBulkTransport:
                         continue
                 raise UsbTransportError(f"USB write error: {exc}") from exc
 
-
         raise UsbStallError(
             f"Bulk IN endpoint STALLed after {self._max_retries} attempts"
         ) from last_exc
-
 
     def read_exact_sync(self, length: int) -> bytes:
         """Read exactly *length* bytes, issuing multiple reads if needed.

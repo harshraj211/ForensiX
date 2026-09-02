@@ -21,7 +21,6 @@ from forensix_forensic.extractors.hardware import (
 )
 
 
-
 class TestProgrammerRegistry:
     def test_lookup_known_soc(self) -> None:
         entry = ProgrammerRegistry.lookup("MSM8937")
@@ -82,7 +81,10 @@ class TestScreenLockBypassEngine:
                 return "1"
             if "lockscreen.password_type" in cmd:
                 return "131072"
-            return "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  /data/system/locksettings.db"
+            return (
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  "
+                "/data/system/locksettings.db"
+            )
 
         mock_adb.shell = mock_shell
         mock_adb.pull = AsyncMock()
@@ -176,5 +178,7 @@ class TestLoaderStore:
         store = LoaderStore(loaders_dir=tmp_path, validate_checksums=False)
         resolved = store.get("valid.bin")
         assert resolved == loader
-        assert store.sha256("valid.bin") == "054196412030b42f6c91a329d892d1...".lower() or len(store.sha256("valid.bin")) == 64
-
+        assert (
+            store.sha256("valid.bin") == "054196412030b42f6c91a329d892d1...".lower()
+            or len(store.sha256("valid.bin")) == 64
+        )

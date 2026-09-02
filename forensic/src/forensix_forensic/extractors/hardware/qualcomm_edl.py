@@ -537,9 +537,7 @@ class QualcommEdlExtractor:
         self._log("edl_device_detected", {"vid": "0x05C6", "pid": "0x9008"})
         return transport
 
-    async def _sahara_handshake_and_upload(
-        self, device: object, prog_sha256: str
-    ) -> str:
+    async def _sahara_handshake_and_upload(self, device: object, prog_sha256: str) -> str:
         """Complete Sahara Hello/End-of-Image sequence and upload the programmer MBN.
 
         Protocol:
@@ -675,9 +673,7 @@ class QualcommEdlExtractor:
             )
         self._log("firehose_ready", {"rawmsg": msg})
 
-    async def _get_partition_table(
-        self, device: object, lun: int
-    ) -> list[FirehosePartitionInfo]:
+    async def _get_partition_table(self, device: object, lun: int) -> list[FirehosePartitionInfo]:
         """Query GPT partition table for *lun* via Firehose XML.
 
         Returns a list of :class:`FirehosePartitionInfo` parsed from the
@@ -747,8 +743,7 @@ class QualcommEdlExtractor:
                 ok, msg = parse_firehose_response(ack_raw)
                 if not ok:
                     raise RuntimeError(
-                        f"Firehose read NAK at sector {current} "
-                        f"(partition '{part.label}'): {msg!r}"
+                        f"Firehose read NAK at sector {current} (partition '{part.label}'): {msg!r}"
                     )
 
                 # 3. Read raw sector data
@@ -833,9 +828,7 @@ class QualcommEdlExtractor:
 # ---------------------------------------------------------------------------
 
 
-def _parse_partition_table_xml(
-    xml_bytes: bytes, lun: int
-) -> list[FirehosePartitionInfo]:
+def _parse_partition_table_xml(xml_bytes: bytes, lun: int) -> list[FirehosePartitionInfo]:
     """Parse a Firehose ``<partitiontable>`` XML response into a list of partitions.
 
     The Firehose programmer returns an XML blob like::
@@ -857,17 +850,10 @@ def _parse_partition_table_xml(
         if child.tag not in ("partition", "entry"):
             continue
         try:
-            name = (
-                child.get("label")
-                or child.get("name")
-                or child.get("Name")
-                or ""
-            )
+            name = child.get("label") or child.get("name") or child.get("Name") or ""
             start = int(child.get("start_sector") or child.get("StartSector") or "0")
             count = int(
-                child.get("num_partition_sectors")
-                or child.get("NumPartitionSectors")
-                or "0"
+                child.get("num_partition_sectors") or child.get("NumPartitionSectors") or "0"
             )
             if count == 0 or not name:
                 continue
