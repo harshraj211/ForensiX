@@ -2,9 +2,11 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
 
 from forensix_api import __version__
 from forensix_api.errors import (
@@ -53,6 +55,7 @@ def create_app(
     settings: Settings | None = None,
     *,
     adb_client: AdbClient | None = None,
+    web_dist: Path | None = None,
 ) -> FastAPI:
     effective_settings = settings or Settings()
     database = Database(
@@ -127,6 +130,15 @@ def create_app(
     app.include_router(extraction.router)
     app.include_router(evidence_sources.router)
     app.include_router(devices.router)
+
+    # When a compiled web bundle is provided, serve the workstation SPA from
+    # the same origin as the API, mirroring the desktop launcher behavior.
+    if web_dist is not None:
+        web_root = web_dist.expanduser().resolve()
+        if not web_root.is_dir() or not (web_root / "index.html").is_file():
+            raise RuntimeError("The bundled web application is missing or incomplete.")
+        app.mount("/", StaticFiles(directory=web_root, html=True), name="web")
+
     return app
 
 

@@ -349,6 +349,47 @@ Portable workstation bundles, CycloneDX SBOMs, SHA-256 manifests, GitHub build a
 
 ---
 
+## 🐳 Container Build and Usage
+
+ForensiX is designed for a single investigator workstation. The included `Dockerfile` therefore runs the API and the bundled web application on the loopback interface only; it is **not** intended to be published as a LAN or internet service.
+
+### Build
+
+```bash
+docker build -t forensix .
+```
+
+### Run
+
+Because the application deliberately binds `127.0.0.1`, use the host network to reach the API on the host loopback interface:
+
+```bash
+mkdir -p ~/forensix-data
+docker run --rm --network host \
+  -v ~/forensix-data:/data \
+  forensix
+```
+
+Then open `http://127.0.0.1:8765/`.
+
+The `/data` volume persists the SQLite database, acquired evidence, reports, logs, and generated exports. The image includes the Android Debug Bridge from `android-tools-adb`.
+
+### Physical-device note
+
+ADB inside the container cannot reach USB devices attached to the host through the default bridge network. For real-device acquisition, run with the host network **and** mount the host ADB server socket so the container can use the host's ADB instance:
+
+```bash
+docker run --rm --network host \
+  -v ~/.android:/home/forensix/.android \
+  -v /tmp:/tmp \
+  -v ~/forensix-data:/data \
+  forensix
+```
+
+The container starts its own ADB server by default. Sharing the host's `~/.android` directory lets it reuse the host-authorized device identity, and the shared `/tmp` allows the ADB socket path to be visible to both the container and the host. Authorization state and device access still depend on the host's Android SDK Platform-Tools and USB configuration. For the most predictable device experience, run ForensiX directly on the host rather than in a container.
+
+---
+
 ## 🧪 Validation Commands
 
 ```powershell

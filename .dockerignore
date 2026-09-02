@@ -1,0 +1,45 @@
+# Version control
+.git
+.gitignore
+
+# Local toolchains and caches
+.vvenv
+.venv
+venv
+node_modules
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Frontend build output
+apps/web/dist
+
+# Python build output
+build
+dist
+*.spec.bak
+
+# Runtime data, logs, and local tools
+data
+logs
+tools
+release-*
+
+# Editor and OS files
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Agent session state
+.commandcode
