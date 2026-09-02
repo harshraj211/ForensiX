@@ -2,27 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Camera,
-  Clock,
-  Compass,
   Copy,
   ExternalLink,
   Eye,
-  Layers,
   LoaderCircle,
-  LocateFixed,
-  Map as MapIcon,
   MapPin,
-  Maximize2,
-  Navigation,
-  ShieldCheck,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import {
-  artifactContentUrl,
   getCase,
   listMediaAnalyses,
   type MediaAnalysis,
@@ -46,24 +36,29 @@ const VIEW_HEIGHT = 420;
 const PADDING = 44;
 
 function projectOfflinePoints(analyses: MediaAnalysis[]): GeoPoint[] {
-  const geotagged = analyses.filter(
+  const valid = analyses.filter(
     (a): a is MediaAnalysis & { gps_latitude: number; gps_longitude: number } =>
-      a.gps_latitude !== null && a.gps_longitude !== null,
+      typeof a.gps_latitude === "number" && typeof a.gps_longitude === "number",
   );
-  if (geotagged.length === 0) return [];
-  const lats = geotagged.map((a) => a.gps_latitude);
-  const lngs = geotagged.map((a) => a.gps_longitude);
+
+  if (valid.length === 0) return [];
+
+  const lats = valid.map((a) => a.gps_latitude);
+  const lons = valid.map((a) => a.gps_longitude);
   const minLat = Math.min(...lats);
   const maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs);
-  const maxLng = Math.max(...lngs);
-  const latSpan = maxLat - minLat || 1;
-  const lngSpan = maxLng - minLng || 1;
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
+  const spanLat = maxLat - minLat || 1;
+  const spanLon = maxLon - minLon || 1;
   const usableWidth = VIEW_WIDTH - PADDING * 2;
   const usableHeight = VIEW_HEIGHT - PADDING * 2;
-  return geotagged.map((analysis) => {
-    const x = PADDING + ((analysis.gps_longitude - minLng) / lngSpan) * usableWidth;
-    const y = PADDING + ((maxLat - analysis.gps_latitude) / latSpan) * usableHeight;
+
+  return valid.map((analysis) => {
+    const normX = (analysis.gps_longitude - minLon) / spanLon;
+    const normY = (analysis.gps_latitude - minLat) / spanLat;
+    const x = PADDING + normX * usableWidth;
+    const y = VIEW_HEIGHT - PADDING - normY * usableHeight;
     return {
       analysis,
       latitude: analysis.gps_latitude,
@@ -76,7 +71,15 @@ function projectOfflinePoints(analyses: MediaAnalysis[]): GeoPoint[] {
 
 function cleanCameraString(make?: string | null, model?: string | null): string {
   const sanitize = (s?: string | null) =>
-    s ? s.replace(/[\x00-\x1F\x7F-\x9F]/g, "").trim() : "";
+    s
+      ? Array.from(s)
+          .filter((char) => {
+            const code = char.charCodeAt(0);
+            return (code >= 32 && code !== 127) || code === 9 || code === 10 || code === 13;
+          })
+          .join("")
+          .trim()
+      : "";
   const cleanMake = sanitize(make);
   const cleanModel = sanitize(model);
   if (cleanMake && cleanModel) {
@@ -225,7 +228,6 @@ export function MediaMapPage() {
                 selectedId={selected?.analysis.id ?? null}
                 onSelect={setSelectedId}
                 layerMode={mapLayer}
-                caseId={caseId}
               />
             )}
           </div>
@@ -252,7 +254,6 @@ interface InteractiveLeafletMapProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   layerMode: "dark" | "streets" | "satellite";
-  caseId: string;
 }
 
 function InteractiveLeafletMap({
@@ -260,7 +261,6 @@ function InteractiveLeafletMap({
   selectedId,
   onSelect,
   layerMode,
-  caseId,
 }: InteractiveLeafletMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -290,7 +290,7 @@ function InteractiveLeafletMap({
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [points]);
 
   // Update tile layer based on layerMode
   useEffect(() => {
@@ -323,7 +323,7 @@ function InteractiveLeafletMap({
         maxZoom: 19,
       });
       group.addLayer(osm);
-    } else if (layerMode === "satellite") {
+    } else {
       const sat = L.tileLayer(
         "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         {
@@ -361,22 +361,19 @@ function InteractiveLeafletMap({
       const markerHtml = `
         <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
           <div style="position: absolute; width: 32px; height: 32px; border-radius: 9999px; background-color: rgba(34, 211, 238, ${
-            isSelected ? "0.45" : "0.2"
-          }); animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;"></div>
-          <div style="position: relative; width: 18px; height: 18px; border-radius: 9999px; background-color: ${
+            isSelected ? "0.35" : "0.15"
+          }); animation: pulse 2s infinite;"></div>
+          <div style="width: 14px; height: 14px; border-radius: 9999px; background-color: ${
             isSelected ? "#22d3ee" : "#06b6d4"
-          }; border: 2px solid ${
-        isSelected ? "#ffffff" : "#0f172a"
-      }; box-shadow: 0 0 12px rgba(34, 211, 238, 0.8);"></div>
+          }; border: 2.5px solid #ffffff; box-shadow: 0 2px 8px rgba(0,0,0,0.5);"></div>
         </div>
       `;
 
       const icon = L.divIcon({
-        className: "forensix-map-marker",
+        className: "custom-forensic-marker",
         html: markerHtml,
         iconSize: [32, 32],
         iconAnchor: [16, 16],
-        popupAnchor: [0, -16],
       });
 
       const marker = L.marker([point.latitude, point.longitude], { icon }).addTo(map);
@@ -397,7 +394,7 @@ function InteractiveLeafletMap({
             <div>EXIF Time: <strong>${point.analysis.captured_at_raw || "Not recorded"}</strong></div>
           </div>
           <div style="margin-top: 8px; border-top: 1px solid #e2e8f0; padding-top: 8px; display: flex; gap: 8px;">
-            <a href="https://www.google.com/maps?q=${point.latitude},${point.longitude}" target="_blank" rel="noreferrer" style="font-size: 11px; color: #0284c7; text-decoration: none; font-weight: 600;">Open Google Maps &rarr;</a>
+            <a href="https://www.google.com/maps?q=${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}" target="_blank" rel="noreferrer" style="font-size: 11px; color: #0284c7; text-decoration: none; font-weight: 600;">Open Google Maps &rarr;</a>
           </div>
         </div>
       `;
@@ -574,7 +571,7 @@ function CoordinateList({
               </button>
               <span className="text-slate-300">·</span>
               <a
-                href={`https://www.google.com/maps?q=${point.latitude},${point.longitude}`}
+                href={`https://www.google.com/maps?q=${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`}
                 target="_blank"
                 rel="noreferrer noopener"
                 className="inline-flex items-center gap-1 text-[11px] font-medium text-cyan-700 transition hover:text-cyan-900"
@@ -613,7 +610,9 @@ function SelectedCard({ point, caseId }: { point: GeoPoint; caseId: string }) {
             </h3>
             <button
               type="button"
-              onClick={copy}
+              onClick={() => {
+                void copy();
+              }}
               className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
             >
               <Copy size={12} /> {copied ? "Copied" : "Copy"}
@@ -623,7 +622,7 @@ function SelectedCard({ point, caseId }: { point: GeoPoint; caseId: string }) {
 
         <div className="flex items-center gap-2">
           <a
-            href={`https://www.google.com/maps?q=${point.latitude},${point.longitude}`}
+            href={`https://www.google.com/maps?q=${point.latitude.toFixed(6)},${point.longitude.toFixed(6)}`}
             target="_blank"
             rel="noreferrer noopener"
             className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-black"

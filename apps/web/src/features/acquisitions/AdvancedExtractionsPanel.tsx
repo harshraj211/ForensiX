@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
@@ -43,27 +43,21 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
     refetchInterval: 5000,
   });
 
-  const availableDevices = devicesQuery.data?.devices ?? [];
+  const availableDevices = useMemo(() => devicesQuery.data?.devices ?? [], [devicesQuery.data?.devices]);
   const defaultOperator = currentUser.data?.username || "operator";
   const activeOperator = operatorId.trim() || defaultOperator;
-
-  // Auto-populate first connected device if available
-  useEffect(() => {
-    if (!serial && availableDevices.length > 0 && availableDevices[0]?.serial) {
-      setSerial(availableDevices[0].serial);
-    }
-  }, [availableDevices, serial]);
+  const effectiveSerial = serial || availableDevices[0]?.serial || "";
 
   const waMutation = useMutation({
-    mutationFn: () => extractWhatsAppDowngrade(caseId, serial.trim(), activeOperator),
+    mutationFn: () => extractWhatsAppDowngrade(caseId, effectiveSerial.trim(), activeOperator),
   });
 
   const signalMutation = useMutation({
-    mutationFn: () => extractSignalRooted(caseId, serial.trim(), activeOperator),
+    mutationFn: () => extractSignalRooted(caseId, effectiveSerial.trim(), activeOperator),
   });
 
   const telegramMutation = useMutation({
-    mutationFn: () => extractTelegramRooted(caseId, serial.trim(), activeOperator),
+    mutationFn: () => extractTelegramRooted(caseId, effectiveSerial.trim(), activeOperator),
   });
 
   const sqliteMutation = useMutation({
@@ -199,7 +193,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
 
           <button
             type="button"
-            disabled={!serial.trim() || waMutation.isPending}
+            disabled={!effectiveSerial.trim() || waMutation.isPending}
             onClick={() => {
               waMutation.mutate();
             }}
@@ -240,7 +234,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
 
           <button
             type="button"
-            disabled={!serial.trim() || signalMutation.isPending}
+            disabled={!effectiveSerial.trim() || signalMutation.isPending}
             onClick={() => {
               signalMutation.mutate();
             }}
@@ -281,7 +275,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
 
           <button
             type="button"
-            disabled={!serial.trim() || telegramMutation.isPending}
+            disabled={!effectiveSerial.trim() || telegramMutation.isPending}
             onClick={() => {
               telegramMutation.mutate();
             }}

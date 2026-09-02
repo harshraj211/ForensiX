@@ -1,5 +1,5 @@
 export interface CaseSubnavProps {
-  caseId: string;
+  caseId?: string;
   caseNumber?: string;
 }
 
@@ -7,6 +7,7 @@ export interface CaseSubnavProps {
  * Case navigation has been unified into the primary left workstation sidebar.
  * This component returns null to eliminate top horizontal navbar duplication.
  */
-export function CaseSubnav(_props: CaseSubnavProps) {
+export function CaseSubnav(_props?: CaseSubnavProps): null {
+  void _props;
   return null;
 }

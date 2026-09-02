@@ -70,7 +70,7 @@ export function InvestigationStoryboardPage() {
 
   return (
     <div className="mx-auto max-w-[1380px] print:max-w-none">
-      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data?.case_number} />
+      <CaseSubnav caseId={caseId} caseNumber={caseQuery.data.case_number} />
       <Link
         to={`/cases/${caseId}/command-center`}
         className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-cyan-200 print:hidden"
