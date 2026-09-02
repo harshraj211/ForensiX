@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -31,6 +32,8 @@ from forensix_server.db import (
     MediaAnalysisRecord,
 )
 from forensix_server.evidence import TimelineService
+
+logger = logging.getLogger(__name__)
 
 MEDIA_WORKER_VERSION = "1.0.0"
 MEDIA_ANALYSIS_TIMEOUT_SECONDS = 12
@@ -144,7 +147,10 @@ class MediaAnalysisService:
         with database.session() as session:
             unprocessed = session.execute(
                 select(ArtifactRecord.id, ArtifactRecord.case_id)
-                .outerjoin(MediaAnalysisRecord, MediaAnalysisRecord.artifact_id == ArtifactRecord.id)
+                .outerjoin(
+                    MediaAnalysisRecord,
+                    MediaAnalysisRecord.artifact_id == ArtifactRecord.id,
+                )
                 .where(
                     ArtifactRecord.category == "image",
                     ArtifactRecord.status == "active",
@@ -168,8 +174,12 @@ class MediaAnalysisService:
             try:
                 self.analyze(database, system_principal, case_id, artifact_id)
                 processed += 1
-            except Exception:
-                continue
+            except Exception as exc:
+                logger.warning(
+                    "Automatic media analysis failed for artifact %s: %s",
+                    artifact_id,
+                    exc,
+                )
         return processed
 
     def analyze(
