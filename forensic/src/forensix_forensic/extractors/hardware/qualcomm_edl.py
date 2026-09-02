@@ -22,6 +22,7 @@ import asyncio
 import hashlib
 import struct
 import xml.etree.ElementTree as ET
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import IntEnum
@@ -508,60 +509,196 @@ class QualcommEdlExtractor:
         return sha
 
     def _detect_edl_device(self) -> object:
-        """Locate the Qualcomm EDL USB device (VID 0x05C6, PID 0x9008)."""
+        """Locate the Qualcomm EDL USB device and return an open transport.
+
+        Raises
+        ------
+        RuntimeError
+            If no EDL device is found on the USB bus.
+        """
+        from forensix_forensic.extractors.hardware.usb_transport import (
+            UsbBulkTransport,
+            UsbDeviceNotFoundError,
+        )
+
         try:
-            import usb.core  # type: ignore
-        except ImportError as exc:
-            raise ImportError("pyusb required: pip install pyusb") from exc
-        device = usb.core.find(idVendor=QCOM_USB_VID, idProduct=QCOM_USB_PID_EDL)
-        if device is None:
+            transport = UsbBulkTransport(
+                QCOM_USB_VID,
+                QCOM_USB_PID_EDL,
+                timeout_ms=self._usb_timeout,
+            )
+            transport.open()
+        except UsbDeviceNotFoundError as exc:
             raise RuntimeError(
                 "No Qualcomm EDL device found (VID 0x05C6, PID 0x9008). "
                 "Power off device, hold Vol- and connect USB to enter EDL mode."
-            )
+            ) from exc
+
         self._log("edl_device_detected", {"vid": "0x05C6", "pid": "0x9008"})
-        return device
+        return transport
 
-    async def _sahara_handshake_and_upload(self, device: object, prog_sha256: str) -> str:
-        """Complete Sahara Hello/End-of-Image sequence and upload programmer MBN.
+    async def _sahara_handshake_and_upload(
+        self, device: object, prog_sha256: str
+    ) -> str:
+        """Complete Sahara Hello/End-of-Image sequence and upload the programmer MBN.
 
-        Real implementation:
-        1. Read 48-byte Hello, decode with :func:`decode_sahara_hello`.
-        2. Write Hello Response with :func:`build_sahara_hello_response`.
-        3. Loop: receive ReadData(image_id, offset, length) packets,
-           send programmer binary chunks.
-        4. Receive EndImageTx(0x04), write Done (0x05).
+        Protocol:
+        1.  Read 48-byte Hello from device; decode and validate with
+            :func:`decode_sahara_hello`.
+        2.  Write 48-byte Hello Response.
+        3.  Loop receiving ``READ_DATA`` (0x03) packets — each 20 bytes:
+            ``[cmd:4, pkt_len:4, image_id:4, offset:4, length:4]``.
+            For each, read the requested slice from the programmer binary
+            and write it to the bulk-OUT endpoint.
+        4.  Receive ``END_IMG_TX`` (0x04).
+        5.  Write ``DONE`` (0x05, 8 bytes).
+        6.  Read ``DONE_RESP`` (0x06) to confirm device is in Firehose mode.
         """
+        from forensix_forensic.extractors.hardware.usb_transport import UsbBulkTransport
+
+        transport: UsbBulkTransport = device  # type: ignore[assignment]
+
         self._log("sahara_handshake_start", {})
-        await asyncio.sleep(0)  # yield to event loop
+
+        # Step 1 — receive Hello (48 bytes)
+        hello_data = await transport.read_exact(48)
+        hello = decode_sahara_hello(hello_data)
         self._state = EdlState.SAHARA_HELLO_RECEIVED
+        self._log(
+            "sahara_hello_received",
+            {
+                "version": str(hello.version),
+                "mode": str(hello.mode),
+                "max_packet_size": str(hello.max_packet_size),
+            },
+        )
+
+        # Step 2 — send Hello Response
+        hello_resp = build_sahara_hello_response(hello.version, hello.mode)
+        await transport.write(hello_resp)
+        self._log("sahara_hello_response_sent", {"size": str(len(hello_resp))})
+
+        # Step 3 — READ_DATA loop
+        prog_data = self._programmer.read_bytes()
+        bytes_sent = 0
+
+        while True:
+            # Every Sahara packet starts with an 8-byte header: cmd (4) + len (4)
+            hdr = await transport.read_exact(8)
+            cmd, pkt_len = struct.unpack_from("<II", hdr)
+
+            if cmd == SAHARA_END_IMG_TX:
+                # Step 4 — End of image transfer: read remaining bytes of packet
+                remaining_header = max(0, pkt_len - 8)
+                if remaining_header:
+                    await transport.read_exact(remaining_header)
+                self._log("sahara_end_img_tx_received", {"bytes_sent": str(bytes_sent)})
+                break
+
+            if cmd == SAHARA_READ_DATA:
+                # READ_DATA body: image_id (4) + offset (4) + length (4) = 12 bytes
+                body = await transport.read_exact(pkt_len - 8)
+                _image_id, offset, length = struct.unpack_from("<III", body)
+                chunk = prog_data[offset : offset + length]
+                if len(chunk) < length:
+                    # Pad with zeros if programmer is shorter than requested
+                    chunk = chunk.ljust(length, b"\x00")
+                await transport.write(chunk)
+                bytes_sent += len(chunk)
+            else:
+                # Unexpected command — reset and abort
+                self._log("sahara_unexpected_cmd", {"cmd": f"0x{cmd:02X}"})
+                with suppress(Exception):
+                    await transport.write(struct.pack("<II", SAHARA_RESET, 8))
+                raise RuntimeError(
+                    f"Unexpected Sahara command 0x{cmd:02X} during upload. "
+                    "Device may be locked or in an unexpected state."
+                )
+
+        # Step 5 — send Done
+        await transport.write(build_sahara_done())
+        self._log("sahara_done_sent", {})
+
+        # Step 6 — read Done Response
+        done_resp = await transport.read_exact(8)
+        done_cmd, _ = struct.unpack_from("<II", done_resp)
+        if done_cmd != SAHARA_DONE_RESP:
+            self._log(
+                "sahara_done_resp_warning",
+                {"expected": f"0x{SAHARA_DONE_RESP:02X}", "got": f"0x{done_cmd:02X}"},
+            )
+
         self._state = EdlState.PROGRAMMER_UPLOADED
         prog_size = self._programmer.stat().st_size
         self._log(
             "programmer_uploaded",
-            {
-                "sha256": prog_sha256,
-                "size_bytes": str(prog_size),
-            },
+            {"sha256": prog_sha256, "size_bytes": str(prog_size), "bytes_sent": str(bytes_sent)},
         )
+
+        # Derive SoC model from programmer filename via ProgrammerRegistry
+        prog_stem = self._programmer.stem.upper()
+        soc_model = "unknown"
+        for key in ProgrammerRegistry.list_supported_socs():
+            entry = ProgrammerRegistry.lookup(key)
+            if entry and entry.programmer_name.upper() in prog_stem:
+                soc_model = entry.msm_id
+                break
+        if soc_model == "unknown":
+            soc_model = prog_stem  # fall back to raw filename stem
+
         self._state = EdlState.SAHARA_DONE
-        soc_model = "unknown"  # real: parse SoC model from programmer name
         self._log("sahara_done", {"soc_model": soc_model})
         return soc_model
 
     async def _firehose_configure(self, device: object) -> None:
-        """Send Firehose ``<configure>`` and wait for ACK."""
-        _cmd = build_firehose_configure()
-        self._log("firehose_configure_sent", {"size": str(len(_cmd))})
-        await asyncio.sleep(0)  # real: bulk-out write + bulk-in read ACK
-        self._log("firehose_ready", {})
+        """Send Firehose ``<configure>`` and wait for ACK.
 
-    async def _get_partition_table(self, device: object, lun: int) -> list[FirehosePartitionInfo]:
-        """Query GPT partition table for *lun* via Firehose XML."""
-        _cmd = build_firehose_getpartitiontable(lun)
-        await asyncio.sleep(0)  # real: write cmd, parse XML GPT response
-        self._log("partition_table_queried", {"lun": str(lun)})
-        return []
+        Writes the XML configure command over bulk-OUT and reads the
+        XML ACK response from bulk-IN.  Raises ``RuntimeError`` if the
+        device returns a NAK.
+        """
+        from forensix_forensic.extractors.hardware.usb_transport import UsbBulkTransport
+
+        transport: UsbBulkTransport = device  # type: ignore[assignment]
+
+        cmd = build_firehose_configure()
+        self._log("firehose_configure_sent", {"size": str(len(cmd))})
+        await transport.write(cmd)
+
+        # Read response — Firehose XML is variable length; read up to 4 KiB
+        resp_raw = await transport.read(4096)
+        ok, msg = parse_firehose_response(resp_raw)
+        if not ok:
+            raise RuntimeError(
+                f"Firehose configure NAK: {msg!r}. "
+                "Ensure the programmer binary matches the device's SoC and storage type."
+            )
+        self._log("firehose_ready", {"rawmsg": msg})
+
+    async def _get_partition_table(
+        self, device: object, lun: int
+    ) -> list[FirehosePartitionInfo]:
+        """Query GPT partition table for *lun* via Firehose XML.
+
+        Returns a list of :class:`FirehosePartitionInfo` parsed from the
+        ``<getpartitiontable>`` XML response.
+        """
+        from forensix_forensic.extractors.hardware.usb_transport import UsbBulkTransport
+
+        transport: UsbBulkTransport = device  # type: ignore[assignment]
+
+        cmd = build_firehose_getpartitiontable(lun)
+        await transport.write(cmd)
+
+        # Firehose partition table response can be large (many partitions)
+        resp_raw = await transport.read(65536)
+        partitions = _parse_partition_table_xml(resp_raw, lun)
+
+        self._log(
+            "partition_table_queried",
+            {"lun": str(lun), "count": str(len(partitions))},
+        )
+        return partitions
 
     async def _read_partition(
         self,
@@ -569,25 +706,83 @@ class QualcommEdlExtractor:
         part: FirehosePartitionInfo,
         output_path: Path,
     ) -> str:
-        """Stream raw sectors for *part* into *output_path*, returning SHA-256."""
+        """Stream raw sectors for *part* into *output_path*, returning SHA-256.
+
+        Protocol:
+        -  For each batch of up to ``FIREHOSE_SECTORS_PER_CMD`` sectors:
+           1.  Write ``<read>`` XML command over bulk-OUT.
+           2.  Read XML ACK from bulk-IN.
+           3.  Read ``count * SECTOR_SIZE`` raw bytes from bulk-IN.
+           4.  Write bytes to file; update running SHA-256.
+        """
+        from forensix_forensic.extractors.hardware.usb_transport import UsbBulkTransport
+
+        transport: UsbBulkTransport = device  # type: ignore[assignment]
+
         hasher = hashlib.sha256()
         remaining = part.num_sectors
         current = part.start_sector
+        bytes_written = 0
+
+        self._log(
+            "partition_read_start",
+            {
+                "label": part.label,
+                "start_sector": str(current),
+                "num_sectors": str(remaining),
+                "size_mb": f"{part.size_mb:.2f}",
+            },
+        )
 
         with output_path.open("wb") as fh:
             while remaining > 0:
                 count = min(FIREHOSE_SECTORS_PER_CMD, remaining)
-                _cmd = build_firehose_read(current, count, part.lun)
-                # Real: write XML cmd over bulk-out,
-                # then read count * SECTOR_SIZE bytes from bulk-in
-                chunk = b"\x00" * (count * SECTOR_SIZE)
+                read_cmd = build_firehose_read(current, count, part.lun)
+
+                # 1. Send read command
+                await transport.write(read_cmd)
+
+                # 2. Read XML ACK (variable size, up to 4 KiB)
+                ack_raw = await transport.read(4096)
+                ok, msg = parse_firehose_response(ack_raw)
+                if not ok:
+                    raise RuntimeError(
+                        f"Firehose read NAK at sector {current} "
+                        f"(partition '{part.label}'): {msg!r}"
+                    )
+
+                # 3. Read raw sector data
+                expected_bytes = count * SECTOR_SIZE
+                chunk = await transport.read_exact(expected_bytes)
+
+                # 4. Write and hash
                 fh.write(chunk)
                 hasher.update(chunk)
+                bytes_written += len(chunk)
                 current += count
                 remaining -= count
-                await asyncio.sleep(0)
 
-        return hasher.hexdigest()
+                # Progress log every 128 MiB
+                if bytes_written % (128 * 1024 * 1024) < expected_bytes:
+                    self._log(
+                        "partition_read_progress",
+                        {
+                            "label": part.label,
+                            "bytes_written": str(bytes_written),
+                            "total_bytes": str(part.num_sectors * SECTOR_SIZE),
+                        },
+                    )
+
+        sha = hasher.hexdigest()
+        self._log(
+            "partition_read_complete",
+            {
+                "label": part.label,
+                "bytes_written": str(bytes_written),
+                "sha256": sha,
+            },
+        )
+        return sha
 
     # ------------------------------------------------------------------
     # Helpers
@@ -631,3 +826,62 @@ class QualcommEdlExtractor:
             error_message=message,
             state_reached=self._state.name,
         )
+
+
+# ---------------------------------------------------------------------------
+# Internal XML parsing helper
+# ---------------------------------------------------------------------------
+
+
+def _parse_partition_table_xml(
+    xml_bytes: bytes, lun: int
+) -> list[FirehosePartitionInfo]:
+    """Parse a Firehose ``<partitiontable>`` XML response into a list of partitions.
+
+    The Firehose programmer returns an XML blob like::
+
+        <data><partitiontable ...>
+          <partition name="system" start_sector="2048" num_partition_sectors="4096" .../>
+          ...
+        </partitiontable></data>
+
+    Entries with ``num_partition_sectors == 0`` are skipped.
+    """
+    partitions: list[FirehosePartitionInfo] = []
+    try:
+        root = ET.fromstring(xml_bytes.decode(errors="replace"))  # noqa: S314
+    except ET.ParseError:
+        return partitions
+
+    for child in root.iter():
+        if child.tag not in ("partition", "entry"):
+            continue
+        try:
+            name = (
+                child.get("label")
+                or child.get("name")
+                or child.get("Name")
+                or ""
+            )
+            start = int(child.get("start_sector") or child.get("StartSector") or "0")
+            count = int(
+                child.get("num_partition_sectors")
+                or child.get("NumPartitionSectors")
+                or "0"
+            )
+            if count == 0 or not name:
+                continue
+            size_mb = round((count * SECTOR_SIZE) / (1024 * 1024), 3)
+            partitions.append(
+                FirehosePartitionInfo(
+                    label=name,
+                    start_sector=start,
+                    num_sectors=count,
+                    size_mb=size_mb,
+                    lun=lun,
+                )
+            )
+        except (ValueError, TypeError):
+            continue
+
+    return partitions
