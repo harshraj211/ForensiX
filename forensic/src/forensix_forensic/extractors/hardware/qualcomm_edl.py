@@ -220,7 +220,7 @@ def parse_firehose_response(xml_bytes: bytes) -> tuple[bool, str]:
     Returns ``(success, message)``.
     """
     try:
-        root = ET.fromstring(xml_bytes.decode(errors="replace"))
+        root = ET.fromstring(xml_bytes.decode(errors="replace"))  # noqa: S314
     except ET.ParseError:
         return False, f"XML parse error: {xml_bytes[:120]!r}"
     for child in root:
@@ -428,7 +428,7 @@ class QualcommEdlExtractor:
     def _detect_edl_device(self) -> object:
         """Locate the Qualcomm EDL USB device (VID 0x05C6, PID 0x9008)."""
         try:
-            import usb.core  # type: ignore[import-untyped]
+            import usb.core  # type: ignore
         except ImportError as exc:
             raise ImportError("pyusb required: pip install pyusb") from exc
         device = usb.core.find(idVendor=QCOM_USB_VID, idProduct=QCOM_USB_PID_EDL)

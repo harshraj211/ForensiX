@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +62,7 @@ class AgentExtractionResult:
     installed_apps: tuple[AgentInstalledApp, ...]
     media_file_count: int
     output_dir: str
-    timeline: list[dict[str, str]]
+    timeline: list[dict[str, Any]]
     started_at: str
     finished_at: str
     duration_seconds: float
@@ -69,7 +70,7 @@ class AgentExtractionResult:
     error_message: str | None
 
 
-def contacts_from_json(data: list[dict]) -> tuple[AgentContact, ...]:
+def contacts_from_json(data: list[dict[str, Any]]) -> tuple[AgentContact, ...]:
     """Parse JSON dictionary list into AgentContact objects."""
     res: list[AgentContact] = []
     for item in data:
@@ -84,7 +85,7 @@ def contacts_from_json(data: list[dict]) -> tuple[AgentContact, ...]:
     return tuple(res)
 
 
-def sms_from_json(data: list[dict]) -> tuple[AgentSms, ...]:
+def sms_from_json(data: list[dict[str, Any]]) -> tuple[AgentSms, ...]:
     """Parse JSON dictionary list into AgentSms objects."""
     res: list[AgentSms] = []
     for item in data:
@@ -100,7 +101,7 @@ def sms_from_json(data: list[dict]) -> tuple[AgentSms, ...]:
     return tuple(res)
 
 
-def call_logs_from_json(data: list[dict]) -> tuple[AgentCallLog, ...]:
+def call_logs_from_json(data: list[dict[str, Any]]) -> tuple[AgentCallLog, ...]:
     """Parse JSON dictionary list into AgentCallLog objects."""
     res: list[AgentCallLog] = []
     for item in data:
@@ -116,7 +117,7 @@ def call_logs_from_json(data: list[dict]) -> tuple[AgentCallLog, ...]:
     return tuple(res)
 
 
-def installed_apps_from_json(data: list[dict]) -> tuple[AgentInstalledApp, ...]:
+def installed_apps_from_json(data: list[dict[str, Any]]) -> tuple[AgentInstalledApp, ...]:
     """Parse JSON dictionary list into AgentInstalledApp objects."""
     res: list[AgentInstalledApp] = []
     for item in data:

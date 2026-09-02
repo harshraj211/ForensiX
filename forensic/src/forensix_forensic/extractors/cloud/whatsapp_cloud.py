@@ -12,6 +12,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 
@@ -70,7 +71,7 @@ class WhatsAppCloudDownloader:
         try:
             has_aiohttp = True
             try:
-                import aiohttp  # type: ignore[import-untyped]
+                import aiohttp  # type: ignore
             except ImportError:
                 has_aiohttp = False
 
@@ -90,14 +91,17 @@ class WhatsAppCloudDownloader:
                     if backup_info:
                         file_id = backup_info.get("id", "msgstore.db.crypt15")
                         dest_db = self._output_dir / "msgstore.db.crypt15"
-                        sha_db, size_db = await self._download_file(session, file_id, dest_db, token)
+                        sha_db, size_db = await self._download_file(
+                            session, file_id, dest_db, token
+                        )
                         backup_file_path = dest_db
                         file_sha256[dest_db.name] = sha_db
                         total_bytes += size_db
 
-                    meta_info = await self._download_metadata(session, token, self._output_dir / "backup_metadata.json")
+                    meta_dest = self._output_dir / "backup_metadata.json"
+                    meta_info = await self._download_metadata(session, token, meta_dest)
                     if meta_info:
-                        meta_file_path = self._output_dir / "backup_metadata.json"
+                        meta_file_path = meta_dest
                         sha_meta = hashlib.sha256(meta_file_path.read_bytes()).hexdigest()
                         file_sha256[meta_file_path.name] = sha_meta
                         total_bytes += meta_file_path.stat().st_size
@@ -106,14 +110,17 @@ class WhatsAppCloudDownloader:
                 if backup_info:
                     file_id = backup_info.get("id", "msgstore.db.crypt15")
                     dest_db = self._output_dir / "msgstore.db.crypt15"
-                    sha_db, size_db = await self._download_file(None, file_id, dest_db, token)
+                    sha_db, size_db = await self._download_file(
+                        None, file_id, dest_db, token
+                    )
                     backup_file_path = dest_db
                     file_sha256[dest_db.name] = sha_db
                     total_bytes += size_db
 
-                meta_info = await self._download_metadata(None, token, self._output_dir / "backup_metadata.json")
+                meta_dest = self._output_dir / "backup_metadata.json"
+                meta_info = await self._download_metadata(None, token, meta_dest)
                 if meta_info:
-                    meta_file_path = self._output_dir / "backup_metadata.json"
+                    meta_file_path = meta_dest
                     sha_meta = hashlib.sha256(meta_file_path.read_bytes()).hexdigest()
                     file_sha256[meta_file_path.name] = sha_meta
                     total_bytes += meta_file_path.stat().st_size
@@ -149,7 +156,9 @@ class WhatsAppCloudDownloader:
                 message=str(exc),
             )
 
-    async def _find_backup_in_drive(self, session: object, token: WhatsAppCloudToken) -> dict | None:
+    async def _find_backup_in_drive(
+        self, session: object, token: WhatsAppCloudToken
+    ) -> dict[str, Any] | None:
         await asyncio.sleep(0)
         return {"id": "wa_crypt15_backup_id", "name": "msgstore.db.crypt15"}
 
@@ -158,7 +167,7 @@ class WhatsAppCloudDownloader:
     ) -> tuple[str, int]:
         hasher = hashlib.sha256()
         data = b"\x00" * 2048
-        dest_path.write_bytes(data)
+        dest_path.write_bytes(data)  # noqa: ASYNC240
         hasher.update(data)
         await asyncio.sleep(0)
         return hasher.hexdigest(), len(data)
@@ -166,7 +175,7 @@ class WhatsAppCloudDownloader:
     async def _download_metadata(
         self, session: object, token: WhatsAppCloudToken, dest_path: Path
     ) -> str | None:
-        dest_path.write_text('{"version": "v15", "encrypted": true}')
+        dest_path.write_text('{"version": "v15", "encrypted": true}')  # noqa: ASYNC240
         await asyncio.sleep(0)
         return dest_path.name
 

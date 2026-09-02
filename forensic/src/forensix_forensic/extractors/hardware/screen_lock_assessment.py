@@ -31,11 +31,11 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from forensix_forensic.adb.client import AdbClient
+    pass
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -55,7 +55,7 @@ SPBLOB_DIR = "/data/system_de/0/spblob"
 # Android KeyguardManager lock types
 LOCK_PATTERN = "pattern"
 LOCK_PIN = "pin"
-LOCK_PASSWORD = "password"
+LOCK_PASSWORD = "password"  # noqa: S105
 LOCK_SWIPE = "swipe"
 LOCK_NONE = "none"
 LOCK_UNKNOWN = "unknown"
@@ -101,7 +101,7 @@ class LockType(StrEnum):
     SWIPE = "swipe"
     PIN = "pin"
     PATTERN = "pattern"
-    PASSWORD = "password"
+    PASSWORD = "password"  # noqa: S105
     UNKNOWN = "unknown"
 
 
@@ -194,8 +194,8 @@ class ScreenLockAssessmentService:
 
     MAX_ATTEMPTS = MAX_ATTEMPTS
 
-    def __init__(self, adb: AdbClient) -> None:
-        self._adb = adb
+    def __init__(self, adb: Any) -> None:
+        self._adb: Any = adb
         self._attempt_count = 0
         self._last_attempt_time: float = 0.0
         self._timeline: list[dict[str, str]] = []
@@ -379,7 +379,7 @@ class ScreenLockAssessmentService:
         settings: dict[str, str] = {}
         try:
             cmd = (
-                f"su -c \"sqlite3 {LOCK_SETTINGS_DB} "
+                f"su -c \"sqlite3 {LOCK_SETTINGS_DB} "  # noqa: S608
                 "'SELECT name,value FROM locksettings;'\""
             )
             output = await self._adb.shell(serial, cmd)
@@ -387,7 +387,7 @@ class ScreenLockAssessmentService:
                 if "|" in line:
                     key, _, value = line.partition("|")
                     settings[key.strip()] = value.strip()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
             pass
         return settings
 
@@ -529,7 +529,7 @@ def _estimate_search_space(
         return 0
     if lock_type == LockType.PIN:
         length = pin_length or 4
-        return 10 ** length
+        return int(10 ** length)
     if lock_type == LockType.PATTERN:
         # 3x3 grid: ~389,112 valid patterns; 3-9 nodes
         return 389_112

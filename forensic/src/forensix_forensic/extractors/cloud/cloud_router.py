@@ -69,12 +69,16 @@ class CloudBackupRouter:
         if tokens.google_token:
             gt_dir = self._output_dir / "google_takeout"
             gt_downloader = GoogleTakeoutDownloader(gt_dir)
-            google_task = asyncio.create_task(gt_downloader.download(tokens.google_token, case_id, operator_id))
+            google_task = asyncio.create_task(
+                gt_downloader.download(tokens.google_token, case_id, operator_id)
+            )
 
         if tokens.whatsapp_token:
             wa_dir = self._output_dir / "whatsapp_cloud"
             wa_downloader = WhatsAppCloudDownloader(wa_dir)
-            whatsapp_task = asyncio.create_task(wa_downloader.download(tokens.whatsapp_token, case_id, operator_id))
+            whatsapp_task = asyncio.create_task(
+                wa_downloader.download(tokens.whatsapp_token, case_id, operator_id)
+            )
 
         google_res: GoogleBackupResult | None = None
         whatsapp_res: WhatsAppBackupResult | None = None

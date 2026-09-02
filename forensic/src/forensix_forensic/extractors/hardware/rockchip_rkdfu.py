@@ -279,9 +279,10 @@ class RockchipExtractor:
 
     def _detect_device(self) -> tuple[object, str]:
         try:
-            import usb.core  # type: ignore[import-untyped]
+            import usb.core  # type: ignore
         except ImportError as exc:
-            raise ImportError("pyusb is required for Rockchip acquisition: pip install pyusb") from exc
+            msg = "pyusb is required for Rockchip acquisition: pip install pyusb"
+            raise ImportError(msg) from exc
 
         for pid, name in RK_USB_PIDS.items():
             dev = usb.core.find(idVendor=RK_USB_VID, idProduct=pid)

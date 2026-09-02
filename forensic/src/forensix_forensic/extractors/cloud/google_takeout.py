@@ -69,7 +69,7 @@ class GoogleTakeoutDownloader:
         try:
             has_aiohttp = True
             try:
-                import aiohttp  # type: ignore[import-untyped]
+                import aiohttp  # type: ignore
             except ImportError:
                 has_aiohttp = False
 
@@ -146,7 +146,7 @@ class GoogleTakeoutDownloader:
         hasher = hashlib.sha256()
         # Simulated payload for offline architectural integration
         data = b"\x00" * 1024
-        dest_path.write_bytes(data)
+        dest_path.write_bytes(data)  # noqa: ASYNC240
         hasher.update(data)
         await asyncio.sleep(0)
         return hasher.hexdigest(), len(data)

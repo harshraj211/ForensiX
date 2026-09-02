@@ -25,11 +25,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import IntEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from forensix_forensic.adb.client import AdbClient
+    pass
 
 # ---------------------------------------------------------------------------
 # Keymaster blob format constants
@@ -289,8 +289,8 @@ class KeystoreExtractor:
 
     VERSION = "1.0.0"
 
-    def __init__(self, adb: AdbClient, output_dir: Path) -> None:
-        self._adb = adb
+    def __init__(self, adb: Any, output_dir: Path) -> None:
+        self._adb: Any = adb
         self._output_dir = output_dir
         self._timeline: list[dict[str, str]] = []
 

@@ -6,7 +6,8 @@ based on chipset detection:
 * MediaTek → :class:`~forensix_forensic.extractors.hardware.mtk_brom.MtkBromExtractor`
 * Qualcomm → :class:`~forensix_forensic.extractors.hardware.qualcomm_edl.QualcommEdlExtractor`
 * Unisoc → :class:`~forensix_forensic.extractors.hardware.unisoc_fdl.SpreadtrumBootromExtractor`
-* Samsung Exynos → :class:`~forensix_forensic.extractors.hardware.samsung_download.SamsungDownloadModeExtractor`
+* Samsung Exynos →
+  :class:`~forensix_forensic.extractors.hardware.samsung_download.SamsungDownloadModeExtractor`
 
 Usage example::
 
@@ -113,7 +114,8 @@ class PhysicalAcquisitionRouterResult:
 class PhysicalAcquisitionRouter:
     """Top-level physical acquisition orchestrator.
 
-    1.  Calls :func:`~forensix_forensic.extractors.hardware.chipset_detector.detect_chipset_from_usb`
+    1.  Calls `detect_chipset_from_usb()` from
+        :mod:`~forensix_forensic.extractors.hardware.chipset_detector`
         to identify the device in boot/download mode.
     2.  Instantiates the appropriate protocol extractor.
     3.  Runs the acquisition and returns a

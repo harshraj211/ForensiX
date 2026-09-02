@@ -264,7 +264,7 @@ class KirinExtractor:
 
     def _detect_device(self) -> object:
         try:
-            import usb.core  # type: ignore[import-untyped]
+            import usb.core  # type: ignore
         except ImportError as exc:
             raise ImportError("pyusb is required for Kirin acquisition: pip install pyusb") from exc
 

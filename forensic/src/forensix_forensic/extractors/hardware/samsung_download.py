@@ -1,4 +1,4 @@
-﻿"""Samsung Download Mode (Odin / LOKE) forensic acquisition module.
+"""Samsung Download Mode (Odin / LOKE) forensic acquisition module.
 
 Implements the Samsung-proprietary Odin/LOKE USB protocol and PIT
 (Partition Information Table) binary format parser used for forensic
@@ -342,7 +342,7 @@ class SamsungDownloadModeExtractor:
 
     def _detect_device(self) -> object:
         try:
-            import usb.core  # type: ignore[import-untyped]
+            import usb.core  # type: ignore
         except ImportError as exc:
             raise ImportError("pyusb required: pip install pyusb") from exc
         for pid in (SAMSUNG_USB_PID_DL, SAMSUNG_USB_PID_ODIN):
@@ -367,19 +367,16 @@ class SamsungDownloadModeExtractor:
     async def _download_pit(self, device: object) -> tuple[bytes, str]:
         """Download PIT binary from device and return (raw_bytes, sha256)."""
         self._log("pit_download_start", {})
-        pkt = build_odin_packet(CMD_PIT, OPT_PIT_REQUEST)
-        # Real: write pkt, read PIT size, read PIT data in 500-byte chunks
+        _pkt = build_odin_packet(CMD_PIT, OPT_PIT_REQUEST)
+        # Real: write _pkt, read PIT size, read PIT data in 500-byte chunks
         await asyncio.sleep(0)
-        pit_data = b""  # real: accumulated PIT bytes
-        sha = hashlib.sha256(pit_data).hexdigest()
-        self._log("pit_download_complete", {"sha256": sha, "size_bytes": str(len(pit_data))})
-        return pit_data, sha
+        return (b"", "")
 
     async def _read_partition(
         self, device: object, record: PitRecord, output_path: Path
     ) -> str:
         hasher = hashlib.sha256()
-        read_cmd = build_odin_packet(CMD_FILE, 0, record.partition_id)
+        _read_cmd = build_odin_packet(CMD_FILE, 0, record.partition_id)
         # Real: write CMD_FILE packet, read record.size_bytes of raw data
         chunk = b"\x00" * record.size_bytes
         with output_path.open("wb") as fh:

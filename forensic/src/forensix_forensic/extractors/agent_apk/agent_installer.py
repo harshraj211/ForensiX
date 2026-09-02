@@ -74,7 +74,7 @@ class AgentInstaller:
                     await self._adb.shell(  # type: ignore[attr-defined]
                         serial, f"pm grant {self._cfg.package_name} {perm}"
                     )
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001, S112
                     continue
 
             # Create staging dir

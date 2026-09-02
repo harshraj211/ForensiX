@@ -159,8 +159,8 @@ def detect_chipset_from_usb() -> ChipsetProbe | None:
     if ``pyusb`` is unavailable or no matching device is connected.
     """
     try:
-        import usb.core  # type: ignore[import-untyped]
-        import usb.util  # type: ignore[import-untyped]
+        import usb.core  # type: ignore
+        import usb.util  # type: ignore
     except ImportError:
         return None
 
@@ -169,7 +169,7 @@ def detect_chipset_from_usb() -> ChipsetProbe | None:
         try:
             vid = device.idVendor
             pid = device.idProduct
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S112
             continue
         for entry_vid, entry_pid, family, mode in USB_CHIPSET_MAP:
             if vid == entry_vid and pid == entry_pid:
@@ -224,10 +224,10 @@ async def detect_chipset_from_adb(adb: AdbClient, serial: str) -> ChipsetProbe:
     ]
     for key in prop_keys:
         try:
-            value = await adb.getprop(serial, key)
+            value = await adb.getprop(serial, key)  # type: ignore[attr-defined]
             if value:
                 props[key] = value.strip()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001, S110
             pass
 
     # Try ro.chipname / ro.hardware exact keyword match
@@ -316,11 +316,11 @@ def _match_platform_prefix(platform: str) -> str:
 def _protocol_for_family(family: str) -> str:
     """Map a chipset family to the recommended acquisition protocol."""
     mapping = {
-        ChipsetFamily.MEDIATEK: "mtk_brom",
-        ChipsetFamily.QUALCOMM: "qualcomm_edl",
-        ChipsetFamily.UNISOC: "unisoc_fdl",
-        ChipsetFamily.SAMSUNG_EXYNOS: "samsung_odin",
-        ChipsetFamily.KIRIN: "kirin_erecovery",
-        ChipsetFamily.ROCKCHIP: "rockchip_dfu",
+        ChipsetFamily.MEDIATEK.value: "mtk_brom",
+        ChipsetFamily.QUALCOMM.value: "qualcomm_edl",
+        ChipsetFamily.UNISOC.value: "unisoc_fdl",
+        ChipsetFamily.SAMSUNG_EXYNOS.value: "samsung_odin",
+        ChipsetFamily.KIRIN.value: "kirin_erecovery",
+        ChipsetFamily.ROCKCHIP.value: "rockchip_dfu",
     }
     return mapping.get(family, "unknown")

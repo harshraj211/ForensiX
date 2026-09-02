@@ -13,6 +13,7 @@ must install hashcat and supply wordlist/rule paths via the config.
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import IntEnum
@@ -110,11 +111,9 @@ class HashcatLauncher:
                     asyncio.gather(process.wait(), read_stdout()),
                     timeout=float(timeout_seconds),
                 )
-            except asyncio.TimeoutError:
-                try:
+            except TimeoutError:
+                with suppress(ProcessLookupError):
                     process.kill()
-                except ProcessLookupError:
-                    pass
                 return self._error_result(
                     job_id=job_id,
                     mode=mode.value,
@@ -196,10 +195,10 @@ class HashcatLauncher:
         return cmd
 
     async def _read_potfile(self, potfile: Path) -> tuple[str, ...]:
-        if not potfile.exists():
+        if not potfile.exists():  # noqa: ASYNC240
             return ()
         cracked: list[str] = []
-        for line in potfile.read_text(errors="replace").splitlines():
+        for line in potfile.read_text(errors="replace").splitlines():  # noqa: ASYNC240
             line = line.strip()
             if ":" in line:
                 _, _, plaintext = line.rpartition(":")

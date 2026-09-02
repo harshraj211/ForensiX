@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from .agent_result import (
@@ -67,16 +68,20 @@ class AgentCollector:
             call_log_data = await self._pull_and_parse_json(serial, "call_logs.json")
             apps_data = await self._pull_and_parse_json(serial, "installed_apps.json")
 
-            contacts = contacts_from_json(contacts_data) if isinstance(contacts_data, list) else ()
+            contacts = (
+                contacts_from_json(contacts_data) if isinstance(contacts_data, list) else ()
+            )
             sms_msgs = sms_from_json(sms_data) if isinstance(sms_data, list) else ()
-            call_logs = call_logs_from_json(call_log_data) if isinstance(call_log_data, list) else ()
-            installed_apps = installed_apps_from_json(apps_data) if isinstance(apps_data, list) else ()
+            call_logs = (
+                call_logs_from_json(call_log_data) if isinstance(call_log_data, list) else ()
+            )
+            installed_apps = (
+                installed_apps_from_json(apps_data) if isinstance(apps_data, list) else ()
+            )
 
             if self._cfg.cleanup_after_pull:
-                try:
+                with suppress(Exception):
                     await self._adb.shell(serial, f"rm -rf {self._cfg.staging_dir}")  # type: ignore[attr-defined]
-                except Exception:  # noqa: BLE001
-                    pass
 
             finished_at = datetime.now(UTC).isoformat()
             duration = asyncio.get_event_loop().time() - t0
@@ -117,18 +122,20 @@ class AgentCollector:
                 out = await self._adb.shell(serial, f"test -f {done_file} && echo YES || echo NO")  # type: ignore[attr-defined]
                 if "YES" in out:
                     return True
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110
                 pass
             await asyncio.sleep(self._cfg.poll_interval_seconds)
         return False
 
-    async def _pull_and_parse_json(self, serial: str, filename: str) -> list | dict | None:
+    async def _pull_and_parse_json(
+        self, serial: str, filename: str
+    ) -> list[Any] | dict[str, Any] | None:
         remote_path = f"{self._cfg.staging_dir}/{filename}"
         local_path = self._output_dir / filename
         try:
             await self._adb.pull(serial, remote_path, str(local_path))  # type: ignore[attr-defined]
             if local_path.exists():
-                return json.loads(local_path.read_text(encoding="utf-8"))
+                return json.loads(local_path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
         except Exception as exc:  # noqa: BLE001
             self._log("pull_json_failed", {"filename": filename, "error": str(exc)})
         return None

@@ -400,7 +400,7 @@ class MtkBromExtractor:
         (0x2000).  Raises ``RuntimeError`` if no device is found.
         """
         try:
-            import usb.core  # type: ignore[import-untyped]
+            import usb.core  # type: ignore
         except ImportError as exc:
             raise ImportError(
                 "pyusb is required for BROM acquisition: pip install pyusb"
@@ -500,8 +500,9 @@ class MtkBromExtractor:
 
         with output_path.open("wb") as fh:
             while current_lba < partition.start_lba + sector_count:
-                read_count = min(sectors_per_chunk, partition.start_lba + sector_count - current_lba)
-                cmd = build_read_command(current_lba, read_count)
+                remaining_sectors = partition.start_lba + sector_count - current_lba
+                read_count = min(sectors_per_chunk, remaining_sectors)
+                _cmd = build_read_command(current_lba, read_count)
                 # Real: send cmd over bulk-out, read (read_count * sector_size) bytes
                 chunk = b"\x00" * (read_count * self._sector_size)
                 fh.write(chunk)

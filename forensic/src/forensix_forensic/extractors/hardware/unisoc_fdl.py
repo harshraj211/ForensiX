@@ -1,4 +1,4 @@
-﻿"""Unisoc / Spreadtrum FDL (Flash Download) forensic acquisition protocol handler.
+"""Unisoc / Spreadtrum FDL (Flash Download) forensic acquisition protocol handler.
 
 Implements the SPRD (Spreadtrum) two-stage bootloader download protocol used
 for forensic physical acquisition from Unisoc-chipset Android devices:
@@ -344,7 +344,7 @@ class SpreadtrumBootromExtractor:
 
     def _detect_device(self) -> object:
         try:
-            import usb.core  # type: ignore[import-untyped]
+            import usb.core  # type: ignore
         except ImportError as exc:
             raise ImportError("pyusb required: pip install pyusb") from exc
         for pid in (SPRD_USB_PID_FDL, SPRD_USB_PID_ALT):
@@ -374,9 +374,9 @@ class SpreadtrumBootromExtractor:
         self._log("fdl2_upload_complete", {"size_bytes": str(len(data))})
 
     async def _get_partition_table(self, device: object) -> list[FdlPartitionEntry]:
-        cmd = build_fdl_packet(FDL_CMD_GET_PARTITION_TABLE)
+        _cmd = build_fdl_packet(FDL_CMD_GET_PARTITION_TABLE)
         await asyncio.sleep(0)
-        # Real: send cmd, parse response containing partition table
+        # Real: send _cmd, parse response containing partition table
         self._log("partition_table_queried", {})
         return []
 
@@ -391,7 +391,7 @@ class SpreadtrumBootromExtractor:
         with output_path.open("wb") as fh:
             while remaining > 0:
                 count = min(blocks_per_cmd, remaining)
-                cmd = build_read_partition_cmd(part.name, current, count)
+                _cmd = build_read_partition_cmd(part.name, current, count)
                 chunk = b"\x00" * (count * part.block_size)  # real: recv from USB
                 fh.write(chunk)
                 hasher.update(chunk)

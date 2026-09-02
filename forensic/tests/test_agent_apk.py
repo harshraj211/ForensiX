@@ -35,33 +35,72 @@ class FakeAdbClient:
         path = Path(local)
         path.parent.mkdir(parents=True, exist_ok=True)
         if "contacts.json" in remote:
-            path.write_text('[{"name": "Alice", "phone_numbers": ["123"], "emails": [], "account_type": "phone"}]')
+            content = (
+                '[{"name": "Alice", "phone_numbers": ["123"], '
+                '"emails": [], "account_type": "phone"}]'
+            )
+            path.write_text(content, encoding="utf-8")  # noqa: ASYNC240
         elif "sms.json" in remote:
-            path.write_text('[{"address": "123", "body": "Hello", "date_ms": 1000, "type": 1, "thread_id": 1}]')
+            content = (
+                '[{"address": "123", "body": "Hello", '
+                '"date_ms": 1000, "type": 1, "thread_id": 1}]'
+            )
+            path.write_text(content, encoding="utf-8")  # noqa: ASYNC240
         elif "call_logs.json" in remote:
-            path.write_text('[{"number": "123", "type": 1, "date_ms": 1000, "duration_seconds": 30, "name": "Alice"}]')
+            content = (
+                '[{"number": "123", "type": 1, "date_ms": 1000, '
+                '"duration_seconds": 30, "name": "Alice"}]'
+            )
+            path.write_text(content, encoding="utf-8")  # noqa: ASYNC240
         elif "installed_apps.json" in remote:
-            path.write_text('[{"package_name": "com.test", "app_label": "Test", "version_name": "1.0", "install_time_ms": 1000, "is_system": false}]')
+            content = (
+                '[{"package_name": "com.test", "app_label": "Test", '
+                '"version_name": "1.0", "install_time_ms": 1000, "is_system": false}]'
+            )
+            path.write_text(content, encoding="utf-8")  # noqa: ASYNC240
 
 
 class TestAgentApk:
     def test_json_deserializers(self) -> None:
-        c_data = [{"name": "Bob", "phone_numbers": ["555"], "emails": ["b@b.com"], "account_type": "google"}]
+        c_data = [{
+            "name": "Bob",
+            "phone_numbers": ["555"],
+            "emails": ["b@b.com"],
+            "account_type": "google",
+        }]
         contacts = contacts_from_json(c_data)
         assert len(contacts) == 1
         assert contacts[0].name == "Bob"
 
-        s_data = [{"address": "555", "body": "Hi", "date_ms": 2000, "type": 2, "thread_id": 5}]
+        s_data = [{
+            "address": "555",
+            "body": "Hi",
+            "date_ms": 2000,
+            "type": 2,
+            "thread_id": 5,
+        }]
         sms = sms_from_json(s_data)
         assert len(sms) == 1
         assert sms[0].body == "Hi"
 
-        cl_data = [{"number": "555", "type": 2, "date_ms": 2000, "duration_seconds": 60, "name": "Bob"}]
+        cl_data = [{
+            "number": "555",
+            "type": 2,
+            "date_ms": 2000,
+            "duration_seconds": 60,
+            "name": "Bob",
+        }]
         calls = call_logs_from_json(cl_data)
         assert len(calls) == 1
         assert calls[0].duration_seconds == 60
 
-        app_data = [{"package_name": "com.app", "app_label": "App", "version_name": "2.0", "install_time_ms": 5000, "is_system": True}]
+        app_data = [{
+            "package_name": "com.app",
+            "app_label": "App",
+            "version_name": "2.0",
+            "install_time_ms": 5000,
+            "is_system": True,
+        }]
         apps = installed_apps_from_json(app_data)
         assert len(apps) == 1
         assert apps[0].is_system is True
@@ -86,7 +125,11 @@ class TestAgentApk:
 
     def test_collector_success(self, tmp_path: Path) -> None:
         fake_adb = FakeAdbClient()
-        config = CollectorConfig(staging_dir="/sdcard/forensix_out", poll_interval_seconds=0.01, max_wait_seconds=1)
+        config = CollectorConfig(
+            staging_dir="/sdcard/forensix_out",
+            poll_interval_seconds=0.01,
+            max_wait_seconds=1,
+        )
         collector = AgentCollector(fake_adb, config, tmp_path / "collector_out")  # type: ignore[arg-type]
         res = asyncio.run(collector.collect("serial123", "CASE-001"))
         assert res.success is True

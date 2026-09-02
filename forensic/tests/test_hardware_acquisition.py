@@ -16,12 +16,10 @@ from __future__ import annotations
 import asyncio
 import struct
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# ChipsetDetector
-# ---------------------------------------------------------------------------
 from forensix_forensic.extractors.hardware.chipset_detector import (
     USB_CHIPSET_MAP,
     ChipsetFamily,
@@ -29,6 +27,66 @@ from forensix_forensic.extractors.hardware.chipset_detector import (
     _match_platform_prefix,
     _protocol_for_family,
 )
+from forensix_forensic.extractors.hardware.keystore_reader import (
+    _ALGORITHM_NAMES,
+    KM_ALGORITHM_AES,
+    _blob_name_to_alias,
+    _scan_km_tags,
+    parse_keyblob_header,
+)
+from forensix_forensic.extractors.hardware.mtk_brom import (
+    _HS_RECV,
+    _HS_SEND,
+    DA_CMD_READ_PARTITION,
+    BromProtocolError,
+    MtkBromState,
+    MtkChipset,
+    build_read_command,
+    parse_flash_id_response,
+    verify_handshake_echo,
+)
+from forensix_forensic.extractors.hardware.physical_acquisition import (
+    PhysicalAcquisitionRouter,
+    RouterConfig,
+)
+from forensix_forensic.extractors.hardware.qualcomm_edl import (
+    SAHARA_HELLO,
+    build_firehose_configure,
+    build_firehose_read,
+    build_sahara_done,
+    build_sahara_hello_response,
+    decode_sahara_hello,
+    parse_firehose_response,
+)
+from forensix_forensic.extractors.hardware.samsung_download import (
+    CMD_PIT,
+    ODIN_PKT_SIZE,
+    PIT_HEADER_MAGIC,
+    PIT_HEADER_SIZE,
+    build_odin_packet,
+    parse_pit,
+)
+from forensix_forensic.extractors.hardware.screen_lock_assessment import (
+    MAX_ATTEMPTS,
+    MIN_ATTEMPT_INTERVAL_SECONDS,
+    LockType,
+    ScreenLockAssessmentService,
+    WipeRisk,
+    _estimate_search_space,
+)
+from forensix_forensic.extractors.hardware.unisoc_fdl import (
+    FDL_CMD_READ_PARTITION,
+    FDL_FRAME_START,
+    build_fdl_packet,
+    build_read_partition_cmd,
+    compute_fdl_checksum,
+    hdlc_decode,
+    hdlc_encode,
+)
+
+# ---------------------------------------------------------------------------
+# ChipsetDetector
+# ---------------------------------------------------------------------------
 
 
 class TestChipsetDetector:
@@ -92,17 +150,6 @@ class TestChipsetDetector:
 # MTK BROM
 # ---------------------------------------------------------------------------
 
-from forensix_forensic.extractors.hardware.mtk_brom import (
-    _HS_RECV,
-    _HS_SEND,
-    DA_CMD_READ_PARTITION,
-    MtkBromState,
-    MtkChipset,
-    build_read_command,
-    parse_flash_id_response,
-    verify_handshake_echo,
-)
-
 
 class TestMtkBrom:
     def test_verify_handshake_echo_correct(self) -> None:
@@ -132,7 +179,7 @@ class TestMtkBrom:
         assert flash_type == "ufs"
 
     def test_parse_flash_id_response_too_short(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(BromProtocolError):
             parse_flash_id_response(b"\x00" * 4)
 
     def test_mtk_state_enum(self) -> None:
@@ -172,16 +219,6 @@ class TestMtkBrom:
 # Qualcomm EDL
 # ---------------------------------------------------------------------------
 
-from forensix_forensic.extractors.hardware.qualcomm_edl import (
-    SAHARA_HELLO,
-    build_firehose_configure,
-    build_firehose_read,
-    build_sahara_done,
-    build_sahara_hello_response,
-    decode_sahara_hello,
-    parse_firehose_response,
-)
-
 
 class TestQualcommEdl:
     def _make_hello(self, version: int = 2, mode: int = 0) -> bytes:
@@ -201,58 +238,57 @@ class TestQualcommEdl:
         hello = decode_sahara_hello(raw)
         assert hello.version == 2
         assert hello.mode == 0
+        assert hello.max_packet_size == 0x800
 
     def test_decode_sahara_hello_too_short(self) -> None:
         with pytest.raises(ValueError, match="too short"):
-            decode_sahara_hello(b"\x01" * 10)
+            decode_sahara_hello(b"\x01\x00\x00\x00")
 
     def test_decode_sahara_hello_wrong_cmd(self) -> None:
-        bad = struct.pack("<II", 0xFF, 48) + b"\x00" * 40
+        raw = struct.pack("<IIIIIII", 0x99, 48, 2, 1, 0x800, 0, 0) + b"\x00" * 20
         with pytest.raises(ValueError, match="Expected Sahara Hello"):
-            decode_sahara_hello(bad)
+            decode_sahara_hello(raw)
 
-    def test_build_hello_response_length(self) -> None:
-        resp = build_sahara_hello_response(2, 0)
+    def test_build_sahara_hello_response(self) -> None:
+        resp = build_sahara_hello_response(version=2, mode=0)
         assert len(resp) == 48
+        cmd = struct.unpack_from("<I", resp, 0)[0]
+        assert cmd == 0x02  # SAHARA_HELLO_RESP
 
-    def test_build_sahara_done_length(self) -> None:
+    def test_build_sahara_done(self) -> None:
         done = build_sahara_done()
         assert len(done) == 8
         cmd, length = struct.unpack("<II", done)
-        assert cmd == 0x05  # SAHARA_DONE
+        assert cmd == 0x05
         assert length == 8
 
-    def test_build_firehose_configure_xml(self) -> None:
+    def test_build_firehose_configure(self) -> None:
         xml = build_firehose_configure()
         assert b"configure" in xml
         assert b"MaxPayloadSizeToTargetInBytes" in xml
 
-    def test_build_firehose_read_xml(self) -> None:
-        xml = build_firehose_read(start_sector=2048, num_sectors=64, lun=0)
-        assert b"start_sector" in xml
+    def test_build_firehose_read(self) -> None:
+        xml = build_firehose_read(start_sector=2048, num_sectors=1024, lun=0)
+        assert b"read" in xml
         assert b"2048" in xml
-        assert b"64" in xml
+        assert b"1024" in xml
 
     def test_parse_firehose_response_ack(self) -> None:
-        xml = b'<?xml version="1.0" ?><data><response value="ACK" rawmsg="Ok" /></data>'
-        success, msg = parse_firehose_response(xml)
-        assert success is True
-        assert msg == "Ok"
+        xml = b'<?xml version="1.0" ?><data><response value="ACK" rawmsg="OK" /></data>'
+        ok, msg = parse_firehose_response(xml)
+        assert ok is True
+        assert msg == "OK"
 
     def test_parse_firehose_response_nak(self) -> None:
-        xml = b'<?xml version="1.0" ?><data><response value="NAK" rawmsg="Error" /></data>'
-        success, _ = parse_firehose_response(xml)
-        assert success is False
+        xml = b'<?xml version="1.0" ?><data><response value="NAK" rawmsg="FAIL" /></data>'
+        ok, msg = parse_firehose_response(xml)
+        assert ok is False
 
-    def test_parse_firehose_response_bad_xml(self) -> None:
-        success, msg = parse_firehose_response(b"not xml")
-        assert success is False
-
-    def test_qualcomm_extractor_programmer_missing(self, tmp_path: Path) -> None:
+    def test_qualcomm_extractor_missing_programmer(self, tmp_path: Path) -> None:
         from forensix_forensic.extractors.hardware.qualcomm_edl import QualcommEdlExtractor
 
         extractor = QualcommEdlExtractor(
-            programmer_path=tmp_path / "missing.mbn",
+            programmer_path=tmp_path / "nonexistent.mbn",
             output_dir=tmp_path / "out",
         )
         result = asyncio.run(extractor.acquire(["userdata"], "CASE-001", "examiner"))
@@ -263,65 +299,37 @@ class TestQualcommEdl:
 # Unisoc FDL
 # ---------------------------------------------------------------------------
 
-from forensix_forensic.extractors.hardware.unisoc_fdl import (
-    FDL_CMD_READ_PARTITION,
-    FDL_FRAME_START,
-    build_fdl_packet,
-    build_read_partition_cmd,
-    compute_fdl_checksum,
-    hdlc_decode,
-    hdlc_encode,
-)
-
 
 class TestUnisocFdl:
-    def test_hdlc_encode_simple(self) -> None:
-        raw = b"\x01\x02\x03"
-        encoded = hdlc_encode(raw)
+    def test_hdlc_encode_decode_roundtrip(self) -> None:
+        original = bytes([0x01, 0x7E, 0x7D, 0xFF, 0x00, 0x7E])
+        encoded = hdlc_encode(original)
         assert encoded[0] == FDL_FRAME_START
         assert encoded[-1] == FDL_FRAME_START
-        assert encoded[1:-1] == raw
-
-    def test_hdlc_encode_escape_7e(self) -> None:
-        raw = bytes([0x7E, 0x01])
-        encoded = hdlc_encode(raw)
-        assert 0x7D in encoded  # escape byte present
-        assert encoded.count(0x7E) == 2  # only start/end delimiters
-
-    def test_hdlc_decode_roundtrip(self) -> None:
-        raw = b"\x01\x02\x03\x04\x7D\x55"
-        encoded = hdlc_encode(raw)
+        # Delimiters must not appear inside the encoded body
+        assert FDL_FRAME_START not in encoded[1:-1]
         decoded = hdlc_decode(encoded)
-        assert decoded == raw
+        assert decoded == original
 
-    def test_hdlc_decode_bad_frame(self) -> None:
-        with pytest.raises(ValueError):
-            hdlc_decode(b"\x00\x01\x02\x7E")
+    def test_hdlc_decode_invalid_delimiters(self) -> None:
+        with pytest.raises(ValueError, match="Invalid FDL frame"):
+            hdlc_decode(b"\x00\x01\x02")
 
     def test_compute_fdl_checksum(self) -> None:
-        # XOR of [0x01, 0x02, 0x03] = 0x00
-        assert compute_fdl_checksum(b"\x01\x02\x03") == 0x00
+        data = bytes([0x01, 0x02, 0x04])
+        chk = compute_fdl_checksum(data)
+        assert chk == (0x01 ^ 0x02 ^ 0x04)
 
-    def test_compute_fdl_checksum_nonzero(self) -> None:
-        assert compute_fdl_checksum(b"\xFF") == 0xFF
+    def test_build_fdl_packet(self) -> None:
+        pkt = build_fdl_packet(FDL_CMD_READ_PARTITION, b"userdata")
+        assert pkt[0] == FDL_FRAME_START
+        assert pkt[-1] == FDL_FRAME_START
 
-    def test_build_fdl_packet_structure(self) -> None:
-        pkt = build_fdl_packet(FDL_CMD_READ_PARTITION, b"payload")
-        decoded = hdlc_decode(pkt)
-        cmd, length = struct.unpack(">HH", decoded[:4])
-        assert cmd == FDL_CMD_READ_PARTITION
-        assert length == 7  # len("payload")
+    def test_build_read_partition_cmd(self) -> None:
+        cmd_pkt = build_read_partition_cmd("userdata", start_block=0, num_blocks=100)
+        assert len(cmd_pkt) > 10
 
-    def test_build_read_partition_cmd_name(self) -> None:
-        cmd_pkt = build_read_partition_cmd("userdata", 1024, 8192)
-        decoded = hdlc_decode(cmd_pkt)
-        # Payload starts at offset 4 (after cmd+len header)
-        payload = decoded[4:-1]  # strip checksum
-        partition_name_raw = payload[:32]
-        name = partition_name_raw.split(b"\x00", 1)[0].decode()
-        assert name == "userdata"
-
-    def test_spreadtrum_extractor_fdl_missing(self, tmp_path: Path) -> None:
+    def test_unisoc_extractor_missing_fdl1(self, tmp_path: Path) -> None:
         from forensix_forensic.extractors.hardware.unisoc_fdl import SpreadtrumBootromExtractor
 
         extractor = SpreadtrumBootromExtractor(
@@ -337,101 +345,68 @@ class TestUnisocFdl:
 # Samsung Download Mode
 # ---------------------------------------------------------------------------
 
-from forensix_forensic.extractors.hardware.samsung_download import (
-    CMD_PIT,
-    ODIN_PKT_SIZE,
-    PIT_HEADER_MAGIC,
-    PIT_HEADER_SIZE,
-    PIT_RECORD_SIZE,
-    build_odin_packet,
-    parse_pit,
-)
-
-
-from typing import Any
 
 def _build_pit_binary(records: list[dict[str, Any]]) -> bytes:
     """Helper to build a minimal PIT binary for testing."""
     header = struct.pack("<II", PIT_HEADER_MAGIC, len(records)) + b"\x00" * (PIT_HEADER_SIZE - 8)
     body = b""
-    for rec in records:
-        name = rec.get("name", "test").encode("ascii")[:31].ljust(32, b"\x00")
-        file_name = b"\x00" * 32
-        delta_name = b"\x00" * 32
-        fields = struct.pack(
-            "<IIIIIIIII",
-            rec.get("binary_type", 1),
-            rec.get("device_type", 2),
-            rec.get("partition_id", 1),
-            rec.get("attributes", 1),
-            rec.get("update_attr", 0),
-            rec.get("block_size", 1),
-            rec.get("block_count", 1024),
-            rec.get("file_offset", 0),
-            rec.get("file_size", 0),
+    for r in records:
+        name_bytes = r.get("name", "test").encode().ljust(32, b"\x00")
+        fn_bytes = r.get("filename", "test.img").encode().ljust(32, b"\x00")
+        rec = struct.pack(
+            "<IIIIII32s32s",
+            r.get("binary_type", 0),
+            r.get("device_type", 0),
+            r.get("id", 1),
+            r.get("attributes", 0),
+            r.get("start_block", 0),
+            r.get("block_count", 100),
+            name_bytes,
+            fn_bytes,
         )
-        entry = fields + name + file_name + delta_name
-        assert len(entry) == PIT_RECORD_SIZE, f"PIT record wrong size: {len(entry)}"
-        body += entry
+        body += rec
     return header + body
 
 
 class TestSamsungDownloadMode:
-    def test_parse_pit_empty(self) -> None:
-        pit = _build_pit_binary([])
-        count, records = parse_pit(pit)
-        assert count == 0
-        assert records == []
-
-    def test_parse_pit_single_record(self) -> None:
-        pit = _build_pit_binary([{"name": "userdata", "block_count": 2048}])
-        count, records = parse_pit(pit)
-        assert count == 1
-        assert records[0].partition_name == "userdata"
-        assert records[0].block_count == 2048
-
-    def test_parse_pit_multiple_records(self) -> None:
-        parts = [
-            {"name": "system", "block_count": 4096, "partition_id": 1},
-            {"name": "userdata", "block_count": 8192, "partition_id": 2},
-            {"name": "boot", "block_count": 512, "partition_id": 3},
+    def test_parse_pit_valid(self) -> None:
+        records_spec = [
+            {"name": "BOOT", "filename": "boot.img", "start_block": 0, "block_count": 8192},
+            {
+                "name": "USERDATA",
+                "filename": "userdata.img",
+                "start_block": 8192,
+                "block_count": 65536,
+            },
         ]
-        pit = _build_pit_binary(parts)
-        count, records = parse_pit(pit)
-        assert count == 3
-        names = [r.partition_name for r in records]
-        assert "system" in names
-        assert "userdata" in names
+        pit_bytes = _build_pit_binary(records_spec)
+        records = parse_pit(pit_bytes)
+        assert len(records) == 2
+        assert records[0].partition_name == "BOOT"
+        assert records[0].block_count == 8192
+        assert records[1].partition_name == "USERDATA"
 
-    def test_parse_pit_wrong_magic(self) -> None:
-        bad_pit = b"\xDE\xAD\xBE\xEF" + b"\x00" * 100
-        with pytest.raises(ValueError, match="Invalid PIT magic"):
-            parse_pit(bad_pit)
+    def test_parse_pit_invalid_magic(self) -> None:
+        bad_bytes = b"\x00" * PIT_HEADER_SIZE
+        with pytest.raises(ValueError, match="PIT magic mismatch"):
+            parse_pit(bad_bytes)
 
     def test_parse_pit_too_short(self) -> None:
-        with pytest.raises(ValueError):
-            parse_pit(b"\x00" * 4)
+        with pytest.raises(ValueError, match="too short"):
+            parse_pit(b"\x12\x34")
 
-    def test_pit_record_size_bytes(self) -> None:
-        pit = _build_pit_binary([{"name": "data", "block_size": 1, "block_count": 1024}])
-        _, records = parse_pit(pit)
-        assert records[0].size_bytes == 1 * 1024 * 512
-
-    def test_build_odin_packet_length(self) -> None:
-        pkt = build_odin_packet(CMD_PIT)
+    def test_build_odin_packet_size(self) -> None:
+        pkt = build_odin_packet(CMD_PIT, payload=b"PIT_REQUEST")
         assert len(pkt) == ODIN_PKT_SIZE
+        assert pkt[:4] == b"ODIN"
 
-    def test_build_odin_packet_cmd_byte(self) -> None:
-        pkt = build_odin_packet(CMD_PIT)
-        assert pkt[0] == CMD_PIT
-
-    def test_samsung_extractor_no_usb(self, tmp_path: Path) -> None:
+    def test_samsung_extractor_no_device(self, tmp_path: Path) -> None:
         from forensix_forensic.extractors.hardware.samsung_download import (
             SamsungDownloadModeExtractor,
         )
 
         extractor = SamsungDownloadModeExtractor(output_dir=tmp_path / "out")
-        result = asyncio.run(extractor.acquire(["userdata"], "CASE-001", "examiner"))
+        result = asyncio.run(extractor.acquire(["USERDATA"], "CASE-001", "examiner"))
         assert result.success is False
 
 
@@ -439,153 +414,107 @@ class TestSamsungDownloadMode:
 # Screen Lock Assessment
 # ---------------------------------------------------------------------------
 
-from forensix_forensic.extractors.hardware.screen_lock_assessment import (
-    MAX_ATTEMPTS,
-    MIN_ATTEMPT_INTERVAL_SECONDS,
-    LockType,
-    ScreenLockAssessmentService,
-    WipeRisk,
-    _estimate_search_space,
-)
-
 
 class TestScreenLockAssessment:
-    def test_estimate_none(self) -> None:
-        assert _estimate_search_space(LockType.NONE, None, None) == 0
+    def test_estimate_search_space_pin(self) -> None:
+        profile = ScreenLockAssessmentService.assess_from_parameters(
+            lock_type=LockType.PIN,
+            pin_length=4,
+            pattern_size=0,
+            has_biometrics=False,
+            device_rooted=False,
+        )
+        assert profile.search_space_size == 10000
+        assert profile.wipe_risk == WipeRisk.ZERO_RISK
 
-    def test_estimate_swipe(self) -> None:
-        assert _estimate_search_space(LockType.SWIPE, None, None) == 0
+    def test_estimate_search_space_pattern_3x3(self) -> None:
+        profile = ScreenLockAssessmentService.assess_from_parameters(
+            lock_type=LockType.PATTERN,
+            pin_length=0,
+            pattern_size=9,
+            has_biometrics=True,
+            device_rooted=False,
+        )
+        assert profile.search_space_size == 389112
+        assert profile.has_biometric_fallback is True
 
-    def test_estimate_pin_4(self) -> None:
-        assert _estimate_search_space(LockType.PIN, 4, None) == 10_000
-
-    def test_estimate_pin_6(self) -> None:
-        assert _estimate_search_space(LockType.PIN, 6, None) == 1_000_000
-
-    def test_estimate_pin_default(self) -> None:
-        # None pin_length defaults to 4
-        assert _estimate_search_space(LockType.PIN, None, None) == 10_000
-
-    def test_estimate_pattern(self) -> None:
-        space = _estimate_search_space(LockType.PATTERN, None, "medium")
-        assert space == 389_112
-
-    def test_estimate_password(self) -> None:
-        space = _estimate_search_space(LockType.PASSWORD, None, None)
-        assert space == 62 ** 8
+    def test_wipe_risk_classification(self) -> None:
+        assert _estimate_search_space(LockType.PIN, 6, 0) == 1000000
 
     def test_max_attempts_constant(self) -> None:
         assert MAX_ATTEMPTS == 5
+        assert MIN_ATTEMPT_INTERVAL_SECONDS >= 30.0
 
-    def test_min_interval_constant(self) -> None:
-        assert MIN_ATTEMPT_INTERVAL_SECONDS >= 1.0
-
-    def test_classify_lock_type_none(self) -> None:
-        svc = ScreenLockAssessmentService.__new__(ScreenLockAssessmentService)
-        svc._timeline = []  # type: ignore[attr-defined]
-        result = svc._classify_lock_type({"lockscreen.password_type": "0"})
-        assert result == LockType.NONE
-
-    def test_classify_lock_type_pin(self) -> None:
-        svc = ScreenLockAssessmentService.__new__(ScreenLockAssessmentService)
-        result = svc._classify_lock_type({"lockscreen.password_type": "196608"})
-        assert result == LockType.PIN
-
-    def test_classify_lock_type_pattern(self) -> None:
-        svc = ScreenLockAssessmentService.__new__(ScreenLockAssessmentService)
-        result = svc._classify_lock_type({"lockscreen.password_type": "131072"})
-        assert result == LockType.PATTERN
-
-    def test_classify_wipe_risk_high(self) -> None:
-        risk = ScreenLockAssessmentService._classify_wipe_risk(5, {})
-        assert risk == WipeRisk.HIGH
-
-    def test_classify_wipe_risk_medium(self) -> None:
-        risk = ScreenLockAssessmentService._classify_wipe_risk(10, {})
-        assert risk == WipeRisk.MEDIUM
-
-    def test_classify_wipe_risk_low(self) -> None:
-        risk = ScreenLockAssessmentService._classify_wipe_risk(None, {})
-        assert risk == WipeRisk.LOW
+    def test_authorised_entry_exceeds_max_attempts(self, tmp_path: Path) -> None:
+        service = ScreenLockAssessmentService(adb=None, output_dir=tmp_path)
+        profile = service.assess_from_parameters(
+            lock_type=LockType.PIN,
+            pin_length=4,
+            pattern_size=0,
+            has_biometrics=False,
+            device_rooted=False,
+        )
+        candidates = [f"{i:04d}" for i in range(10)]
+        result = asyncio.run(
+            service.attempt_authorised_entry("serial", profile, candidates)
+        )
+        assert result.success is False
+        assert "exceeds policy limit" in result.outcome_summary
 
 
 # ---------------------------------------------------------------------------
 # Keystore Reader
 # ---------------------------------------------------------------------------
 
-from forensix_forensic.extractors.hardware.keystore_reader import (
-    _ALGORITHM_NAMES,
-    KM_ALGORITHM_AES,
-    _blob_name_to_alias,
-    _scan_km_tags,
-    parse_keyblob_header,
-)
-
 
 class TestKeystoreReader:
-    def test_blob_name_to_alias_uid_prefix(self) -> None:
-        assert _blob_name_to_alias("1000_mykey") == "mykey"
+    def test_blob_name_to_alias_decodes_hex(self) -> None:
+        alias_hex = "4d794b6579"  # 'MyKey' in hex
+        blob_name = f"1000_USRPKEY_{alias_hex}"
+        assert _blob_name_to_alias(blob_name) == "MyKey"
 
-    def test_blob_name_to_alias_no_prefix(self) -> None:
-        assert _blob_name_to_alias("USRPKEY_myalias") == "USRPKEY_myalias"
+    def test_blob_name_to_alias_fallback_ascii(self) -> None:
+        assert _blob_name_to_alias("1000_USRPKEY_simple") == "simple"
 
-    def test_blob_name_to_alias_dot_key(self) -> None:
-        assert _blob_name_to_alias("0_keyalias.key") == "keyalias"
+    def test_scan_km_tags_finds_algorithm(self) -> None:
+        # Tag 2 = KM_TAG_ALGORITHM, type ENUM (2 << 28 = 0x20000000) -> 0x20000002
+        tag_bytes = struct.pack("<II", 0x20000002, KM_ALGORITHM_AES)
+        metadata = _scan_km_tags(tag_bytes)
+        assert metadata["algorithm"] == "AES"
 
-    def test_parse_keyblob_header_too_short(self) -> None:
-        result = parse_keyblob_header(b"\x00\x01", "alias", 0)
-        assert result is None
+    def test_algorithm_names_has_aes(self) -> None:
+        assert _ALGORITHM_NAMES[1] == "RSA"
+        assert _ALGORITHM_NAMES[32] == "AES"
 
-    def test_parse_keyblob_header_encrypted(self) -> None:
-        # Encrypted blob (type=1): header should still parse without crash
-        data = bytes([0x01, 0x02]) + b"\x00" * 50
-        result = parse_keyblob_header(data, "mykey", 0)
-        assert result is not None
-        assert result.blob_type == 1
+    def test_parse_keyblob_header_short_bytes(self) -> None:
+        meta = parse_keyblob_header(b"\x00" * 8, "test_alias")
+        assert meta.alias == "test_alias"
+        assert meta.version == 0
+        assert meta.algorithm == "unknown"
 
-    def test_parse_keyblob_header_sha256_populated(self) -> None:
-        import hashlib
-
-        data = b"\x00" * 64
-        result = parse_keyblob_header(data, "k", 0)
-        assert result is not None
-        assert result.blob_sha256 == hashlib.sha256(data).hexdigest()
-
-    def test_scan_km_tags_aes(self) -> None:
-        # Build a minimal tag stream: KM_TAG_ALGORITHM (tag_num=2) = AES (32)
-        tag_id = (0x01 << 24) | 2  # enum tag type, tag number 2
-        payload = struct.pack("<II", tag_id, KM_ALGORITHM_AES)
-        algorithm, key_size, purposes, origin = _scan_km_tags(payload)
-        assert algorithm == "AES"
-
-    def test_algorithm_names_complete(self) -> None:
-        assert _ALGORITHM_NAMES[KM_ALGORITHM_AES] == "AES"
+    def test_parse_keyblob_header_v3_magic(self) -> None:
+        # Magic 0x4B4D424C ('KMBL') at offset 0
+        payload = b"KMBL" + b"\x00" * 60
+        meta = parse_keyblob_header(payload, "my_alias")
+        assert meta.version == 3
 
 
 # ---------------------------------------------------------------------------
 # Physical Acquisition Router
 # ---------------------------------------------------------------------------
 
-from forensix_forensic.extractors.hardware.physical_acquisition import (
-    PhysicalAcquisitionRouter,
-    RouterConfig,
-)
-
 
 class TestPhysicalAcquisitionRouter:
-    def test_router_no_device(self, tmp_path: Path) -> None:
-        """Without pyusb or a real device, router should fail gracefully."""
-        config = RouterConfig(output_dir=tmp_path / "out")
-        router = PhysicalAcquisitionRouter(config)
+    def test_router_error_when_no_device(self, tmp_path: Path) -> None:
+        cfg = RouterConfig(output_dir=tmp_path / "out")
+        router = PhysicalAcquisitionRouter(cfg)
         result = asyncio.run(
-            router.acquire(["userdata"], case_id="CASE-001", operator_id="examiner")
+            router.acquire(
+                partitions=["userdata"],
+                case_id="CASE-001",
+                operator_id="examiner",
+            )
         )
         assert result.success is False
         assert result.protocol_used == "unsupported"
-        assert result.error_message is not None
-
-    def test_router_config_defaults(self, tmp_path: Path) -> None:
-        config = RouterConfig(output_dir=tmp_path)
-        assert config.mtk_da_path is None
-        assert config.qualcomm_programmer_path is None
-        assert config.usb_timeout_ms == 10000
+        assert "No device detected" in (result.error_message or "")

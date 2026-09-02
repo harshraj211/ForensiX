@@ -83,7 +83,8 @@ class TestOfflineHashAndHashcat:
     def test_hashcat_launcher_missing_binary(self, tmp_path: Path) -> None:
         cfg = HashcatConfig(hashcat_binary=tmp_path / "missing_hashcat.exe")
         launcher = HashcatLauncher(cfg, tmp_path / "hashcat_out")
-        res = asyncio.run(launcher.run(tmp_path / "hash.txt", HashcatMode.ANDROID_GATEKEEPER, "CASE-001"))
+        mode = HashcatMode.ANDROID_GATEKEEPER
+        res = asyncio.run(launcher.run(tmp_path / "hash.txt", mode, "CASE-001"))
         assert res.success is False
         assert "not found" in (res.error_message or "")
 
@@ -92,7 +93,8 @@ class TestOfflineHashAndHashcat:
         hc_bin.write_bytes(b"fake")
         cfg = HashcatConfig(hashcat_binary=hc_bin, mask="?d?d?d?d")
         launcher = HashcatLauncher(cfg, tmp_path / "out")
-        cmd = launcher._build_command(tmp_path / "hash.txt", HashcatMode.ANDROID_GATEKEEPER, tmp_path / "pot.txt")
+        mode = HashcatMode.ANDROID_GATEKEEPER
+        cmd = launcher._build_command(tmp_path / "hash.txt", mode, tmp_path / "pot.txt")
         assert "-a" in cmd
         assert "3" in cmd
         assert "?d?d?d?d" in cmd

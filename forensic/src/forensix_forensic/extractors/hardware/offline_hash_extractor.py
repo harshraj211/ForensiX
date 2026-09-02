@@ -16,9 +16,8 @@ perform offline hash cracking with hashcat or John the Ripper:
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -143,7 +142,10 @@ class OfflineHashExtractor:
     async def _read_locksettings(self, serial: str) -> dict[str, str]:
         settings: dict[str, str] = {}
         try:
-            cmd = "su -c \"sqlite3 /data/system/locksettings.db 'SELECT name,value FROM locksettings;'\""
+            cmd = (
+                "su -c \"sqlite3 /data/system/locksettings.db "  # noqa: S608
+                "'SELECT name,value FROM locksettings;'\""
+            )
             output = await self._adb.shell(serial, cmd)  # type: ignore[attr-defined]
             for line in output.splitlines():
                 if "|" in line:
@@ -156,7 +158,8 @@ class OfflineHashExtractor:
     async def _pull_gatekeeper_blobs(self, serial: str) -> list[GatekeeperBlob]:
         blobs: list[GatekeeperBlob] = []
         try:
-            ls_out = await self._adb.shell(serial, "su -c 'ls /data/misc/gatekeeper/'")  # type: ignore[attr-defined]
+            ls_cmd = "su -c 'ls /data/misc/gatekeeper/'"
+            ls_out = await self._adb.shell(serial, ls_cmd)  # type: ignore[attr-defined]
             filenames = [f.strip() for f in ls_out.splitlines() if f.strip() and "No such" not in f]
             for fn in filenames:
                 remote_path = f"/data/misc/gatekeeper/{fn}"
@@ -172,8 +175,11 @@ class OfflineHashExtractor:
                                 user_id = int(fn.split("_")[0])
                             except ValueError:
                                 user_id = 0
-                        blobs.append(GatekeeperBlob(user_id=user_id, filename=fn, raw_bytes=data, sha256=sha))
-                except Exception:  # noqa: BLE001
+                        blob = GatekeeperBlob(
+                            user_id=user_id, filename=fn, raw_bytes=data, sha256=sha
+                        )
+                        blobs.append(blob)
+                except Exception:  # noqa: BLE001, S112
                     continue
         except Exception as exc:  # noqa: BLE001
             self._log("pull_gatekeeper_failed", {"error": str(exc)})
@@ -182,7 +188,8 @@ class OfflineHashExtractor:
     async def _pull_spblobs(self, serial: str) -> list[SpblobFile]:
         files: list[SpblobFile] = []
         try:
-            ls_out = await self._adb.shell(serial, "su -c 'ls /data/system_de/0/spblob/'")  # type: ignore[attr-defined]
+            ls_cmd = "su -c 'ls /data/system_de/0/spblob/'"
+            ls_out = await self._adb.shell(serial, ls_cmd)  # type: ignore[attr-defined]
             filenames = [f.strip() for f in ls_out.splitlines() if f.strip() and "No such" not in f]
             for fn in filenames:
                 remote_path = f"/data/system_de/0/spblob/{fn}"
@@ -193,7 +200,7 @@ class OfflineHashExtractor:
                         data = local_path.read_bytes()
                         sha = hashlib.sha256(data).hexdigest()
                         files.append(SpblobFile(filename=fn, raw_bytes=data, sha256=sha))
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001, S112
                     continue
         except Exception as exc:  # noqa: BLE001
             self._log("pull_spblobs_failed", {"error": str(exc)})
@@ -206,7 +213,7 @@ class OfflineHashExtractor:
                 await self._adb.pull(serial, remote_path, str(local_path))  # type: ignore[attr-defined]
                 if local_path.exists() and local_path.stat().st_size > 0:
                     return local_path.read_bytes()
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S112
                 continue
         return None
 
