@@ -1,0 +1,42 @@
+services:
+  forensix:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: forensix:latest
+    container_name: forensix
+    # ForensiX deliberately binds 127.0.0.1 only and is designed as a local
+    # single-workstation tool. Host networking lets the container reach the
+    # host loopback interface and is required for physical-device (ADB over
+    # USB) workflows.
+    network_mode: host
+    environment:
+      # Persist the SQLite database and evidence files outside the container.
+      FORENSIX_DATA_DIR: /data
+      # Match the origin served by the desktop launcher (dev Vite origin).
+      FORENSIX_ALLOWED_ORIGINS: '["http://127.0.0.1:5173"]'
+      FORENSIX_ENVIRONMENT: production
+      FORENSIX_DEPLOYMENT_TRANSPORT: loopback_http
+      FORENSIX_API_HOST: 127.0.0.1
+      FORENSIX_API_PORT: 8765
+      # Optional external integrations (paths are inside the container).
+      # FORENSIX_ADB_PATH: /usr/bin/adb
+      # FORENSIX_SCRCPY_PATH: /opt/scrcpy/scrcpy
+      # FORENSIX_SCRCPY_EXPECTED_SHA256: ""
+      # FORENSIX_PHOTOREC_PATH: /opt/testdisk/photorec
+      # FORENSIX_PHOTOREC_EXPECTED_SHA256: ""
+      # FORENSIX_ALEAAP_PROGRAM_PATH: /opt/aleapp/aleapp.py
+      # FORENSIX_ALEAAP_EXPECTED_SHA256: ""
+      # FORENSIX_ALEAAP_PYTHON_EXECUTABLE: /usr/bin/python3
+      # Optional AI narrative (sends case data to Groq; enable with authorization).
+      # FORENSIX_GROQ_API_KEY: ""
+    volumes:
+      # Named volume persists the case database and acquired evidence.
+      - forensix_data:/data
+      # Share host ADB authorization so the container can reuse host-approved
+      # devices (see README "Physical-device note").
+      - ~/.android:/home/forensix/.android:ro
+    restart: unless-stopped
+
+volumes:
+  forensix_data:
