@@ -17,6 +17,7 @@ from forensix_api.middleware import request_id_middleware
 from forensix_api.routers import (
     acquisitions,
     ai,
+    analytics,
     apk,
     artifacts,
     auth,
@@ -105,6 +106,7 @@ def create_app(
     app.include_router(integrations.router)
     app.include_router(auth.router)
     app.include_router(cases.router)
+    app.include_router(analytics.router)
     app.include_router(correlation.router)
     app.include_router(custody.router)
     app.include_router(acquisitions.router)

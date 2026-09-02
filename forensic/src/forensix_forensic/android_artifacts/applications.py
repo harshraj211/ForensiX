@@ -4,7 +4,7 @@ These adapters never acquire private data and never decrypt databases. They run 
 against a verified working copy whose archive path identifies the expected application.
 """
 
-# ruff: noqa: E501, SIM103
+# ruff: noqa: E501, SIM102, SIM103, S110
 
 from collections.abc import Mapping
 
@@ -28,13 +28,13 @@ from .common import (
 
 
 class WhatsAppMessageParser:
-    """Parse the modern plaintext WhatsApp ``message`` table when lawfully obtained."""
+    """Parse modern or legacy plaintext WhatsApp database schemas when lawfully obtained."""
 
     metadata = ParserMetadata(
         parser_id="android.whatsapp.message",
         name="WhatsApp plaintext messages",
-        version="1.0.0",
-        artifact_categories=("message",),
+        version="1.1.0",
+        artifact_categories=("message", "attachment"),
         required_tables=frozenset({"message"}),
         access_level="filesystem",
         maturity="experimental",
@@ -42,62 +42,122 @@ class WhatsAppMessageParser:
     )
 
     def can_parse(self, tables: frozenset[str]) -> bool:
-        return "message" in tables
+        return "message" in tables or "messages" in tables
 
     def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
-        columns = require_columns(reader, "message", {"_id", "timestamp"})
+        tables = reader.table_names()
+        table_name = "message" if "message" in tables else "messages"
+        columns = reader.column_names(table_name)
+        if "_id" not in columns and "key_id" not in columns:
+            from .common import AndroidArtifactParserError
+
+            raise AndroidArtifactParserError("WhatsApp table missing primary key identifier.")
+
+        id_col = '"_id"' if "_id" in columns else '"key_id"'
+        time_col = '"timestamp"' if "timestamp" in columns else (
+            '"received_timestamp"' if "received_timestamp" in columns else id_col
+        )
+
         selected = [
-            '"_id"',
-            '"timestamp"',
+            f"{id_col} AS _id",
+            f"{time_col} AS timestamp",
             *(
                 optional_column(columns, name)
                 for name in (
                     "text_data",
+                    "data",
                     "from_me",
+                    "key_from_me",
                     "message_type",
                     "chat_row_id",
                     "sender_jid_row_id",
+                    "key_remote_jid",
                     "status",
                     "starred",
                     "remote_resource",
+                    "media_caption",
+                    "media_wa_type",
+                    "media_name",
+                    "media_size",
                 )
             ),
         ]
         try:
             rows = reader.execute_select(
-                f'SELECT {", ".join(selected)} FROM "message" ORDER BY "timestamp", "_id"'  # noqa: S608
+                f'SELECT {", ".join(selected)} FROM "{table_name}" ORDER BY {time_col}, {id_col}'  # noqa: S608
             )
         except SafeSQLiteError as error:
             raise parser_error(error) from error
-        return [self._artifact(row, context) for row in rows]
+
+        # Resolve JIDs if jid table is present
+        jid_map: dict[int, str] = {}
+        if "jid" in tables:
+            try:
+                jid_cols = reader.column_names("jid")
+                if "_id" in jid_cols and "raw_string" in jid_cols:
+                    jid_rows = reader.execute_select('SELECT "_id", "raw_string" FROM "jid"')
+                    for r in jid_rows:
+                        jid_id = integer(r.get("_id"))
+                        raw_jid = text(r.get("raw_string"))
+                        if jid_id is not None and raw_jid:
+                            jid_map[jid_id] = raw_jid
+            except Exception:
+                pass
+
+        return [self._artifact(row, context, jid_map) for row in rows]
 
     @staticmethod
-    def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+    def _artifact(
+        row: Mapping[str, object], context: ParserContext, jid_map: dict[int, str]
+    ) -> ParsedArtifact:
         identifier = integer(row.get("_id"))
-        outgoing = integer(row.get("from_me")) == 1
-        body = text(row.get("text_data"))
+        from_me_val = row.get("from_me") if row.get("from_me") is not None else row.get("key_from_me")
+        outgoing = integer(from_me_val) == 1
+        body = (
+            text(row.get("text_data"))
+            or text(row.get("data"))
+            or text(row.get("media_caption"))
+            or text(row.get("media_name"))
+        )
+        sender_jid_id = integer(row.get("sender_jid_row_id"))
+        chat_jid_id = integer(row.get("chat_row_id"))
+        sender_jid = jid_map.get(sender_jid_id, "") if sender_jid_id else text(row.get("key_remote_jid"))
+        chat_jid = jid_map.get(chat_jid_id, "") if chat_jid_id else ""
+
         direction = "outgoing" if outgoing else "incoming_or_system"
+        title = f"WhatsApp {direction.replace('_', ' ')} message"
+        if sender_jid:
+            title += f": {sender_jid}"
+
         return ParsedArtifact(
             category="communication",
             subtype="whatsapp_message",
-            title=f"WhatsApp {direction.replace('_', ' ')} message",
+            title=title,
             summary=body or "WhatsApp message body unavailable or non-text",
             event_time=android_timestamp(row.get("timestamp")),
             source_locator=f"{context.input_locator}#message:{identifier}",
             status="active",
-            confidence="medium",
-            metadata=compact_metadata({**row, "application": "whatsapp", "direction": direction}),
+            confidence="high" if body else "medium",
+            metadata=compact_metadata(
+                {
+                    **row,
+                    "application": "whatsapp",
+                    "direction": direction,
+                    "resolved_sender": sender_jid,
+                    "resolved_chat": chat_jid,
+                }
+            ),
         )
 
 
 class TelegramMessageParser:
-    """Parse a deliberately narrow plaintext Telegram fixture-compatible schema."""
+    """Parse Telegram SQLite databases (cache4.db) with MTProto TL binary blob decoding."""
 
     metadata = ParserMetadata(
         parser_id="android.telegram.messages",
-        name="Telegram plaintext message rows",
-        version="1.0.0",
-        artifact_categories=("message",),
+        name="Telegram messages and binary TL payloads",
+        version="1.1.0",
+        artifact_categories=("message", "attachment"),
         required_tables=frozenset({"messages"}),
         access_level="filesystem",
         maturity="experimental",
@@ -105,35 +165,81 @@ class TelegramMessageParser:
     )
 
     def can_parse(self, tables: frozenset[str]) -> bool:
-        return "messages" in tables
+        return "messages" in tables or "messages_v2" in tables
 
     def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
-        columns = require_columns(reader, "messages", {"_id", "date"})
-        if not {"message", "text"}.intersection(columns):
-            from .common import AndroidArtifactParserError
+        tables = reader.table_names()
+        table_name = "messages" if "messages" in tables else "messages_v2"
+        columns = reader.column_names(table_name)
+        id_col = '"mid"' if "mid" in columns else ('"_id"' if "_id" in columns else '"id"')
+        date_col = '"date"' if "date" in columns else id_col
 
-            raise AndroidArtifactParserError(
-                "Telegram message rows are encoded as unsupported binary blobs in this schema."
-            )
         selected = [
-            '"_id"',
-            '"date"',
-            optional_column(columns, "message"),
-            optional_column(columns, "text"),
-            *(optional_column(columns, name) for name in ("dialog_id", "sender_id", "out")),
+            f"{id_col} AS _id",
+            f"{date_col} AS date",
+            *(
+                optional_column(columns, name)
+                for name in (
+                    "message",
+                    "text",
+                    "data",
+                    "media",
+                    "dialog_id",
+                    "uid",
+                    "sender_id",
+                    "out",
+                    "read_state",
+                    "send_state",
+                    "ttl",
+                )
+            ),
         ]
         try:
             rows = reader.execute_select(
-                f'SELECT {", ".join(selected)} FROM "messages" ORDER BY "date", "_id"'  # noqa: S608
+                f'SELECT {", ".join(selected)} FROM "{table_name}" ORDER BY {date_col}, {id_col}'  # noqa: S608
             )
         except SafeSQLiteError as error:
             raise parser_error(error) from error
-        return [self._artifact(row, context) for row in rows]
 
-    @staticmethod
-    def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+        if not {"message", "text"}.intersection(columns):
+            if not rows or "data" not in columns:
+                from .common import AndroidArtifactParserError
+
+                raise AndroidArtifactParserError(
+                    "Telegram message rows are encoded as unsupported binary blobs in this schema."
+                )
+
+        artifacts = [self._artifact(row, context) for row in rows]
+        # If no plaintext columns exist and none of the binary blobs yielded readable text, reject
+        if not {"message", "text"}.intersection(columns):
+            if not any(a.summary and a.summary != "Telegram text unavailable" for a in artifacts):
+                from .common import AndroidArtifactParserError
+
+                raise AndroidArtifactParserError(
+                    "Telegram message rows are encoded as unsupported binary blobs in this schema."
+                )
+
+        return artifacts
+
+    @classmethod
+    def _artifact(cls, row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
         identifier = integer(row.get("_id"))
         body = text(row.get("message")) or text(row.get("text"))
+        data_blob = row.get("data")
+        media_blob = row.get("media")
+
+        # Decode binary MTProto / Type Language (TL) serialized message object if text not in plain column
+        tl_meta: dict[str, object] = {}
+        if not body and isinstance(data_blob, (bytes, bytearray)):
+            decoded_text, tl_meta = cls._decode_tl_message(bytes(data_blob))
+            if decoded_text:
+                body = decoded_text
+
+        if not body and isinstance(media_blob, (bytes, bytearray)):
+            media_desc = cls._extract_tl_string(bytes(media_blob))
+            if media_desc:
+                body = f"[Telegram Media: {media_desc}]"
+
         outgoing = integer(row.get("out")) == 1
         return ParsedArtifact(
             category="communication",
@@ -143,9 +249,93 @@ class TelegramMessageParser:
             event_time=android_timestamp(row.get("date"), seconds=True),
             source_locator=f"{context.input_locator}#messages:{identifier}",
             status="active",
-            confidence="medium",
-            metadata=compact_metadata({**row, "application": "telegram"}),
+            confidence="high" if body else "medium",
+            metadata=compact_metadata(
+                {
+                    **row,
+                    **tl_meta,
+                    "application": "telegram",
+                    "has_tl_binary_payload": isinstance(data_blob, (bytes, bytearray)),
+                }
+            ),
         )
+
+    @classmethod
+    def _decode_tl_message(cls, data: bytes) -> tuple[str | None, dict[str, object]]:
+        """Lightweight pure-Python TL-object deserializer for Telegram message blobs."""
+        if len(data) < 8:
+            return None, {}
+
+        meta: dict[str, object] = {}
+        extracted_strings: list[str] = []
+
+        # Scan for TL strings (skipping initial 8 bytes for constructor ID + flags)
+        pos = 8
+        while pos < len(data):
+            b = data[pos]
+            if b == 0xFE and pos + 4 <= len(data):
+                str_len = data[pos + 1] | (data[pos + 2] << 8) | (data[pos + 3] << 16)
+                str_start = pos + 4
+                padding = (4 - ((str_len + 4) % 4)) % 4
+                if 0 < str_len <= 65536 and str_start + str_len + padding <= len(data):
+                    pad_bytes = data[str_start + str_len : str_start + str_len + padding]
+                    if pad_bytes == b"\x00" * padding:
+                        try:
+                            val = data[str_start : str_start + str_len].decode("utf-8").strip()
+                            if val and any(c.isalnum() for c in val):
+                                extracted_strings.append(val)
+                                pos = str_start + str_len + padding
+                                continue
+                        except UnicodeDecodeError:
+                            pass
+            elif 0 < b < 254:
+                str_len = b
+                str_start = pos + 1
+                padding = (4 - ((str_len + 1) % 4)) % 4
+                if str_start + str_len + padding <= len(data):
+                    pad_bytes = data[str_start + str_len : str_start + str_len + padding]
+                    if pad_bytes == b"\x00" * padding:
+                        try:
+                            val = data[str_start : str_start + str_len].decode("utf-8").strip()
+                            if val and any(c.isalnum() for c in val):
+                                extracted_strings.append(val)
+                                pos = str_start + str_len + padding
+                                continue
+                        except UnicodeDecodeError:
+                            pass
+            pos += 1
+
+        body: str | None = None
+        if extracted_strings:
+            filtered = [s for s in extracted_strings if not s.startswith("TL_") and len(s) > 1]
+            if filtered:
+                body = filtered[0]
+                meta["tl_extracted_tokens"] = filtered[:5]
+            else:
+                body = extracted_strings[0]
+
+        return body, meta
+
+    @staticmethod
+    def _extract_tl_string(blob: bytes) -> str | None:
+        """Extract first printable string from binary TL media blob."""
+        if len(blob) < 4:
+            return None
+        try:
+            # Look for printable ASCII/UTF-8 run
+            chars: list[str] = []
+            for b in blob:
+                if 32 <= b <= 126:
+                    chars.append(chr(b))
+                elif chars and len(chars) > 3:
+                    break
+                else:
+                    chars.clear()
+            if len(chars) > 3:
+                return "".join(chars)
+        except Exception:
+            pass
+        return None
 
 
 class MetaMessageParser:
@@ -264,41 +454,52 @@ class SnapchatMessageParser:
 
 
 class DiscordMessageParser:
-    """Parse Discord messages from the messages table in the SQLite cache database."""
+    """Parse cached Discord messages and direct messages."""
 
     metadata = ParserMetadata(
         parser_id="android.discord.messages",
-        name="Discord messages",
+        name="Discord messages and chat channels",
         version="1.0.0",
-        artifact_categories=("message",),
-        required_tables=frozenset({"messages"}),
+        artifact_categories=("message", "attachment"),
+        required_tables=frozenset({"discord_messages"}),
         access_level="filesystem",
         maturity="experimental",
         source_path_hints=("com.discord", "cache_v9", "discord"),
     )
 
     def can_parse(self, tables: frozenset[str]) -> bool:
-        return "messages" in tables
+        return "discord_messages" in tables or "messages" in tables
 
     def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
-        columns = require_columns(reader, "messages", {"id", "timestamp"})
-        if "channel_id" not in columns and "author_id" not in columns:
-            from .common import AndroidArtifactParserError
-
-            raise AndroidArtifactParserError(
-                "Discord messages table missing channel_id and author_id; schema unrecognised."
+        tables = reader.table_names()
+        table_name = "discord_messages" if "discord_messages" in tables else "messages"
+        columns = reader.column_names(table_name)
+        id_col = '"_id"' if "_id" in columns else ('"id"' if "id" in columns else '"mid"')
+        time_col = '"timestamp_ms"' if "timestamp_ms" in columns else (
+            '"timestamp"' if "timestamp" in columns else (
+                '"date"' if "date" in columns else id_col
             )
+        )
         selected = [
-            '"id"',
-            '"timestamp"',
+            f"{id_col} AS _id",
+            f"{time_col} AS timestamp",
             *(
                 optional_column(columns, name)
-                for name in ("channel_id", "author_id", "content", "type", "edited_timestamp")
+                for name in (
+                    "content",
+                    "text",
+                    "author_name",
+                    "author_id",
+                    "channel_name",
+                    "channel_id",
+                    "attachments",
+                    "out",
+                )
             ),
         ]
         try:
             rows = reader.execute_select(
-                f'SELECT {", ".join(selected)} FROM "messages" ORDER BY "timestamp", "id"'  # noqa: S608
+                f'SELECT {", ".join(selected)} FROM "{table_name}" ORDER BY {time_col}, {id_col}'  # noqa: S608
             )
         except SafeSQLiteError as error:
             raise parser_error(error) from error
@@ -306,18 +507,23 @@ class DiscordMessageParser:
 
     @staticmethod
     def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
-        msg_id = text(row.get("id")) or str(integer(row.get("id")))
-        body = text(row.get("content"))
-        channel = text(row.get("channel_id"))
+        identifier = integer(row.get("_id"))
+        body = text(row.get("content")) or text(row.get("text")) or text(row.get("attachments"))
+        author = text(row.get("author_name")) or text(row.get("author_id")) or "Unknown author"
+        channel = text(row.get("channel_name")) or text(row.get("channel_id"))
+        title = f"Discord message from {author}"
+        if channel:
+            title += f" in #{channel}"
+
         return ParsedArtifact(
             category="communication",
             subtype="discord_message",
-            title=f"Discord message{f' in channel {channel}' if channel else ''}",
+            title=title,
             summary=body or "Discord message content unavailable",
             event_time=android_timestamp(row.get("timestamp")),
-            source_locator=f"{context.input_locator}#messages:{msg_id}",
+            source_locator=f"{context.input_locator}#discord_messages:{identifier}",
             status="active",
-            confidence="medium",
+            confidence="high",
             metadata=compact_metadata({**row, "application": "discord"}),
         )
 
@@ -450,4 +656,73 @@ class GmailMessageParser:
             status="deleted" if deleted else "active",
             confidence="high",
             metadata=compact_metadata({**row, "application": "gmail"}),
+        )
+
+
+class WeChatMessageParser:
+    """Parse decrypted WeChat message database (EnMicroMsg.db / message table)."""
+
+    metadata = ParserMetadata(
+        parser_id="android.wechat.messages",
+        name="WeChat messages and conversations",
+        version="1.0.0",
+        artifact_categories=("message", "attachment"),
+        required_tables=frozenset({"wechat_message"}),
+        access_level="filesystem",
+        maturity="experimental",
+        source_path_hints=("com.tencent.mm", "MicroMsg", "EnMicroMsg", "wechat"),
+    )
+
+    def can_parse(self, tables: frozenset[str]) -> bool:
+        return "wechat_message" in tables or "message" in tables
+
+    def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
+        tables = reader.table_names()
+        table_name = "wechat_message" if "wechat_message" in tables else "message"
+        columns = reader.column_names(table_name)
+        id_col = '"msgId"' if "msgId" in columns else ('"_id"' if "_id" in columns else '"id"')
+        time_col = '"createTime"' if "createTime" in columns else (
+            '"timestamp"' if "timestamp" in columns else id_col
+        )
+        selected = [
+            f"{id_col} AS _id",
+            f"{time_col} AS timestamp",
+            *(
+                optional_column(columns, name)
+                for name in (
+                    "content",
+                    "talker",
+                    "isSend",
+                    "type",
+                    "status",
+                    "imgPath",
+                )
+            ),
+        ]
+        try:
+            rows = reader.execute_select(
+                f'SELECT {", ".join(selected)} FROM "{table_name}" ORDER BY {time_col}, {id_col}'  # noqa: S608
+            )
+        except SafeSQLiteError as error:
+            raise parser_error(error) from error
+        return [self._artifact(row, context) for row in rows]
+
+    @staticmethod
+    def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+        identifier = integer(row.get("_id"))
+        content = text(row.get("content")) or text(row.get("imgPath"))
+        talker = text(row.get("talker")) or "Unknown contact"
+        outgoing = integer(row.get("isSend")) == 1
+        direction = "outgoing" if outgoing else "incoming"
+
+        return ParsedArtifact(
+            category="communication",
+            subtype="wechat_message",
+            title=f"WeChat {direction} message: {talker}",
+            summary=content or "WeChat message body unavailable",
+            event_time=android_timestamp(row.get("timestamp")),
+            source_locator=f"{context.input_locator}#wechat_message:{identifier}",
+            status="active",
+            confidence="high",
+            metadata=compact_metadata({**row, "application": "wechat", "direction": direction}),
         )

@@ -1,5 +1,9 @@
-"""Case-scoped investigation command-center aggregation."""
-
+from .analytics import (
+    GeoLocationAnalyticsResult,
+    GeoLocationAnalyticsService,
+    SocialGraphAnalyticsResult,
+    SocialGraphAnalyticsService,
+)
 from .service import (
     CommandCenterActivity,
     CommandCenterAttention,
@@ -27,9 +31,13 @@ __all__ = [
     "CommandCenterIntegrity",
     "CommandCenterJobs",
     "CommandCenterSummary",
+    "GeoLocationAnalyticsResult",
+    "GeoLocationAnalyticsService",
     "InvestigationCommandCenterService",
     "InvestigationStoryboard",
     "InvestigationStoryboardService",
+    "SocialGraphAnalyticsResult",
+    "SocialGraphAnalyticsService",
     "StoryboardFinding",
     "StoryboardGap",
     "StoryboardLead",

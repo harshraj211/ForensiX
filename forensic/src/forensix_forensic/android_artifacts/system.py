@@ -607,3 +607,301 @@ class AppUsageStatsParser:
             confidence="high",
             metadata=compact_metadata({**row, "event_label": event_label}),
         )
+
+
+class AndroidWifiProfilesParser:
+    """Parse configured and historical Wi-Fi network profiles."""
+
+    metadata = ParserMetadata(
+        parser_id="android.wifi.profiles",
+        name="Wi-Fi network profiles and known hotspots",
+        version="1.0.0",
+        artifact_categories=("location", "system"),
+        required_tables=frozenset({"wifi_profiles"}),
+        access_level="filesystem",
+        maturity="experimental",
+        source_path_hints=("wifi", "wpa_supplicant", "WifiConfigStore"),
+    )
+
+    def can_parse(self, tables: frozenset[str]) -> bool:
+        return "wifi_profiles" in tables or "wifi_configurations" in tables or "wifi_networks" in tables
+
+    def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
+        tables = reader.table_names()
+        table_name = "wifi_profiles" if "wifi_profiles" in tables else (
+            "wifi_configurations" if "wifi_configurations" in tables else "wifi_networks"
+        )
+        columns = reader.column_names(table_name)
+        id_col = '"_id"' if "_id" in columns else '"id"'
+        time_col = '"last_connected"' if "last_connected" in columns else (
+            '"timestamp"' if "timestamp" in columns else id_col
+        )
+        selected = [
+            f"{id_col} AS _id",
+            f"{time_col} AS timestamp",
+            *(
+                optional_column(columns, name)
+                for name in (
+                    "ssid",
+                    "bssid",
+                    "psk",
+                    "pre_shared_key",
+                    "key_mgmt",
+                    "hidden",
+                    "latitude",
+                    "longitude",
+                )
+            ),
+        ]
+        try:
+            rows = reader.execute_select(
+                f'SELECT {", ".join(selected)} FROM "{table_name}" ORDER BY {time_col}, {id_col}'  # noqa: S608
+            )
+        except SafeSQLiteError as error:
+            raise parser_error(error) from error
+        return [self._artifact(row, context) for row in rows]
+
+    @staticmethod
+    def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+        identifier = integer(row.get("_id"))
+        ssid = text(row.get("ssid")) or "Hidden SSID"
+        bssid = text(row.get("bssid")) or ""
+        key_mgmt = text(row.get("key_mgmt")) or "WPA/WPA2"
+        lat = row.get("latitude")
+        lng = row.get("longitude")
+        coords = f" @ ({lat}, {lng})" if lat is not None and lng is not None else ""
+
+        return ParsedArtifact(
+            category="location",
+            subtype="wifi_profile",
+            title=f"Wi-Fi Network: {ssid}",
+            summary=f"BSSID: {bssid or 'unknown'}, Security: {key_mgmt}{coords}",
+            event_time=android_timestamp(row.get("timestamp")),
+            source_locator=f"{context.input_locator}#wifi_profiles:{identifier}",
+            status="active",
+            confidence="high",
+            metadata=compact_metadata({**row, "application": "wifi"}),
+        )
+
+
+class AndroidBluetoothDevicesParser:
+    """Parse paired and discovered Bluetooth devices and connection logs."""
+
+    metadata = ParserMetadata(
+        parser_id="android.bluetooth.devices",
+        name="Bluetooth paired devices and history",
+        version="1.0.0",
+        artifact_categories=("system",),
+        required_tables=frozenset({"bluetooth_devices"}),
+        access_level="filesystem",
+        maturity="experimental",
+        source_path_hints=("bluetooth", "bluetooth_manager"),
+    )
+
+    def can_parse(self, tables: frozenset[str]) -> bool:
+        return "bluetooth_devices" in tables or "paired_devices" in tables
+
+    def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
+        tables = reader.table_names()
+        table_name = "bluetooth_devices" if "bluetooth_devices" in tables else "paired_devices"
+        columns = reader.column_names(table_name)
+        id_col = '"_id"' if "_id" in columns else '"id"'
+        time_col = '"last_connected"' if "last_connected" in columns else (
+            '"paired_time"' if "paired_time" in columns else (
+                '"timestamp"' if "timestamp" in columns else id_col
+            )
+        )
+        selected = [
+            f"{id_col} AS _id",
+            f"{time_col} AS timestamp",
+            *(
+                optional_column(columns, name)
+                for name in (
+                    "name",
+                    "address",
+                    "mac_address",
+                    "device_class",
+                    "link_key",
+                    "paired_time",
+                )
+            ),
+        ]
+        try:
+            rows = reader.execute_select(
+                f'SELECT {", ".join(selected)} FROM "{table_name}" ORDER BY {time_col}, {id_col}'  # noqa: S608
+            )
+        except SafeSQLiteError as error:
+            raise parser_error(error) from error
+        return [self._artifact(row, context) for row in rows]
+
+    @staticmethod
+    def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+        identifier = integer(row.get("_id"))
+        name = text(row.get("name")) or "Unknown Bluetooth Device"
+        address = text(row.get("address")) or text(row.get("mac_address")) or "00:00:00:00:00:00"
+        dev_class = text(row.get("device_class")) or "unknown"
+
+        return ParsedArtifact(
+            category="system",
+            subtype="bluetooth_device",
+            title=f"Bluetooth: {name}",
+            summary=f"MAC: {address}, Class: {dev_class}",
+            event_time=android_timestamp(row.get("timestamp")),
+            source_locator=f"{context.input_locator}#bluetooth_devices:{identifier}",
+            status="active",
+            confidence="high",
+            metadata=compact_metadata({**row, "application": "bluetooth"}),
+        )
+
+
+class AndroidCellTowerParser:
+    """Parse cellular network observations and cell tower tower IDs."""
+
+    metadata = ParserMetadata(
+        parser_id="android.telephony.cell_towers",
+        name="Cell tower and cellular network observations",
+        version="1.0.0",
+        artifact_categories=("location", "system"),
+        required_tables=frozenset({"cell_towers"}),
+        access_level="filesystem",
+        maturity="experimental",
+        source_path_hints=("telephony", "cell_towers", "radio"),
+    )
+
+    def can_parse(self, tables: frozenset[str]) -> bool:
+        return "cell_towers" in tables or "telephony_registry" in tables
+
+    def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
+        tables = reader.table_names()
+        table_name = "cell_towers" if "cell_towers" in tables else "telephony_registry"
+        columns = reader.column_names(table_name)
+        id_col = '"_id"' if "_id" in columns else '"id"'
+        time_col = '"timestamp"' if "timestamp" in columns else id_col
+        selected = [
+            f"{id_col} AS _id",
+            f"{time_col} AS timestamp",
+            *(
+                optional_column(columns, name)
+                for name in (
+                    "cid",
+                    "lac",
+                    "mcc",
+                    "mnc",
+                    "network_type",
+                    "signal_strength",
+                    "latitude",
+                    "longitude",
+                )
+            ),
+        ]
+        try:
+            rows = reader.execute_select(
+                f'SELECT {", ".join(selected)} FROM "{table_name}" ORDER BY {time_col}, {id_col}'  # noqa: S608
+            )
+        except SafeSQLiteError as error:
+            raise parser_error(error) from error
+        return [self._artifact(row, context) for row in rows]
+
+    @staticmethod
+    def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+        identifier = integer(row.get("_id"))
+        cid = row.get("cid")
+        lac = row.get("lac")
+        mcc = row.get("mcc")
+        mnc = row.get("mnc")
+        net_type = text(row.get("network_type")) or "Cellular"
+        lat = row.get("latitude")
+        lng = row.get("longitude")
+        coords = f" @ ({lat}, {lng})" if lat is not None and lng is not None else ""
+
+        return ParsedArtifact(
+            category="location",
+            subtype="cell_tower_observation",
+            title=f"Cell Tower: CID {cid}, LAC {lac}",
+            summary=f"MCC {mcc} MNC {mnc} — {net_type}{coords}",
+            event_time=android_timestamp(row.get("timestamp")),
+            source_locator=f"{context.input_locator}#cell_towers:{identifier}",
+            status="active",
+            confidence="high",
+            metadata=compact_metadata({**row, "application": "telephony"}),
+        )
+
+
+class AndroidUsersParser:
+    """Parse Android system users, multi-user profiles, and Dual App sandboxes."""
+
+    metadata = ParserMetadata(
+        parser_id="android.system.users",
+        name="Android system users and work profiles",
+        version="1.0.0",
+        artifact_categories=("system",),
+        required_tables=frozenset({"users"}),
+        access_level="filesystem",
+        maturity="experimental",
+        source_path_hints=("system/users", "userlist", "users.db", "users"),
+    )
+
+    def can_parse(self, tables: frozenset[str]) -> bool:
+        return "users" in tables or "user_profiles" in tables
+
+    def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
+        tables = reader.table_names()
+        table_name = "users" if "users" in tables else "user_profiles"
+        columns = reader.column_names(table_name)
+        id_col = '"id"' if "id" in columns else ('"_id"' if "_id" in columns else '"user_id"')
+        time_col = '"created_at"' if "created_at" in columns else (
+            '"creation_time"' if "creation_time" in columns else (
+                '"last_logged_in"' if "last_logged_in" in columns else id_col
+            )
+        )
+        selected = [
+            f"{id_col} AS id",
+            f"{time_col} AS timestamp",
+            *(
+                optional_column(columns, name)
+                for name in (
+                    "name",
+                    "flags",
+                    "serial_number",
+                    "user_type",
+                    "profile_group_id",
+                    "restricted",
+                )
+            ),
+        ]
+        try:
+            rows = reader.execute_select(
+                f'SELECT {", ".join(selected)} FROM "{table_name}" ORDER BY {id_col}'  # noqa: S608
+            )
+        except SafeSQLiteError as error:
+            raise parser_error(error) from error
+        return [self._artifact(row, context) for row in rows]
+
+    @staticmethod
+    def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+        user_id = integer(row.get("id"))
+        name = text(row.get("name")) or (
+            "Primary Owner" if user_id == 0 else (
+                "Work Profile" if user_id == 10 else (
+                    "Dual App Clone Profile" if user_id in (11, 999) else f"User {user_id}"
+                )
+            )
+        )
+        u_type = text(row.get("user_type")) or (
+            "android.os.usertype.full.SYSTEM" if user_id == 0 else "android.os.usertype.profile.MANAGED"
+        )
+        sandbox_path = f"/data/user/{user_id}/"
+
+        return ParsedArtifact(
+            category="system",
+            subtype="user_profile",
+            title=f"Android User {user_id}: {name}",
+            summary=f"Type: {u_type}, Sandbox: {sandbox_path}",
+            event_time=android_timestamp(row.get("timestamp")),
+            source_locator=f"{context.input_locator}#users:{user_id}",
+            status="active",
+            confidence="high",
+            metadata=compact_metadata(
+                {**row, "user_id": user_id, "sandbox_path": sandbox_path, "application": "system"}
+            ),
+        )

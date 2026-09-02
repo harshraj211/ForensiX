@@ -12,6 +12,8 @@ On a rooted device the extraction workflow is:
     ``TelegramMessageParser``.
 """
 
+# ruff: noqa: E501, SIM105, S110
+
 from __future__ import annotations
 
 import asyncio
@@ -135,10 +137,9 @@ class TelegramRootedExtractor:
                 remote = f"{db_remote_dir}/{db_file}"
                 dest = dest_dir / db_file
                 try:
-                    cat_cmd = f"cat '{remote}'"
-                    content = await self._adb.root_exec(serial, cat_cmd)
-                    if content:
-                        dest.write_text(content, encoding="utf-8", errors="surrogateescape")
+                    raw_bytes = await self._pull_remote_binary(serial, remote)
+                    if raw_bytes:
+                        dest.write_bytes(raw_bytes)
                         file_hash = await asyncio.to_thread(self._hash_file, dest)
                         file_size = dest.stat().st_size
                         db_total_size += file_size
@@ -183,10 +184,9 @@ class TelegramRootedExtractor:
                     remote = f"{prefs_dir}/{pref_file}"
                     dest = dest_dir / f"prefs_{pref_file}"
                     try:
-                        cat_cmd = f"cat '{remote}'"
-                        content = await self._adb.root_exec(serial, cat_cmd)
-                        if content:
-                            dest.write_text(content, encoding="utf-8", errors="surrogateescape")
+                        raw_bytes = await self._pull_remote_binary(serial, remote)
+                        if raw_bytes:
+                            dest.write_bytes(raw_bytes)
                             pref_hash = await asyncio.to_thread(self._hash_file, dest)
                             await self._manifest.add_entry(
                                 ManifestEntry(
@@ -236,6 +236,22 @@ class TelegramRootedExtractor:
             success=success,
             error_message=error_message,
         )
+
+    async def _pull_remote_binary(self, serial: str, remote_path: str) -> bytes:
+        """Extract remote binary file via base64 encoded stream to avoid surrogate corruption."""
+        import base64
+
+        try:
+            b64_output = await self._adb.root_exec(serial, f"base64 '{remote_path}' 2>/dev/null")
+            cleaned = "".join(b64_output.split())
+            if cleaned:
+                return base64.b64decode(cleaned)
+        except Exception:
+            pass
+
+        # Fallback to cat
+        raw_text = await self._adb.root_exec(serial, f"cat '{remote_path}'")
+        return raw_text.encode("utf-8", errors="surrogateescape")
 
     async def _detect_telegram_package(
         self, serial: str, timeline: list[dict[str, str]]

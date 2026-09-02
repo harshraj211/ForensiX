@@ -8,17 +8,23 @@ from .applications import (
     SnapchatMessageParser,
     TelegramMessageParser,
     TikTokMessageParser,
+    WeChatMessageParser,
     WhatsAppMessageParser,
     meta_message_parsers,
 )
+from .cloud_tokens import AndroidCloudTokensParser
 from .communications import AndroidCallLogParser, AndroidMmsParser, AndroidSmsParser
 from .contacts import AndroidContactsParser
 from .system import (
+    AndroidBluetoothDevicesParser,
     AndroidCalendarEventParser,
+    AndroidCellTowerParser,
     AndroidDownloadsParser,
     AndroidLocationParser,
     AndroidNotesParser,
     AndroidNotificationParser,
+    AndroidUsersParser,
+    AndroidWifiProfilesParser,
     AppUsageStatsParser,
     ChromeHistoryParser,
     EdgeHistoryParser,
@@ -40,6 +46,7 @@ def android_parser_registry() -> ParserRegistry:
     registry.register(DiscordMessageParser())
     registry.register(TikTokMessageParser())
     registry.register(GmailMessageParser())
+    registry.register(WeChatMessageParser())
     for parser in meta_message_parsers():
         registry.register(parser)
     registry.register(AndroidCalendarEventParser())
@@ -53,4 +60,9 @@ def android_parser_registry() -> ParserRegistry:
     registry.register(AndroidLocationParser())
     registry.register(GoogleMapsSearchParser())
     registry.register(AppUsageStatsParser())
+    registry.register(AndroidWifiProfilesParser())
+    registry.register(AndroidBluetoothDevicesParser())
+    registry.register(AndroidCellTowerParser())
+    registry.register(AndroidUsersParser())
+    registry.register(AndroidCloudTokensParser())
     return registry

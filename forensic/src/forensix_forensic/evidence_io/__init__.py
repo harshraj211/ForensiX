@@ -23,10 +23,12 @@ from .recovery import (
     assess_sqlite_recovery_file,
 )
 from .sqlite import SafeSQLiteError, SafeSQLiteReader
+from .sqlite_carver import CarvedSQLiteRecord, SQLiteCarver
 
 __all__ = [
     "ArchiveExtractionError",
     "ArchivePolicy",
+    "CarvedSQLiteRecord",
     "DocumentEvidenceParser",
     "DocumentParserRegistry",
     "EvidenceParser",
@@ -36,11 +38,12 @@ __all__ = [
     "ParserMetadata",
     "ParserRegistry",
     "ParserRegistryError",
-    "SafeArchiveExtractor",
-    "validate_archive_member_name",
-    "SafeSQLiteError",
-    "SafeSQLiteReader",
     "RECOVERY_PROBE_VERSION",
     "RecoveryCandidate",
+    "SafeArchiveExtractor",
+    "SafeSQLiteError",
+    "SafeSQLiteReader",
+    "SQLiteCarver",
     "assess_sqlite_recovery_file",
+    "validate_archive_member_name",
 ]

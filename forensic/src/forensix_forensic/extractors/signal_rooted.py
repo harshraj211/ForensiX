@@ -12,6 +12,8 @@ On a rooted device the extraction workflow is:
     extraction manifest.
 """
 
+# ruff: noqa: E501, SIM105, S110, S112
+
 from __future__ import annotations
 
 import asyncio
@@ -125,9 +127,11 @@ class SignalRootedExtractor:
             # Step 2: copy shared preferences
             # ------------------------------------------------------------------
             await self._log(timeline, "STEP", "Copying Signal shared preferences")
-            prefs_cmd = f"cat '{SIGNAL_PREFS_REMOTE}/{SIGNAL_PREFS_FILENAME}'"
-            prefs_content = await self._adb.root_exec(serial, prefs_cmd)
-            prefs_path.write_text(prefs_content, encoding="utf-8")
+            prefs_bytes = await self._pull_remote_binary(
+                serial, f"{SIGNAL_PREFS_REMOTE}/{SIGNAL_PREFS_FILENAME}"
+            )
+            prefs_path.write_bytes(prefs_bytes)
+            prefs_content = prefs_bytes.decode("utf-8", errors="replace")
             prefs_hash = await asyncio.to_thread(self._hash_file, prefs_path)
             await self._manifest.add_entry(
                 ManifestEntry(
@@ -144,9 +148,10 @@ class SignalRootedExtractor:
             # Step 3: copy the SQLCipher database
             # ------------------------------------------------------------------
             await self._log(timeline, "STEP", "Copying Signal SQLCipher database")
-            db_cmd = f"cat '{SIGNAL_DB_REMOTE}/{SIGNAL_DB_FILENAME}'"
-            db_raw = await self._adb.root_exec(serial, db_cmd)
-            db_path.write_text(db_raw, encoding="utf-8", errors="surrogateescape")
+            db_bytes = await self._pull_remote_binary(
+                serial, f"{SIGNAL_DB_REMOTE}/{SIGNAL_DB_FILENAME}"
+            )
+            db_path.write_bytes(db_bytes)
             db_hash = await asyncio.to_thread(self._hash_file, db_path)
             await self._manifest.add_entry(
                 ManifestEntry(
@@ -161,19 +166,21 @@ class SignalRootedExtractor:
             # Copy WAL and SHM files if present.
             for suffix, dest in (("-wal", wal_path), ("-shm", shm_path)):
                 try:
-                    wal_cmd = f"cat '{SIGNAL_DB_REMOTE}/{SIGNAL_DB_FILENAME}{suffix}'"
-                    wal_content = await self._adb.root_exec(serial, wal_cmd)
-                    dest.write_text(wal_content, encoding="utf-8", errors="surrogateescape")
-                    wal_hash = await asyncio.to_thread(self._hash_file, dest)
-                    await self._manifest.add_entry(
-                        ManifestEntry(
-                            file_path=str(dest),
-                            sha256=wal_hash,
-                            size_bytes=dest.stat().st_size,
-                            source_description=f"Signal database WAL ({suffix})",
-                            case_id=case_id,
-                        )
+                    wal_bytes = await self._pull_remote_binary(
+                        serial, f"{SIGNAL_DB_REMOTE}/{SIGNAL_DB_FILENAME}{suffix}"
                     )
+                    if wal_bytes:
+                        dest.write_bytes(wal_bytes)
+                        wal_hash = await asyncio.to_thread(self._hash_file, dest)
+                        await self._manifest.add_entry(
+                            ManifestEntry(
+                                file_path=str(dest),
+                                sha256=wal_hash,
+                                size_bytes=dest.stat().st_size,
+                                source_description=f"Signal database WAL ({suffix})",
+                                case_id=case_id,
+                            )
+                        )
                 except Exception:
                     await self._log(
                         timeline,
@@ -206,7 +213,7 @@ class SignalRootedExtractor:
                 decrypted_path = await asyncio.to_thread(
                     self._decrypt_sqlcipher, db_path, passphrase, self._work_dir
                 )
-                if decrypted_path:
+                if decrypted_path and decrypted_path.exists():
                     dec_hash = await asyncio.to_thread(self._hash_file, decrypted_path)
                     await self._manifest.add_entry(
                         ManifestEntry(
@@ -251,7 +258,7 @@ class SignalRootedExtractor:
             passphrase_sha256=passphrase_hash,
             encrypted_database_size_bytes=db_path.stat().st_size if db_path.exists() else 0,
             encrypted_database_sha256=db_hash if db_path.exists() else "",
-            decrypted_database_path=str(decrypted_path) if decrypted_path else None,
+            decrypted_database_path=str(decrypted_path) if decrypted_path and decrypted_path.exists() else None,
             preferences_file_path=str(prefs_path),
             database_file_path=str(db_path),
             timeline=timeline,
@@ -264,14 +271,36 @@ class SignalRootedExtractor:
     # Private helpers
     # ------------------------------------------------------------------
 
+    async def _pull_remote_binary(self, serial: str, remote_path: str) -> bytes:
+        """Extract remote binary file via base64 encoded stream to avoid surrogate corruption."""
+        import base64
+
+        try:
+            b64_output = await self._adb.root_exec(serial, f"base64 '{remote_path}' 2>/dev/null")
+            cleaned = "".join(b64_output.split())
+            if cleaned:
+                return base64.b64decode(cleaned)
+        except Exception:
+            pass
+
+        # Fallback to cat
+        raw_text = await self._adb.root_exec(serial, f"cat '{remote_path}'")
+        return raw_text.encode("utf-8", errors="surrogateescape")
+
     @staticmethod
     def _extract_passphrase(xml_content: str) -> str | None:
         """Extract the SQLCipher passphrase from Signal's shared preferences XML."""
-        for pattern in _PASSPHRASE_PATTERNS:
+        patterns = (
+            re.compile(r'name="pref_key_database_passphrase"[^>]*value="([^"]+)"'),
+            re.compile(r'name="pref_database_passphrase"[^>]*value="([^"]+)"'),
+            re.compile(r'name="sqlcipher_key"[^>]*value="([^"]+)"'),
+            re.compile(r'name="database_passphrase"[^>]*value="([^"]+)"'),
+            re.compile(r">([0-9a-fA-F]{64,128})<"),
+        )
+        for pattern in patterns:
             match = pattern.search(xml_content)
             if match:
                 candidate = match.group(1).strip()
-                # Validate it looks like a hex passphrase
                 if len(candidate) >= 32 and all(c in "0123456789abcdefABCDEF" for c in candidate):
                     return candidate.lower()
         return None
@@ -280,51 +309,76 @@ class SignalRootedExtractor:
     def _decrypt_sqlcipher(db_path: Path, passphrase: str, dest_dir: Path) -> Path | None:
         """Decrypt a SQLCipher database using the extracted passphrase.
 
-        Returns the decrypted file path on success, ``None`` on failure.
+        Supports SQLCipher 4 configurations (PBKDF2 HMAC-SHA512, 250k iterations, page size 4096)
+        and SQLCipher 3 fallback.
         """
+        clean_key = passphrase.strip().lower()
+        out_path = dest_dir / "signal_decrypted.db"
+
+        # Try pysqlcipher3 first
         try:
-            # Try pysqlcipher3 first (preferred for SQLCipher 4).
-            try:
-                from pysqlcipher3 import dbapi2 as sqlcipher  # type: ignore[import-not-found]
+            from pysqlcipher3 import dbapi2 as sqlcipher  # type: ignore[import-not-found]
 
-                conn = sqlcipher.connect(str(db_path))
-                conn.execute(f"PRAGMA key = \"x'{passphrase}'\"")
-                conn.execute("PRAGMA cipher_compatibility = 4")
-                test = conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
-                if test and test[0] >= 0:
-                    out_path = dest_dir / "signal_decrypted.db"
-                    conn.execute(f"VACUUM INTO '{out_path}'")
+            for config in (
+                # Configuration A: SQLCipher 4 default
+                [
+                    f"PRAGMA key = \"x'{clean_key}'\";",
+                    "PRAGMA cipher_compatibility = 4;",
+                    "PRAGMA cipher_page_size = 4096;",
+                    "PRAGMA kdf_iter = 250000;",
+                    "PRAGMA cipher_hmac_algorithm = HMAC_SHA512;",
+                    "PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA512;",
+                ],
+                # Configuration B: Standard PRAGMA key only
+                [
+                    f"PRAGMA key = \"x'{clean_key}'\";",
+                ],
+                # Configuration C: SQLCipher 3 compatibility
+                [
+                    f"PRAGMA key = \"x'{clean_key}'\";",
+                    "PRAGMA cipher_compatibility = 3;",
+                ],
+            ):
+                try:
+                    conn = sqlcipher.connect(str(db_path))
+                    for pragma in config:
+                        conn.execute(pragma)
+                    test = conn.execute("SELECT count(*) FROM sqlite_master;").fetchone()
+                    if test is not None and test[0] >= 0:
+                        if out_path.exists():
+                            out_path.unlink()
+                        conn.execute(f"VACUUM INTO '{out_path}'")
+                        conn.close()
+                        return out_path
                     conn.close()
-                    return out_path
-                conn.close()
-            except ImportError:
-                pass
+                except Exception:
+                    continue
+        except ImportError:
+            pass
 
-            # Fallback: try sqlcipher CLI tool.
+        # Fallback: try sqlcipher CLI tool
+        try:
             import subprocess
 
             sqlcipher_path = shutil.which("sqlcipher")
-            if sqlcipher_path is None:
-                return None
-
-            out_path = dest_dir / "signal_decrypted.db"
-            result = subprocess.run(  # noqa: S603
-                [
-                    sqlcipher_path,
-                    str(db_path),
-                    f"PRAGMA key = \"x'{passphrase}'\";",
-                    ".dump",
-                ],
-                capture_output=True,
-                timeout=60,
-            )
-            if result.returncode == 0 and result.stdout:
-                out_path.write_bytes(result.stdout)
-                return out_path
-
-            return None
+            if sqlcipher_path is not None:
+                for sql_init in (
+                    f"PRAGMA key = \"x'{clean_key}'\"; .dump",
+                    f"PRAGMA key = \"x'{clean_key}'\"; PRAGMA cipher_compatibility = 4; .dump",
+                    f"PRAGMA key = \"x'{clean_key}'\"; PRAGMA cipher_compatibility = 3; .dump",
+                ):
+                    result = subprocess.run(  # noqa: S603
+                        [sqlcipher_path, str(db_path), sql_init],
+                        capture_output=True,
+                        timeout=60,
+                    )
+                    if result.returncode == 0 and result.stdout and b"CREATE TABLE" in result.stdout:
+                        out_path.write_bytes(result.stdout)
+                        return out_path
         except Exception:
-            return None
+            pass
+
+        return None
 
     @staticmethod
     def _hash_file(path: Path) -> str:

@@ -79,7 +79,9 @@ class SafeSQLiteReader:
         self._connection: sqlite3.Connection | None = None
 
     def __enter__(self) -> "SafeSQLiteReader":
-        uri = f"file:{quote(self.path.as_posix(), safe='/:')}?mode=ro&immutable=1"
+        has_wal = self.path.with_name(self.path.name + "-wal").exists()
+        uri_query = "mode=ro" if has_wal else "mode=ro&immutable=1"
+        uri = f"file:{quote(self.path.as_posix(), safe='/:')}?{uri_query}"
         try:
             connection = sqlite3.connect(uri, uri=True, timeout=1.0)
             connection.row_factory = sqlite3.Row

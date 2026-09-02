@@ -13,6 +13,8 @@ The workflow is:
 Every step is logged to the extraction manifest for chain-of-custody integrity.
 """
 
+# ruff: noqa: E501, SIM105, S110
+
 from __future__ import annotations
 
 import asyncio
@@ -339,127 +341,244 @@ class WhatsAppDowngradeExtractor:
     def _unpack_ab_archive(ab_path: Path, dest_dir: Path) -> list[Path]:
         """Unpack an ``adb backup`` ``.ab`` file.
 
-        The ``.ab`` format is: 4-byte magic ``ANDROID BACKUP``, 4-byte version,
-        4-byte compressed flag, then zlib-compressed tar data.
+        The ``.ab`` format begins with header lines (magic, version, compression,
+        encryption) followed by a zlib-compressed or raw tar stream.
         """
-        with ab_path.open("rb") as fh:
-            magic = fh.read(24)
-            if not magic.startswith(b"ANDROID BACKUP"):
-                raise ValueError("Not a valid Android backup file (bad magic header)")
+        raw_bytes = ab_path.read_bytes()
+        if not raw_bytes.startswith(b"ANDROID BACKUP"):
+            raise ValueError("Not a valid Android backup file (bad magic header)")
 
-            # Skip to the zlib stream start (after the header lines).
-            # The header format is: magic(24) + \n + version_line + \n +
-            # compressed_flag_line + \n + [encryption_line + \n] + data...
-            # We scan for the first zlib-compressed block.
-            content = fh.read()
-
-        # Find the start of the zlib stream.
-        zlib_start = 0
-        for i in range(len(content)):
-            byte = content[i : i + 1]
-            try:
-                zlib.decompress(byte + content[i + 1 : i + 2])
-                # If the first byte looks like a valid zlib header, check further
-                if 0x08 <= content[i] <= 0x3F:
-                    zlib_start = i
+        # Skip header lines (separated by newline \n)
+        header_lines = 0
+        stream_start = 0
+        for i, byte in enumerate(raw_bytes):
+            if byte == 0x0A:  # '\n'
+                header_lines += 1
+                if header_lines == 4:
+                    stream_start = i + 1
                     break
-            except zlib.error:
-                continue
-        else:
-            raise ValueError("Could not locate zlib stream in backup file")
 
-        try:
-            decompressed = zlib.decompress(content[zlib_start:])
-        except zlib.error as exc:
-            raise ValueError(f"Failed to decompress backup data: {exc}") from exc
+        tar_data: bytes | None = None
+        # Attempt direct zlib decompression from stream_start
+        if stream_start > 0 and stream_start < len(raw_bytes):
+            try:
+                tar_data = zlib.decompress(raw_bytes[stream_start:])
+            except zlib.error:
+                pass
+
+        # Fallback: scan for standard zlib magic byte sequences (\x78\x01, \x78\x9c, \x78\xda, \x78\x5e)
+        if tar_data is None:
+            for magic in (b"\x78\x9c", b"\x78\x01", b"\x78\xda", b"\x78\x5e"):
+                pos = raw_bytes.find(magic)
+                if pos != -1 and pos < 2048:
+                    try:
+                        tar_data = zlib.decompress(raw_bytes[pos:])
+                        break
+                    except zlib.error:
+                        continue
+
+        # If not compressed or failed to decompress, try raw bytes from stream_start
+        if tar_data is None:
+            tar_data = raw_bytes[stream_start:] if stream_start > 0 else raw_bytes
 
         extracted: list[Path] = []
-        with tarfile.open(fileobj=io.BytesIO(decompressed), mode="r:*") as tar:
-            for member in tar.getmembers():
-                if member.isfile():
-                    tar.extract(member, path=str(dest_dir))
-                    extracted.append(dest_dir / member.name)
+        try:
+            with tarfile.open(fileobj=io.BytesIO(tar_data), mode="r:*") as tar:
+                for member in tar.getmembers():
+                    if member.isfile():
+                        # Guard against path traversal
+                        dest_path = (dest_dir / member.name).resolve()
+                        if not dest_path.is_relative_to(dest_dir.resolve()):
+                            continue
+                        dest_path.parent.mkdir(parents=True, exist_ok=True)
+                        extracted_file = tar.extractfile(member)
+                        if extracted_file:
+                            dest_path.write_bytes(extracted_file.read())
+                            extracted.append(dest_path)
+        except Exception as exc:
+            raise ValueError(f"Failed to extract tar stream from Android backup: {exc}") from exc
+
         return extracted
 
     @staticmethod
     def _find_key_file(files: list[Path]) -> Path | None:
         """Locate the WhatsApp encryption key among extracted files."""
         for path in files:
-            if KEY_DIR_IN_BACKUP in str(path) and path.suffix in ("", ".key", ".cryptkey"):
+            path_str = str(path).replace("\\", "/")
+            if "key" in path_str and any(
+                part in path_str for part in ("/files/key", "/f/key", "whatsapp/files/key", "key.cryptkey")
+            ):
                 return path
-        # Fallback: look for any file in the key directory path
         for path in files:
-            if "/key/" in str(path) or "\\key\\" in str(path):
+            if path.name.lower() in ("key", "key.cryptkey", "whatsapp.key"):
+                return path
+        for path in files:
+            if "key" in path.name.lower() and path.stat().st_size in (32, 64, 158, 160):
                 return path
         return None
 
     @staticmethod
     def _find_database_file(files: list[Path]) -> Path | None:
-        """Locate the encrypted WhatsApp database among extracted files."""
+        """Locate the WhatsApp msgstore database (encrypted or plaintext)."""
+        # Prioritize msgstore.db (plaintext), msgstore.db.crypt15, crypt14, crypt12
+        for priority_suffix in (
+            "msgstore.db",
+            "msgstore.db.crypt15",
+            "msgstore.db.crypt14",
+            "msgstore.db.crypt12",
+            "msgstore.db.crypt8",
+        ):
+            for path in files:
+                if path.name.lower() == priority_suffix.lower():
+                    return path
+
         for path in files:
-            if DB_DIR_IN_BACKUP in str(path) and (
-                CRYPT15_SUFFIX in path.name or MSGSTORE_DB_NAME in path.name
-            ):
-                return path
-        # Fallback: look for any msgstore file
-        for path in files:
-            if "msgstore" in path.name.lower() and path.suffix in (
-                ".db",
-                ".crypt15",
-                ".crypt14",
-                ".crypt12",
+            name_lower = path.name.lower()
+            if "msgstore" in name_lower and any(
+                ext in name_lower for ext in (".db", ".crypt15", ".crypt14", ".crypt12", ".crypt8")
             ):
                 return path
         return None
 
     @staticmethod
     def _decrypt_database(key_path: Path, db_path: Path, dest_dir: Path) -> Path | None:
-        """Attempt to decrypt a ``msgstore.db.crypt15`` database.
+        """Decrypt a WhatsApp database (crypt12, crypt14, crypt15, or plaintext).
 
-        This is a best-effort implementation for the common crypt15 format.
-        Returns the decrypted database path on success, or ``None`` on failure.
+        Implements AES-256-GCM and AES-256-CBC with header parsing, IV extraction,
+        auth-tag validation, and post-decryption zlib decompression.
         """
         try:
+            db_bytes = db_path.read_bytes()
+            if len(db_bytes) < 32:
+                return None
+
+            # If already plaintext SQLite database
+            if db_bytes.startswith(b"SQLite format 3\x00"):
+                out_path = dest_dir / "msgstore_decrypted.db"
+                out_path.write_bytes(db_bytes)
+                return out_path
+
             key_bytes = key_path.read_bytes()
             if len(key_bytes) < 32:
                 return None
 
-            db_bytes = db_path.read_bytes()
-            if len(db_bytes) < 67:
+            # Extract candidate AES keys from the key file
+            # Standard WhatsApp key file (158 bytes):
+            # - bytes 30..62: AES key
+            # - bytes 126..158: Server key
+            # Raw key: key_bytes (32 bytes) or last 32 bytes
+            candidate_keys: list[bytes] = []
+            if len(key_bytes) >= 62:
+                candidate_keys.append(key_bytes[30:62])
+            if len(key_bytes) >= 32:
+                candidate_keys.append(key_bytes[-32:])
+                candidate_keys.append(key_bytes[:32])
+
+            from cryptography.hazmat.primitives import padding as sym_padding
+            from cryptography.hazmat.primitives.ciphers import (
+                Cipher,
+                algorithms,
+                modes,
+            )
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+            def _inspect_and_save(plaintext: bytes) -> Path | None:
+                # Check for zlib stream
+                decompressed = plaintext
+                if len(plaintext) > 2 and (
+                    plaintext.startswith(b"\x78\x9c")
+                    or plaintext.startswith(b"\x78\x01")
+                    or plaintext.startswith(b"\x78\xda")
+                    or plaintext.startswith(b"\x78\x5e")
+                ):
+                    try:
+                        decompressed = zlib.decompress(plaintext)
+                    except zlib.error:
+                        try:
+                            decompressed = zlib.decompress(plaintext, -15)
+                        except zlib.error:
+                            pass
+
+                if decompressed.startswith(b"SQLite format 3\x00") or b"SQLite format 3\x00" in decompressed[:100]:
+                    out_path = dest_dir / "msgstore_decrypted.db"
+                    # Align to start of SQLite header if needed
+                    sqlite_offset = decompressed.find(b"SQLite format 3\x00")
+                    out_path.write_bytes(decompressed[sqlite_offset:])
+                    return out_path
                 return None
 
-            # crypt15 header: 67-byte prefix followed by encrypted pages.
-            # The last 31 bytes of the key are used as the actual AES key.
-            actual_key = key_bytes[-32:]
+            # Strategy 1: Crypt14 / Crypt15 AES-256-GCM
+            # Header: 67 bytes, IV: bytes 51..67 (16 bytes), Tag: last 16 bytes
+            if len(db_bytes) >= 67 + 16:
+                header = db_bytes[:67]
+                iv = header[51:67] if len(header) >= 67 else header[-16:]
+                ciphertext_with_tag = db_bytes[67:]
 
-            # The encrypted payload starts at offset 67.
-            encrypted_payload = db_bytes[67:]
+                for key in candidate_keys:
+                    try:
+                        aesgcm = AESGCM(key)
+                        decrypted = aesgcm.decrypt(iv, ciphertext_with_tag, associated_data=None)
+                        saved = _inspect_and_save(decrypted)
+                        if saved:
+                            return saved
+                    except Exception:
+                        pass
 
-            # Attempt AES-128-CBC decryption (common for crypt15).
-            try:
-                from cryptography.hazmat.primitives import padding as sym_padding
-                from cryptography.hazmat.primitives.ciphers import (
-                    Cipher,
-                    algorithms,
-                    modes,
-                )
+            # Strategy 2: Crypt12 AES-256-GCM / CBC with 67-byte header and 20-byte footer
+            if len(db_bytes) >= 67 + 20:
+                iv = db_bytes[51:67]
+                ciphertext = db_bytes[67:-20]
+                for key in candidate_keys:
+                    # Try AES-GCM
+                    try:
+                        aesgcm = AESGCM(key)
+                        # When footer contains 16-byte tag
+                        tag = db_bytes[-16:]
+                        decrypted = aesgcm.decrypt(iv, ciphertext + tag, associated_data=None)
+                        saved = _inspect_and_save(decrypted)
+                        if saved:
+                            return saved
+                    except Exception:
+                        pass
 
-                iv = actual_key[:16]
-                cipher = Cipher(algorithms.AES(actual_key), modes.CBC(iv))
-                decryptor = cipher.decryptor()
-                decrypted = decryptor.update(encrypted_payload) + decryptor.finalize()
+                    # Try AES-CBC with PKCS7
+                    try:
+                        cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+                        decryptor = cipher.decryptor()
+                        decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+                        try:
+                            unpadder = sym_padding.PKCS7(128).unpadder()
+                            decrypted = unpadder.update(decrypted) + unpadder.finalize()
+                        except Exception:
+                            pass
+                        saved = _inspect_and_save(decrypted)
+                        if saved:
+                            return saved
+                    except Exception:
+                        pass
 
-                # Remove PKCS7 padding.
-                unpadder = sym_padding.PKCS7(128).unpadder()
-                unpadded = unpadder.update(decrypted) + unpadder.finalize()
+            # Strategy 3: Direct AES-CBC with offset 67 or offset 0
+            for offset in (67, 0, 191):
+                if len(db_bytes) > offset + 32:
+                    payload = db_bytes[offset:]
+                    for key in candidate_keys:
+                        iv = key[:16]
+                        try:
+                            cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+                            decryptor = cipher.decryptor()
+                            decrypted = decryptor.update(payload) + decryptor.finalize()
+                            try:
+                                unpadder = sym_padding.PKCS7(128).unpadder()
+                                decrypted = unpadder.update(decrypted) + unpadder.finalize()
+                            except Exception:
+                                pass
+                            saved = _inspect_and_save(decrypted)
+                            if saved:
+                                return saved
+                        except Exception:
+                            pass
 
-                out_path = dest_dir / "msgstore_decrypted.db"
-                out_path.write_bytes(db_bytes[:67] + unpadded)
-                return out_path
-            except Exception:
-                # cryptography not available or decryption format mismatch.
-                return None
-
+            return None
         except Exception:
             return None
 

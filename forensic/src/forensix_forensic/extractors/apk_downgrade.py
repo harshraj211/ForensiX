@@ -46,6 +46,22 @@ APK_DOWNGRADE_PROFILES: dict[str, ApkDowngradeProfile] = {
         ApkDowngradeProfile("wechat", "WeChat", "com.tencent.mm"),
         ApkDowngradeProfile("whatsapp", "WhatsApp", "com.whatsapp"),
         ApkDowngradeProfile("zello", "Zello", "com.loudtalks"),
+        ApkDowngradeProfile("line", "LINE", "jp.naver.line.android"),
+        ApkDowngradeProfile("kik", "Kik", "kik.android"),
+        ApkDowngradeProfile("snapchat", "Snapchat", "com.snapchat.android"),
+        ApkDowngradeProfile("imo", "imo", "com.imo.android.imoim"),
+        ApkDowngradeProfile("discord", "Discord", "com.discord"),
+        ApkDowngradeProfile("tiktok", "TikTok", "com.zhiliaoapp.musically"),
+        ApkDowngradeProfile("gmail", "Gmail", "com.google.android.gm"),
+        ApkDowngradeProfile("chrome", "Google Chrome", "com.android.chrome"),
+        ApkDowngradeProfile("firefox", "Firefox", "org.mozilla.firefox"),
+        ApkDowngradeProfile("brave", "Brave Browser", "com.brave.browser"),
+        ApkDowngradeProfile("duckduckgo", "DuckDuckGo", "com.duckduckgo.mobile.android"),
+        ApkDowngradeProfile("session", "Session Messenger", "network.loki.messenger"),
+        ApkDowngradeProfile("element", "Element Secure Messenger", "im.vector.app"),
+        ApkDowngradeProfile("threema", "Threema", "ch.threema.app"),
+        ApkDowngradeProfile("vk", "VKontakte", "com.vkontakte.android"),
+        ApkDowngradeProfile("tamtam", "TamTam", "chat.tamtam"),
     )
 }
 
