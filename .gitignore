@@ -33,6 +33,10 @@ tools/scrcpy/
 # Optional local CGSecurity TestDisk/PhotoRec runtime. Install with scripts/install-testdisk.ps1.
 tools/testdisk/
 
+# Optional local APK cache for downgrade extractions
+tools/apks/
+
+
 # Local configuration
 .env
 .env.*
