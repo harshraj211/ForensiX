@@ -1877,6 +1877,78 @@ export interface SQLiteCarvingResult {
   limitations: string[];
 }
 
+export interface ScreenLockAssessResult {
+  lock_type: "pin" | "pattern" | "password" | "swipe" | "none" | "unknown";
+  pin_length: number | null;
+  pattern_complexity: string | null;
+  max_failed_attempts: number | null;
+  wipe_risk: "low" | "medium" | "high";
+  biometric_enrolled: boolean;
+  search_space_estimate: number;
+  gatekeeper_present: boolean;
+  spblob_present: boolean;
+  raw_settings: Record<string, string>;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface ScreenLockExtractHashesResult {
+  dump_id: string;
+  device_serial: string;
+  lock_type: string;
+  gatekeeper_blobs_count: number;
+  spblob_files_count: number;
+  has_pattern_hash: boolean;
+  has_password_salt: boolean;
+  password_salt: string | null;
+  pattern_hash_hex: string | null;
+  aggregate_sha256: string;
+  saved_files: string[];
+  timeline: ExtractionTimelineEntry[];
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface ScreenLockCrackResult {
+  job_id: string;
+  mode: number;
+  attack_type: string;
+  cracked_credentials: string[];
+  recovered_credential: string | null;
+  duration_seconds: number;
+  success: boolean;
+  stdout_tail: string;
+  error_message: string | null;
+}
+
+export interface ScreenLockBypassResult {
+  bypass_id: string;
+  vector_used: string;
+  previous_lock_type: string;
+  android_api_level: number;
+  lock_disabled_success: boolean;
+  db_patched: boolean;
+  pre_patch_hash: string;
+  post_patch_hash: string;
+  dry_run: boolean;
+  duration_seconds: number;
+  timeline: ExtractionTimelineEntry[];
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface AuthorisedEntryResult {
+  attempt_id: string;
+  credential_type: string;
+  unlock_success: boolean;
+  attempts_made: number;
+  duration_seconds: number;
+  timeline: ExtractionTimelineEntry[];
+  error_message: string | null;
+}
+
 export function extractWhatsAppDowngrade(
   caseId: string,
   serial: string,
@@ -1949,6 +2021,120 @@ export function carveSqliteDatabase(
         source_paths: sourcePaths,
         case_id: caseId,
         max_fragments: maxFragments,
+      }),
+    },
+  );
+}
+
+export function assessScreenLock(
+  caseId: string,
+  serial: string,
+  operatorId: string,
+): Promise<ScreenLockAssessResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/screen-lock/assess`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        case_id: caseId,
+        operator_id: operatorId,
+      }),
+    },
+  );
+}
+
+export function extractScreenLockHashes(
+  caseId: string,
+  serial: string,
+  operatorId: string,
+): Promise<ScreenLockExtractHashesResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/screen-lock/extract-hashes`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        case_id: caseId,
+        operator_id: operatorId,
+        root_acknowledged: true,
+      }),
+    },
+  );
+}
+
+export function crackScreenLock(
+  caseId: string,
+  operatorId: string,
+  params: {
+    mode?: number;
+    attack_type?: "mask" | "wordlist" | "pattern_solve";
+    mask?: string;
+    wordlist_path?: string;
+    rules_path?: string;
+    raw_hash?: string;
+    hash_file_path?: string;
+    hashcat_binary_path?: string;
+  },
+): Promise<ScreenLockCrackResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/screen-lock/crack`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        case_id: caseId,
+        operator_id: operatorId,
+        mode: params.mode ?? 13800,
+        attack_type: params.attack_type ?? "mask",
+        mask: params.mask ?? "?d?d?d?d",
+        wordlist_path: params.wordlist_path ?? "",
+        rules_path: params.rules_path ?? "",
+        raw_hash: params.raw_hash ?? "",
+        hash_file_path: params.hash_file_path ?? "",
+        hashcat_binary_path: params.hashcat_binary_path ?? "",
+      }),
+    },
+  );
+}
+
+export function bypassScreenLock(
+  caseId: string,
+  serial: string,
+  operatorId: string,
+  dryRun = false,
+): Promise<ScreenLockBypassResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/screen-lock/bypass`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        case_id: caseId,
+        operator_id: operatorId,
+        dry_run: dryRun,
+        root_acknowledged: true,
+      }),
+    },
+  );
+}
+
+export function attemptAuthorisedEntry(
+  caseId: string,
+  serial: string,
+  operatorId: string,
+  credential: string,
+  credentialType: "pin" | "password" = "pin",
+): Promise<AuthorisedEntryResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/screen-lock/authorised-entry`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        serial,
+        case_id: caseId,
+        operator_id: operatorId,
+        credential,
+        credential_type: credentialType,
       }),
     },
   );
