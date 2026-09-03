@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   CheckCircle2,
   Database,
   KeyRound,
@@ -11,6 +12,7 @@ import {
   Smartphone,
   Sparkles,
 } from "lucide-react";
+
 
 import {
   carveSqliteDatabase,
@@ -183,13 +185,17 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
             <div className="flex gap-2">
               <ShieldAlert size={16} className="shrink-0 text-amber-700 mt-0.5" />
               <div>
-                <p className="font-semibold text-amber-900">Downgrade Attack Notice</p>
+                <p className="font-semibold text-amber-900">Downgrade Attack Notice &amp; Required Device Action</p>
                 <p className="mt-0.5 text-amber-800">
-                  Temporarily downgrades WhatsApp to an ADB-backup-capable version, captures sandbox data, then automatically restores the original APK set. Device screen must be unlocked.
+                  Temporarily downgrades WhatsApp to an ADB-backup-capable version (v2.11.431), captures sandbox data, then automatically restores your original APK set.
                 </p>
+                <div className="mt-2 rounded-lg border border-amber-400/60 bg-amber-100/80 p-2 text-amber-950 font-medium">
+                  📱 <strong>Device Screen Action Required:</strong> Keep your device unlocked. When the &quot;Full backup&quot; prompt appears on the phone, <strong>leave the password blank</strong> and tap <strong>&quot;Back up my data&quot;</strong>.
+                </div>
               </div>
             </div>
           </div>
+
 
           <button
             type="button"
@@ -348,6 +354,55 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
 }
 
 function WhatsAppResultView({ result }: { result: WhatsAppDowngradeResult }) {
+  if (!result.success) {
+    return (
+      <div className="rounded-xl border border-rose-300 bg-rose-50 p-5">
+        <div className="flex items-center gap-2 text-rose-800">
+          <AlertTriangle size={18} />
+          <h3 className="font-semibold text-slate-900">WhatsApp Extraction Incomplete / Action Needed</h3>
+        </div>
+        <p className="mt-2 text-xs font-medium text-rose-900">
+          {result.error_message || "The downgrade extraction workflow could not be completed."}
+        </p>
+
+        {result.timeline && result.timeline.length > 0 && (
+          <div className="mt-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+              Execution Timeline Log
+            </p>
+            <div className="mt-1.5 max-h-52 overflow-y-auto rounded-lg border border-rose-200 bg-white p-3 font-mono text-[11px] space-y-1">
+              {result.timeline.map((entry, idx) => (
+                <div key={idx} className="flex gap-2">
+                  <span
+                    className={
+                      entry.level === "ERROR"
+                        ? "font-bold text-rose-600 shrink-0"
+                        : entry.level === "WARN"
+                          ? "font-bold text-amber-600 shrink-0"
+                          : "text-cyan-700 shrink-0"
+                    }
+                  >
+                    [{entry.level}]
+                  </span>
+                  <span className="text-slate-700 break-words">{entry.message}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 rounded-lg border border-rose-200 bg-white p-3 text-xs text-slate-700 space-y-1.5">
+          <p className="font-semibold text-slate-900">Troubleshooting Guidance:</p>
+          <ul className="list-disc pl-4 space-y-1 text-slate-600">
+            <li>Ensure the device screen stays unlocked and awake during extraction.</li>
+            <li>When the Android &quot;Full backup&quot; prompt appears on the phone, leave the password blank and tap <strong>&quot;Back up my data&quot;</strong>.</li>
+            <li>If your device brand (e.g. Xiaomi/Infinix/Oppo) restricts ADB installation, enable <strong>&quot;Install via USB&quot;</strong> in Developer Options.</li>
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
       <div className="flex items-center gap-2 text-emerald-800">
@@ -372,11 +427,41 @@ function WhatsAppResultView({ result }: { result: WhatsAppDowngradeResult }) {
           <dd className="mt-0.5 text-slate-800">{result.encryption_key_found ? "Key recovered" : "No key found"}</dd>
         </div>
       </dl>
+
+      {result.timeline && result.timeline.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+            Timeline Log
+          </p>
+          <div className="mt-1.5 max-h-40 overflow-y-auto rounded-lg border border-emerald-200 bg-white p-3 font-mono text-[11px] space-y-1">
+            {result.timeline.map((entry, idx) => (
+              <div key={idx} className="flex gap-2">
+                <span className="text-emerald-700 font-bold shrink-0">[{entry.level}]</span>
+                <span className="text-slate-700 break-words">{entry.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function SignalResultView({ result }: { result: SignalExtractionResult }) {
+  if (!result.success) {
+    return (
+      <div className="rounded-xl border border-rose-300 bg-rose-50 p-5">
+        <div className="flex items-center gap-2 text-rose-800">
+          <AlertTriangle size={18} />
+          <h3 className="font-semibold text-slate-900">Signal Extraction Incomplete</h3>
+        </div>
+        <p className="mt-2 text-xs font-medium text-rose-900">
+          {result.error_message || "Failed to extract Signal database via root access."}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
       <div className="flex items-center gap-2 text-emerald-800">
@@ -406,6 +491,20 @@ function SignalResultView({ result }: { result: SignalExtractionResult }) {
 }
 
 function TelegramResultView({ result }: { result: TelegramExtractionResult }) {
+  if (!result.success) {
+    return (
+      <div className="rounded-xl border border-rose-300 bg-rose-50 p-5">
+        <div className="flex items-center gap-2 text-rose-800">
+          <AlertTriangle size={18} />
+          <h3 className="font-semibold text-slate-900">Telegram Extraction Incomplete</h3>
+        </div>
+        <p className="mt-2 text-xs font-medium text-rose-900">
+          {result.error_message || "Failed to extract Telegram database via root access."}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
       <div className="flex items-center gap-2 text-emerald-800">
@@ -433,6 +532,7 @@ function TelegramResultView({ result }: { result: TelegramExtractionResult }) {
     </div>
   );
 }
+
 
 function CarvingResultView({ result }: { result: SQLiteCarvingResult }) {
   return (
