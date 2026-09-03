@@ -8,10 +8,12 @@ from .archive import (
     validate_archive_member_name,
 )
 from .parser import (
+    BaseEvidenceParser,
     DocumentEvidenceParser,
     DocumentParserRegistry,
     EvidenceParser,
     ParsedArtifact,
+    ParserCapability,
     ParserContext,
     ParserMetadata,
     ParserRegistry,
@@ -28,12 +30,14 @@ from .sqlite_carver import CarvedSQLiteRecord, SQLiteCarver
 __all__ = [
     "ArchiveExtractionError",
     "ArchivePolicy",
+    "BaseEvidenceParser",
     "CarvedSQLiteRecord",
     "DocumentEvidenceParser",
     "DocumentParserRegistry",
     "EvidenceParser",
     "ExtractedArchiveMember",
     "ParsedArtifact",
+    "ParserCapability",
     "ParserContext",
     "ParserMetadata",
     "ParserRegistry",

@@ -3,7 +3,7 @@
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile, status
 from fastapi.responses import FileResponse
 
 from forensix_api.dependencies import (
@@ -22,6 +22,7 @@ from forensix_api.schemas import (
     EvidenceToolOutputResponse,
     EvidenceWorkingCopyResponse,
     ExternalRecoveryResponse,
+    ParserJobResponse,
     RecoveryAssessmentResponse,
     RecoveryCarvingResponse,
     SourceArtifactSearchResponse,
@@ -37,6 +38,7 @@ from forensix_server.db import (
     EvidenceSourceArtifactRecord,
     EvidenceSourceInspectionRecord,
     EvidenceSourceRecord,
+    JobRecord,
 )
 from forensix_server.evidence_twin import (
     AleappEvidenceService,
@@ -54,6 +56,7 @@ from forensix_server.evidence_twin import (
     recovery_assessment_result,
     recovery_carving_result,
 )
+from forensix_server.jobs import JobState
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/evidence-sources", tags=["evidence-sources"])
 
@@ -407,6 +410,63 @@ def run_native_evidence_parsers(
     return [EvidenceParserRunResponse.model_validate(item.run) for item in results]
 
 
+@router.post(
+    "/{source_id}/working-copies/{working_copy_id}/parser-jobs",
+    response_model=ParserJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_parser_job(
+    case_id: str,
+    source_id: str,
+    working_copy_id: str,
+    request: EvidenceParserRunRequest,
+    background_tasks: BackgroundTasks,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> ParserJobResponse:
+    job = EvidenceExaminationService().prepare_parser_job(
+        database,
+        authenticated.principal,
+        case_id,
+        source_id,
+        working_copy_id,
+        parser_ids=tuple(request.parser_ids) if request.parser_ids is not None else None,
+    )
+    background_tasks.add_task(
+        EvidenceExaminationService().execute_parser_job,
+        database,
+        authenticated.principal,
+        job.id,
+    )
+    return _parser_job_response(job)
+
+
+@router.get("/parser-jobs/{job_id}", response_model=ParserJobResponse)
+def get_parser_job(
+    case_id: str,
+    job_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> ParserJobResponse:
+    job = EvidenceExaminationService().get_parser_job(
+        database, authenticated.principal, case_id, job_id
+    )
+    return _parser_job_response(job)
+
+
+@router.post("/parser-jobs/{job_id}/cancel", response_model=ParserJobResponse)
+def cancel_parser_job(
+    case_id: str,
+    job_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> ParserJobResponse:
+    job = EvidenceExaminationService().cancel_parser_job(
+        database, authenticated.principal, case_id, job_id
+    )
+    return _parser_job_response(job)
+
+
 @router.get("/{source_id}/parser-runs", response_model=list[EvidenceParserRunResponse])
 def list_evidence_parser_runs(
     case_id: str,
@@ -659,4 +719,29 @@ def _artifact_response(record: EvidenceSourceArtifactRecord) -> EvidenceSourceAr
         provenance=json.loads(record.provenance_json),
         artifact_hash=record.artifact_hash,
         created_at=record.created_at,
+    )
+
+
+def _parser_job_response(job: JobRecord) -> ParserJobResponse:
+    checkpoint = None
+    if job.checkpoint_json:
+        try:
+            checkpoint = json.loads(job.checkpoint_json)
+        except Exception:
+            checkpoint = None
+    return ParserJobResponse(
+        id=job.id,
+        case_id=job.case_id,
+        owner_id=job.owner_id,
+        state=JobState(job.state),
+        progress_percent=job.progress_percent,
+        current_step=job.current_step,
+        current_module=job.current_module,
+        cancellation_requested=job.cancellation_requested,
+        checkpoint=checkpoint,
+        error_code=job.error_code,
+        error_message=job.error_message,
+        result_reference=job.result_reference,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
     )

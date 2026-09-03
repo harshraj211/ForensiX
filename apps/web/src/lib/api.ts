@@ -2782,6 +2782,57 @@ export function runNativeEvidenceParsers(
   );
 }
 
+export interface ParserJob {
+  id: string;
+  case_id: string;
+  owner_id: string;
+  state:
+    | "created"
+    | "validating"
+    | "ready"
+    | "running"
+    | "cancelling"
+    | "verifying"
+    | "completed"
+    | "failed"
+    | "cancelled";
+  progress_percent: number;
+  current_step: string | null;
+  current_module: string | null;
+  cancellation_requested: boolean;
+  checkpoint: Record<string, unknown> | null;
+  error_code: string | null;
+  error_message: string | null;
+  result_reference: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function startParserJob(
+  caseId: string,
+  sourceId: string,
+  workingCopyId: string,
+  parserIds?: string[],
+): Promise<ParserJob> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/working-copies/${encodeURIComponent(workingCopyId)}/parser-jobs`,
+    { method: "POST", body: JSON.stringify({ parser_ids: parserIds ?? null }) },
+  );
+}
+
+export function getParserJob(caseId: string, jobId: string): Promise<ParserJob> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/parser-jobs/${encodeURIComponent(jobId)}`,
+  );
+}
+
+export function cancelParserJob(caseId: string, jobId: string): Promise<ParserJob> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/parser-jobs/${encodeURIComponent(jobId)}/cancel`,
+    { method: "POST" },
+  );
+}
+
 export function listEvidenceParserRuns(
   caseId: string,
   sourceId: string,

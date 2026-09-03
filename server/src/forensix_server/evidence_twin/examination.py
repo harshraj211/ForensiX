@@ -1,7 +1,9 @@
 """Case-authorized execution of trusted parsers against verified working copies."""
 
 import base64
+import contextlib
 import json
+import re
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -10,7 +12,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
+from sqlalchemy.orm import Session
 
 from forensix_forensic.android_artifacts import (
     android_document_parser_registry,
@@ -39,8 +42,14 @@ from forensix_server.db import (
     EvidenceParserRunRecord,
     EvidenceSourceArtifactRecord,
     EvidenceWorkingCopyRecord,
+    JobRecord,
 )
 from forensix_server.evidence import TimelineService
+from forensix_server.jobs import (
+    JobService,
+    JobState,
+    JobType,
+)
 
 from .inspection import EvidenceInspectionService
 from .service import (
@@ -72,6 +81,11 @@ SOURCE_ARTIFACT_STATUSES = frozenset(
     {"active", "deleted", "recovered", "partial", "corrupted", "unverified"}
 )
 MAX_SEARCH_QUERY_LENGTH = 256
+_INSERT_SOURCE_ARTIFACT_SEARCH = (
+    "INSERT INTO source_artifact_search "
+    "(artifact_id, case_id, category, subtype, title, summary, content, metadata) "
+    "VALUES (:artifact_id, :case_id, :category, :subtype, :title, :summary, :content, :metadata)"
+)
 
 
 type VersionedParser = EvidenceParser | DocumentEvidenceParser
@@ -89,6 +103,9 @@ class EvidenceExaminationService:
         working_copy_id: str,
         *,
         parser_ids: tuple[str, ...] | None = None,
+        registry: ParserRegistry | None = None,
+        document_registry: DocumentParserRegistry | None = None,
+        job_id: str | None = None,
     ) -> list[ParserExecutionResult]:
         if not principal.can(Permission.EVIDENCE_ANALYZE):
             raise CaseAccessDeniedError("The current user cannot execute evidence parsers.")
@@ -117,8 +134,8 @@ class EvidenceExaminationService:
             input_locator="working_copy",
             input_sha256=working_copy.expected_source_sha256,
         )
-        registry = android_parser_registry()
-        document_registry = android_document_parser_registry()
+        active_registry = registry or android_parser_registry()
+        active_document_registry = document_registry or android_document_parser_registry()
         if inspection.detected_type in {"zip", "tar"}:
             return self._run_archive_parsers(
                 database,
@@ -126,25 +143,39 @@ class EvidenceExaminationService:
                 inspection.id,
                 context,
                 path,
-                registry,
-                document_registry,
+                active_registry,
+                active_document_registry,
                 parser_ids,
+                job_id=job_id,
             )
         if inspection.detected_type != "sqlite":
             compatible_documents = {
                 parser.metadata.parser_id: parser
-                for parser in document_registry.compatible(source.source_name)
+                for parser in active_document_registry.compatible(source.source_name)
             }
             selected_documents = self._select_document_parsers(
-                registry, document_registry, compatible_documents, parser_ids
+                active_registry, active_document_registry, compatible_documents, parser_ids
             )
             if selected_documents:
-                return [
-                    self._execute_document_parser(
-                        database, principal, inspection.id, context, parser, path
+                doc_results: list[ParserExecutionResult] = []
+                for i, doc_parser in enumerate(selected_documents):
+                    if job_id and self._is_job_cancelled(database, job_id):
+                        break
+                    doc_results.append(
+                        self._execute_document_parser(
+                            database, principal, inspection.id, context, doc_parser, path
+                        )
                     )
-                    for parser in selected_documents
-                ]
+                    if job_id:
+                        progress = min(95, 20 + int(70 * (i + 1) / len(selected_documents)))
+                        self._report_job_progress(
+                            database,
+                            job_id,
+                            progress,
+                            f"Parsed document with {doc_parser.metadata.name}",
+                            doc_parser.metadata.parser_id,
+                        )
+                return doc_results
             raise EvidenceTwinError(
                 "Native Android parsers require SQLite, a supported bounded document, or a "
                 "safely extractable archive."
@@ -152,22 +183,35 @@ class EvidenceExaminationService:
         with SafeSQLiteReader(path) as reader:
             compatible = {
                 parser.metadata.parser_id: parser
-                for parser in registry.compatible(
+                for parser in active_registry.compatible(
                     reader.table_names(), source_locator=source.source_name
                 )
             }
-            selected = self._select_parsers(registry, compatible, parser_ids)
-            return [
-                self._execute_parser(
-                    database,
-                    principal,
-                    inspection.id,
-                    context,
-                    parser,
-                    reader,
+            selected = self._select_parsers(active_registry, compatible, parser_ids)
+            results: list[ParserExecutionResult] = []
+            for i, parser in enumerate(selected):
+                if job_id and self._is_job_cancelled(database, job_id):
+                    break
+                results.append(
+                    self._execute_parser(
+                        database,
+                        principal,
+                        inspection.id,
+                        context,
+                        parser,
+                        reader,
+                    )
                 )
-                for parser in selected
-            ]
+                if job_id:
+                    progress = min(95, 20 + int(70 * (i + 1) / len(selected)))
+                    self._report_job_progress(
+                        database,
+                        job_id,
+                        progress,
+                        f"Parsed schema with {parser.metadata.name}",
+                        parser.metadata.parser_id,
+                    )
+            return results
 
     def _run_archive_parsers(
         self,
@@ -179,6 +223,7 @@ class EvidenceExaminationService:
         registry: ParserRegistry,
         document_registry: DocumentParserRegistry,
         parser_ids: tuple[str, ...] | None,
+        job_id: str | None = None,
     ) -> list[ParserExecutionResult]:
         requested = self._validate_parser_ids(registry, document_registry, parser_ids)
         workspace = _new_archive_workspace(database.data_dir)
@@ -252,7 +297,14 @@ class EvidenceExaminationService:
                 raise EvidenceTwinError(
                     "The archive contained readable inputs but no compatible Android schema."
                 )
+            total_tasks = sum(len(parsers) for _, parsers in scheduled) + sum(
+                len(parsers) for _, parsers in scheduled_documents
+            )
+            completed_tasks = 0
+
             for member, selected in scheduled:
+                if job_id and self._is_job_cancelled(database, job_id):
+                    break
                 member_path = store.resolve(member.storage_key, require_file=True)
                 with SafeSQLiteReader(member_path) as reader:
                     context = ParserContext(
@@ -264,18 +316,32 @@ class EvidenceExaminationService:
                         input_locator=member.original_name,
                         input_sha256=member.sha256,
                     )
-                    results.extend(
-                        self._execute_parser(
-                            database,
-                            principal,
-                            inspection_id,
-                            context,
-                            parser,
-                            reader,
+                    for parser in selected:
+                        if job_id and self._is_job_cancelled(database, job_id):
+                            break
+                        results.append(
+                            self._execute_parser(
+                                database,
+                                principal,
+                                inspection_id,
+                                context,
+                                parser,
+                                reader,
+                            )
                         )
-                        for parser in selected
-                    )
+                        completed_tasks += 1
+                        if job_id:
+                            progress = min(95, 20 + int(70 * completed_tasks / max(total_tasks, 1)))
+                            self._report_job_progress(
+                                database,
+                                job_id,
+                                progress,
+                                f"Parsed {member.original_name} with {parser.metadata.name}",
+                                parser.metadata.parser_id,
+                            )
             for member, selected_documents in scheduled_documents:
+                if job_id and self._is_job_cancelled(database, job_id):
+                    break
                 member_path = store.resolve(member.storage_key, require_file=True)
                 context = ParserContext(
                     case_id=base_context.case_id,
@@ -286,17 +352,29 @@ class EvidenceExaminationService:
                     input_locator=member.original_name,
                     input_sha256=member.sha256,
                 )
-                results.extend(
-                    self._execute_document_parser(
-                        database,
-                        principal,
-                        inspection_id,
-                        context,
-                        parser,
-                        member_path,
+                for parser in selected_documents:
+                    if job_id and self._is_job_cancelled(database, job_id):
+                        break
+                    results.append(
+                        self._execute_document_parser(
+                            database,
+                            principal,
+                            inspection_id,
+                            context,
+                            parser,
+                            member_path,
+                        )
                     )
-                    for parser in selected_documents
-                )
+                    completed_tasks += 1
+                    if job_id:
+                        progress = min(95, 20 + int(70 * completed_tasks / max(total_tasks, 1)))
+                        self._report_job_progress(
+                            database,
+                            job_id,
+                            progress,
+                            f"Parsed document {member.original_name} with {parser.metadata.name}",
+                            parser.metadata.parser_id,
+                        )
             return results
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
@@ -359,9 +437,9 @@ class EvidenceExaminationService:
     ) -> SourceArtifactSearchResult:
         """Search parsed artifacts across every sealed source in a case at once.
 
-        Matching is a case-insensitive substring over title and summary, the fields an
-        investigator actually reads. Category facets are computed over the full case so
-        the UI can show counts regardless of the active filter.
+        Matching utilizes SQLite FTS5 full-text search across content (message bodies,
+        OCR text, raw text), metadata (senders, recipients, phone numbers, app IDs),
+        summaries, and titles, with ILIKE substring fallback.
         """
         if category is not None and category not in SOURCE_ARTIFACT_CATEGORIES:
             raise EvidenceTwinError("The artifact category filter is unsupported.")
@@ -374,59 +452,78 @@ class EvidenceExaminationService:
             CaseService().get(session, principal, case_id)
             if not principal.can(Permission.EVIDENCE_ANALYZE):
                 raise CaseAccessDeniedError("The current user cannot analyze case evidence.")
+            ensure_source_artifact_search_index(session)
+
             conditions = [EvidenceSourceArtifactRecord.case_id == case_id]
             if category:
                 conditions.append(EvidenceSourceArtifactRecord.category == category)
             if status:
                 conditions.append(EvidenceSourceArtifactRecord.status == status)
-            if normalized_query:
-                like = f"%{_escape_like(normalized_query)}%"
-                conditions.append(
-                    or_(
-                        EvidenceSourceArtifactRecord.title.ilike(like, escape="\\"),
-                        EvidenceSourceArtifactRecord.summary.ilike(like, escape="\\"),
-                        EvidenceSourceArtifactRecord.subtype.ilike(like, escape="\\"),
-                    )
-                )
-            total = int(
-                session.scalar(
-                    select(func.count(EvidenceSourceArtifactRecord.id)).where(*conditions)
-                )
-                or 0
-            )
-            items = list(
-                session.scalars(
-                    select(EvidenceSourceArtifactRecord)
-                    .where(*conditions)
-                    .order_by(
-                        EvidenceSourceArtifactRecord.event_time.desc().nulls_last(),
-                        EvidenceSourceArtifactRecord.created_at.desc(),
-                        EvidenceSourceArtifactRecord.id.desc(),
-                    )
-                    .offset(max(offset, 0))
-                    .limit(max(1, min(limit, 200)))
-                )
-            )
+
             facet_conditions = [EvidenceSourceArtifactRecord.case_id == case_id]
+            params: dict[str, Any] = {}
+
             if normalized_query:
                 like = f"%{_escape_like(normalized_query)}%"
-                facet_conditions.append(
-                    or_(
+                try:
+                    fts_query = _compile_source_fts_query(normalized_query)
+                    params["fts_query"] = fts_query
+                    fts_filter = text(
+                        "evidence_source_artifacts.id IN ("
+                        "SELECT artifact_id FROM source_artifact_search "
+                        "WHERE source_artifact_search MATCH :fts_query"
+                        ")"
+                    )
+                    search_filter = or_(
+                        fts_filter,
                         EvidenceSourceArtifactRecord.title.ilike(like, escape="\\"),
                         EvidenceSourceArtifactRecord.summary.ilike(like, escape="\\"),
                         EvidenceSourceArtifactRecord.subtype.ilike(like, escape="\\"),
+                        EvidenceSourceArtifactRecord.metadata_json.ilike(like, escape="\\"),
                     )
+                except Exception:
+                    search_filter = or_(
+                        EvidenceSourceArtifactRecord.title.ilike(like, escape="\\"),
+                        EvidenceSourceArtifactRecord.summary.ilike(like, escape="\\"),
+                        EvidenceSourceArtifactRecord.subtype.ilike(like, escape="\\"),
+                        EvidenceSourceArtifactRecord.metadata_json.ilike(like, escape="\\"),
+                    )
+                conditions.append(search_filter)
+                facet_conditions.append(search_filter)
+
+            count_stmt = select(func.count(EvidenceSourceArtifactRecord.id)).where(*conditions)
+            if params:
+                count_stmt = count_stmt.params(**params)
+            total = int(session.scalar(count_stmt) or 0)
+
+            select_stmt = (
+                select(EvidenceSourceArtifactRecord)
+                .where(*conditions)
+                .order_by(
+                    EvidenceSourceArtifactRecord.event_time.desc().nulls_last(),
+                    EvidenceSourceArtifactRecord.created_at.desc(),
+                    EvidenceSourceArtifactRecord.id.desc(),
                 )
+                .offset(max(offset, 0))
+                .limit(max(1, min(limit, 200)))
+            )
+            if params:
+                select_stmt = select_stmt.params(**params)
+            items = list(session.scalars(select_stmt))
+
+            facet_stmt = (
+                select(
+                    EvidenceSourceArtifactRecord.category,
+                    func.count(EvidenceSourceArtifactRecord.id),
+                )
+                .where(*facet_conditions)
+                .group_by(EvidenceSourceArtifactRecord.category)
+            )
+            if params:
+                facet_stmt = facet_stmt.params(**params)
             facets = {
                 facet_category: int(count)
-                for facet_category, count in session.execute(
-                    select(
-                        EvidenceSourceArtifactRecord.category,
-                        func.count(EvidenceSourceArtifactRecord.id),
-                    )
-                    .where(*facet_conditions)
-                    .group_by(EvidenceSourceArtifactRecord.category)
-                ).all()
+                for facet_category, count in session.execute(facet_stmt).all()
             }
         return SourceArtifactSearchResult(
             items=items,
@@ -435,6 +532,205 @@ class EvidenceExaminationService:
             limit=max(1, min(limit, 200)),
             category_facets=facets,
         )
+
+    def prepare_parser_job(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        source_id: str,
+        working_copy_id: str,
+        *,
+        parser_ids: tuple[str, ...] | None = None,
+    ) -> JobRecord:
+        """Create and validate a durable background parsing job without blocking HTTP requests."""
+        if not principal.can(Permission.EVIDENCE_ANALYZE):
+            raise CaseAccessDeniedError("The current user cannot execute evidence parsers.")
+        source = EvidenceTwinService().get_source(database, principal, case_id, source_id)
+        verification = EvidenceTwinService().verify_working_copy(
+            database, principal, case_id, source_id, working_copy_id
+        )
+        if verification.status != "verified":
+            raise EvidenceTwinIntegrityError(
+                "The working copy failed integrity verification and was not parsed."
+            )
+        inspection = EvidenceInspectionService().inspect_working_copy(
+            database, principal, case_id, source_id, working_copy_id
+        )
+        with database.session() as session:
+            job_service = JobService()
+            job = job_service.create(
+                session,
+                JobType.PARSING,
+                owner_id=principal.user_id,
+                case_id=case_id,
+                resume_supported=False,
+            )
+            job_service.transition(session, job.id, JobState.VALIDATING)
+            job_service.update_progress(
+                session,
+                job.id,
+                5,
+                current_step="Validated working copy and parser readiness",
+                checkpoint={
+                    "case_id": case_id,
+                    "source_id": source_id,
+                    "source_name": source.source_name,
+                    "working_copy_id": working_copy_id,
+                    "inspection_id": inspection.id,
+                    "detected_type": inspection.detected_type,
+                    "parser_ids": list(parser_ids) if parser_ids else None,
+                },
+            )
+            job_service.transition(session, job.id, JobState.READY)
+            session.commit()
+            return job
+
+    def execute_parser_job(
+        self,
+        database: Database,
+        principal: Principal,
+        job_id: str,
+        *,
+        registry: ParserRegistry | None = None,
+        document_registry: DocumentParserRegistry | None = None,
+    ) -> list[ParserExecutionResult]:
+        """Execute a prepared background parsing job with progress and cancellation tracking."""
+        with database.session() as session:
+            job = JobService().get(session, job_id)
+            if job.state != JobState.READY.value:
+                raise EvidenceTwinError(f"Job {job_id} cannot run from state {job.state}.")
+            checkpoint = _load_checkpoint(job)
+            case_id = checkpoint.get("case_id") or job.case_id
+            source_id = checkpoint.get("source_id")
+            working_copy_id = checkpoint.get("working_copy_id")
+            parser_ids_raw = checkpoint.get("parser_ids")
+            parser_ids = tuple(parser_ids_raw) if parser_ids_raw else None
+
+            JobService().transition(session, job_id, JobState.RUNNING)
+            JobService().update_progress(
+                session,
+                job_id,
+                10,
+                current_step="Forensic parser job running",
+                current_module="evidence_examination",
+            )
+            session.commit()
+
+        try:
+            results = self.run_native_parsers(
+                database,
+                principal,
+                case_id,
+                source_id,
+                working_copy_id,
+                parser_ids=parser_ids,
+                registry=registry,
+                document_registry=document_registry,
+                job_id=job_id,
+            )
+            with database.session() as session:
+                current_job = JobService().get(session, job_id)
+                if current_job.cancellation_requested:
+                    JobService().transition(
+                        session,
+                        job_id,
+                        JobState.CANCELLED,
+                        result_reference="cancelled",
+                        event_type="parser_job_cancelled",
+                    )
+                else:
+                    total_artifacts = sum(r.run.artifact_count for r in results)
+                    JobService().update_progress(
+                        session,
+                        job_id,
+                        100,
+                        current_step=f"Completed parsing: {total_artifacts} artifact(s) normalized",
+                        current_module="evidence_examination",
+                    )
+                    JobService().transition(
+                        session,
+                        job_id,
+                        JobState.COMPLETED,
+                        result_reference=f"artifacts:{total_artifacts}",
+                        event_type="parser_job_completed",
+                    )
+                session.commit()
+            return results
+        except Exception as error:
+            with database.session() as session:
+                JobService().transition(
+                    session,
+                    job_id,
+                    JobState.FAILED,
+                    error_code="PARSER_EXECUTION_FAILED",
+                    error_message=str(error)[:1000],
+                    event_type="parser_job_failed",
+                )
+                session.commit()
+            raise
+
+    def get_parser_job(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        job_id: str,
+    ) -> JobRecord:
+        with database.session() as session:
+            CaseService().get(session, principal, case_id)
+            if not principal.can(Permission.EVIDENCE_ANALYZE):
+                raise CaseAccessDeniedError("The current user cannot view parser jobs.")
+            job = JobService().get(session, job_id)
+            if job.case_id != case_id:
+                raise EvidenceTwinError("The requested parser job does not belong to this case.")
+            return job
+
+    def cancel_parser_job(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        job_id: str,
+    ) -> JobRecord:
+        with database.session() as session:
+            CaseService().get(session, principal, case_id)
+            if not principal.can(Permission.EVIDENCE_ANALYZE):
+                raise CaseAccessDeniedError("The current user cannot cancel parser jobs.")
+            job = JobService().request_cancellation(session, job_id)
+            session.commit()
+            return job
+
+    @staticmethod
+    def _is_job_cancelled(database: Database, job_id: str | None) -> bool:
+        if not job_id:
+            return False
+        with database.session() as session:
+            job = session.get(JobRecord, job_id)
+            return bool(job and job.cancellation_requested)
+
+    @staticmethod
+    def _report_job_progress(
+        database: Database,
+        job_id: str | None,
+        progress_percent: int,
+        step: str,
+        module: str | None = None,
+    ) -> None:
+        if not job_id:
+            return
+        with database.session() as session:
+            try:
+                JobService().update_progress(
+                    session,
+                    job_id,
+                    progress_percent,
+                    current_step=step,
+                    current_module=module,
+                )
+                session.commit()
+            except Exception:
+                session.rollback()
 
     @staticmethod
     def _select_parsers(
@@ -653,6 +949,26 @@ class EvidenceExaminationService:
             ]
             session.add_all(records)
             session.flush()
+            ensure_source_artifact_search_index(session)
+            for item, record in zip(parsed, records, strict=True):
+                content_text, metadata_text = _extract_searchable_content(item, item.metadata)
+                session.execute(
+                    text("DELETE FROM source_artifact_search WHERE artifact_id = :artifact_id"),
+                    {"artifact_id": record.id},
+                )
+                session.execute(
+                    text(_INSERT_SOURCE_ARTIFACT_SEARCH),
+                    {
+                        "artifact_id": record.id,
+                        "case_id": record.case_id,
+                        "category": record.category,
+                        "subtype": record.subtype,
+                        "title": record.title,
+                        "summary": record.summary,
+                        "content": content_text,
+                        "metadata": metadata_text,
+                    },
+                )
             timeline_service = TimelineService()
             for record in records:
                 timeline_service.materialize_source_artifact(session, record)
@@ -762,18 +1078,21 @@ class EvidenceExaminationService:
     def _artifact_payload(
         context: ParserContext, parser: VersionedParser, artifact: ParsedArtifact
     ) -> dict[str, Any]:
+        artifact_data: dict[str, Any] = {
+            "category": artifact.category,
+            "confidence": artifact.confidence,
+            "event_time": artifact.event_time.isoformat() if artifact.event_time else None,
+            "metadata": _json_safe(artifact.metadata),
+            "source_locator": artifact.source_locator,
+            "status": artifact.status,
+            "subtype": artifact.subtype,
+            "summary": artifact.summary,
+            "title": artifact.title,
+        }
+        if artifact.content:
+            artifact_data["content"] = artifact.content
         return {
-            "artifact": {
-                "category": artifact.category,
-                "confidence": artifact.confidence,
-                "event_time": artifact.event_time.isoformat() if artifact.event_time else None,
-                "metadata": _json_safe(artifact.metadata),
-                "source_locator": artifact.source_locator,
-                "status": artifact.status,
-                "subtype": artifact.subtype,
-                "summary": artifact.summary,
-                "title": artifact.title,
-            },
+            "artifact": artifact_data,
             "provenance": {
                 "case_id": context.case_id,
                 "evidence_source_id": context.evidence_source_id,
@@ -784,6 +1103,11 @@ class EvidenceExaminationService:
                 "input_locator": context.input_locator,
                 "input_sha256": context.input_sha256 or context.source_sha256,
                 "working_copy_id": context.working_copy_id,
+                "source_locator": artifact.source_locator,
+                "confidence": artifact.confidence,
+                "status": artifact.status,
+                "parser_maturity": parser.metadata.maturity,
+                "access_level": parser.metadata.access_level,
             },
         }
 
@@ -852,3 +1176,144 @@ def _document_archive_candidates(
     if len(candidates) > 64:
         raise EvidenceTwinError("The archive exceeds the document candidate-count limit.")
     return candidates
+
+
+def _load_checkpoint(job: JobRecord) -> dict[str, Any]:
+    if not job.checkpoint_json:
+        return {}
+    try:
+        data = json.loads(job.checkpoint_json)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def ensure_source_artifact_search_index(session: Session) -> None:
+    session.execute(
+        text(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS source_artifact_search USING fts5("
+            "artifact_id UNINDEXED, "
+            "case_id UNINDEXED, "
+            "category UNINDEXED, "
+            "subtype UNINDEXED, "
+            "title, "
+            "summary, "
+            "content, "
+            "metadata, "
+            "tokenize='unicode61 remove_diacritics 2')"
+        )
+    )
+    try:
+        indexed_count = (
+            session.execute(text("SELECT count(*) FROM source_artifact_search")).scalar() or 0
+        )
+        total_artifacts = (
+            session.execute(text("SELECT count(*) FROM evidence_source_artifacts")).scalar() or 0
+        )
+        if total_artifacts > 0 and indexed_count == 0:
+            rows = session.execute(
+                select(
+                    EvidenceSourceArtifactRecord.id,
+                    EvidenceSourceArtifactRecord.case_id,
+                    EvidenceSourceArtifactRecord.category,
+                    EvidenceSourceArtifactRecord.subtype,
+                    EvidenceSourceArtifactRecord.title,
+                    EvidenceSourceArtifactRecord.summary,
+                    EvidenceSourceArtifactRecord.metadata_json,
+                )
+            ).all()
+            for row in rows:
+                meta = {}
+                with contextlib.suppress(Exception):
+                    meta = json.loads(row.metadata_json)
+                c_text, m_text = _extract_searchable_content(None, meta)
+                session.execute(
+                    text(_INSERT_SOURCE_ARTIFACT_SEARCH),
+                    {
+                        "artifact_id": row.id,
+                        "case_id": row.case_id,
+                        "category": row.category,
+                        "subtype": row.subtype,
+                        "title": row.title,
+                        "summary": row.summary,
+                        "content": c_text,
+                        "metadata": m_text,
+                    },
+                )
+            session.flush()
+    except Exception:  # noqa: BLE001, S110
+        pass
+
+
+def _extract_searchable_content(
+    item: ParsedArtifact | None, metadata_dict: dict[str, Any]
+) -> tuple[str, str]:
+    content_parts: list[str] = []
+    if item is not None and getattr(item, "content", None):
+        content_parts.append(str(item.content).strip())
+
+    for key in (
+        "body",
+        "text",
+        "message",
+        "snippet",
+        "content",
+        "note_text",
+        "transcription",
+        "ocr_text",
+        "ocr",
+        "extracted_text",
+        "subject",
+        "document_text",
+    ):
+        val = metadata_dict.get(key)
+        if isinstance(val, str) and val.strip():
+            content_parts.append(val.strip())
+        elif isinstance(val, (list, tuple)):
+            for v in val:
+                if isinstance(v, str) and v.strip():
+                    content_parts.append(v.strip())
+
+    meta_parts: list[str] = []
+    for key in (
+        "sender",
+        "sender_name",
+        "recipient",
+        "recipient_name",
+        "participants",
+        "phone",
+        "phone_number",
+        "number",
+        "address",
+        "email",
+        "package_name",
+        "app_name",
+        "app_id",
+        "url",
+        "file_name",
+        "filename",
+        "account_id",
+        "ssid",
+        "bssid",
+        "device_name",
+    ):
+        val = metadata_dict.get(key)
+        if isinstance(val, str) and val.strip():
+            meta_parts.append(val.strip())
+        elif isinstance(val, (list, tuple)):
+            for v in val:
+                if isinstance(v, str) and v.strip():
+                    meta_parts.append(v.strip())
+
+    return " ".join(content_parts), " ".join(meta_parts)
+
+
+def _compile_source_fts_query(query: str) -> str:
+    if len(query) > MAX_SEARCH_QUERY_LENGTH:
+        raise EvidenceTwinError("The artifact search query cannot exceed 256 characters.")
+    terms = re.findall(r"\w+", query.lower(), flags=re.UNICODE)
+    if not terms:
+        raise EvidenceTwinError("The artifact search query must contain searchable text.")
+    if len(terms) > 12 or any(len(term) > 64 for term in terms):
+        raise EvidenceTwinError("The artifact search query is too complex.")
+    return " AND ".join(f"{term}*" for term in terms)

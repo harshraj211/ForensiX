@@ -1143,6 +1143,23 @@ class EvidenceParserRunRequest(BaseModel):
     parser_ids: list[str] | None = Field(default=None, max_length=20)
 
 
+class ParserJobResponse(BaseModel):
+    id: str
+    case_id: str
+    owner_id: str
+    state: JobState
+    progress_percent: int
+    current_step: str | None
+    current_module: str | None
+    cancellation_requested: bool
+    checkpoint: dict[str, Any] | None
+    error_code: str | None
+    error_message: str | None
+    result_reference: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class EvidenceParserRunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
