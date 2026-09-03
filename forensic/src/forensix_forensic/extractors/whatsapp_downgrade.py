@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import re
 import tarfile
 import time
@@ -30,16 +31,23 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from .streaming_manifest import ManifestEntry, StreamingManifestCollector
+
 if TYPE_CHECKING:
     from forensix_forensic.adb.client import AdbClient
 
-from .streaming_manifest import ManifestEntry, StreamingManifestCollector
+logger = logging.getLogger(__name__)
 
-# The vulnerable WhatsApp version that still allows ADB backup.
+# The vulnerable WhatsApp version that permits ADB backup.
+
 VULNERABLE_VERSION_CODE = "2.11.431"
-VULNERABLE_APK_BASE_URL = "https://web.archive.org/web/2023/https://www.whatsapp.com/android/"
+VULNERABLE_APK_URLS = (
+    "https://web.archive.org/web/20141111030303if_/http://www.whatsapp.com/android/current/WhatsApp.apk",
+    "https://whatcrypt.com/WhatsApp-2.11.431.apk",
+)
 
 WHATSAPP_PACKAGE = "com.whatsapp"
+
 MSGSTORE_DB_NAME = "msgstore.db"
 CRYPT15_SUFFIX = ".crypt15"
 KEY_DIR_IN_BACKUP = "apps/com.whatsapp/files/key"
@@ -115,35 +123,85 @@ class WhatsAppDowngradeExtractor:
         success = False
         error_message: str | None = None
 
+        original_apks: tuple[Path, ...] = ()
         try:
             # ------------------------------------------------------------------
             # Step 1: identify the installed WhatsApp version
             # ------------------------------------------------------------------
-            await self._log(timeline, "STEP", "Identifying installed WhatsApp version")
+            await self._log(timeline, "STEP", "Identifying installed WhatsApp version on target device")
             original_version = await self._get_whatsapp_version(serial)
+            if not original_version:
+                raise RuntimeError(
+                    "WhatsApp is not installed or not accessible on this device (package com.whatsapp not found)."
+                )
             await self._log(
                 timeline,
                 "STEP",
-                f"Installed WhatsApp version: {original_version or 'unknown'}",
+                f"Installed WhatsApp version: {original_version}",
+            )
+
+            # ------------------------------------------------------------------
+            # Step 1.5: back up installed WhatsApp APK(s) directly from device
+            # ------------------------------------------------------------------
+            await self._log(
+                timeline,
+                "STEP",
+                "Backing up installed WhatsApp APK binaries from device for safe post-extraction restoration",
+            )
+            original_apks = await self._backup_installed_apks(serial)
+            await self._log(
+                timeline,
+                "STEP",
+                f"Successfully backed up {len(original_apks)} original APK file(s)",
             )
 
             # ------------------------------------------------------------------
             # Step 2: temporarily downgrade to the vulnerable version
             # ------------------------------------------------------------------
-            await self._log(timeline, "STEP", "Beginning temporary downgrade to v2.11.431")
+            await self._log(
+                timeline,
+                "STEP",
+                f"Locating or downloading vulnerable WhatsApp APK (v{VULNERABLE_VERSION_CODE})",
+            )
             downgrade_apk = await self._download_vulnerable_apk()
+            await self._log(timeline, "STEP", f"Vulnerable APK ready: {downgrade_apk.name}")
+
+            # Try direct install first (-r -d)
+            await self._log(timeline, "STEP", "Attempting direct package downgrade installation...")
             installed = await self._adb.install_package(serial, str(downgrade_apk))
             if not installed:
-                raise RuntimeError("Failed to install the vulnerable WhatsApp version.")
-            await self._log(timeline, "STEP", "Vulnerable WhatsApp version installed")
+                # Direct downgrade blocked by Android package manager;
+                # temporarily uninstall APK binaries while keeping data (-k)
+                await self._log(
+                    timeline,
+                    "STEP",
+                    "Direct downgrade restricted by Android; uninstalling APK binaries while preserving app data (-k)...",
+                )
+                uninstalled = await self._adb.uninstall_package(serial, WHATSAPP_PACKAGE)
+                if not uninstalled:
+                    raise RuntimeError("Failed to uninstall WhatsApp binaries with data preservation (-k).")
+                installed = await self._adb.install_package(serial, str(downgrade_apk))
+                if not installed:
+                    await self._log(
+                        timeline,
+                        "ERROR",
+                        "Failed to install vulnerable WhatsApp APK; initiating immediate rollback",
+                    )
+                    if original_apks:
+                        await self._restore_installed_apks(serial, original_apks)
+                    raise RuntimeError("Failed to install vulnerable WhatsApp APK. Original APK restored.")
 
-            # Brief pause to allow the package manager to settle.
-            await asyncio.sleep(3)
+            await self._log(timeline, "STEP", "Vulnerable WhatsApp version installed successfully")
+            await asyncio.sleep(2)
 
             # ------------------------------------------------------------------
             # Step 3: issue ``adb backup`` and capture the ``.ab`` file
             # ------------------------------------------------------------------
-            await self._log(timeline, "STEP", "Issuing ADB backup command")
+            await self._log(
+                timeline,
+                "STEP",
+                "Requesting ADB backup. IMPORTANT: If prompted on device screen, leave password empty and tap 'Back up my data'",
+            )
             backup_result = await self._adb.backup_package(serial, WHATSAPP_PACKAGE, backup_path)
             await self._log(
                 timeline,
@@ -166,18 +224,17 @@ class WhatsAppDowngradeExtractor:
             # ------------------------------------------------------------------
             # Step 4: reinstall the current WhatsApp version
             # ------------------------------------------------------------------
-            await self._log(timeline, "STEP", "Reinstalling current WhatsApp version")
-            if original_version:
-                current_apk = await self._download_current_apk(original_version)
-                reinstalled = await self._adb.install_package(serial, str(current_apk))
+            await self._log(timeline, "STEP", "Reinstalling original WhatsApp version on device")
+            if original_apks:
+                reinstalled = await self._restore_installed_apks(serial, original_apks)
                 if not reinstalled:
                     await self._log(
                         timeline,
                         "WARN",
-                        "Could not reinstall original version; operator must restore manually.",
+                        "Could not automatically reinstall original version; operator must restore manually.",
                     )
                 else:
-                    await self._log(timeline, "STEP", "Original WhatsApp version reinstalled")
+                    await self._log(timeline, "STEP", "Original WhatsApp version reinstalled successfully")
 
             # ------------------------------------------------------------------
             # Step 5: unpack the ``.ab`` archive and extract artefacts
@@ -267,6 +324,21 @@ class WhatsAppDowngradeExtractor:
 
         finally:
             elapsed = time.monotonic() - started
+            # Safety safeguard: check if device still has vulnerable version installed
+            # and restore original if needed
+            if original_apks and original_version:
+                try:
+                    current_ver = await self._get_whatsapp_version(serial)
+                    if current_ver is None or current_ver == VULNERABLE_VERSION_CODE:
+                        await self._log(
+                            timeline,
+                            "STEP",
+                            "Safety guard: ensuring original WhatsApp version is restored before exiting",
+                        )
+                        await self._restore_installed_apks(serial, original_apks)
+                except Exception as cleanup_err:
+                    await self._log(timeline, "WARN", f"Safety rollback check: {cleanup_err}")
+
             manifest_path = self._manifest.finalize(
                 extraction_id=extraction_id,
                 case_id=case_id,
@@ -309,21 +381,76 @@ class WhatsAppDowngradeExtractor:
         match = re.search(r"versionName=([^\s]+)", output)
         return match.group(1) if match else None
 
+    async def _backup_installed_apks(self, serial: str) -> tuple[Path, ...]:
+        """Pull all currently installed WhatsApp APK files from the device."""
+        remote_paths = await self._adb.list_package_apks(serial, WHATSAPP_PACKAGE)
+        backup_dir = self._work_dir / "original_apks"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        local_paths: list[Path] = []
+        for i, remote_path in enumerate(remote_paths):
+            file_name = Path(remote_path).name or f"split_{i}.apk"
+            dest = backup_dir / f"{i}_{file_name}"
+            await self._adb.pull_package_apk(serial, remote_path, dest)
+            local_paths.append(dest)
+        return tuple(local_paths)
+
+    async def _restore_installed_apks(self, serial: str, apks: tuple[Path, ...]) -> bool:
+        """Reinstall the backed-up original WhatsApp APKs on the device."""
+        if not apks:
+            return False
+        apk_strings = tuple(str(p.resolve()) for p in apks)
+        if len(apk_strings) == 1:
+            return await self._adb.install_package(serial, apk_strings[0])
+        return await self._adb.install_packages(serial, apk_strings)
+
     async def _download_vulnerable_apk(self) -> Path:
-        """Download or locate the vulnerable WhatsApp APK."""
+        """Locate or download the vulnerable WhatsApp APK."""
         candidates = [
-            self._work_dir / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk",
             Path("tools") / "apks" / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk",
+            Path("tools") / "apks" / "LegacyWhatsApp.apk",
+            self._work_dir / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk",
             Path("data") / "tools" / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk",
             Path("tools") / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk",
         ]
         for candidate in candidates:
-            if candidate.exists():
-                return candidate
+            if candidate.exists() and candidate.stat().st_size > 1024 * 1024:
+                return candidate.resolve()
+
+        # Attempt automated download
+        target_dir = Path("tools") / "apks"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = target_dir / f"whatsapp_{VULNERABLE_VERSION_CODE}.apk"
+
+        for candidate_url in VULNERABLE_APK_URLS:
+            if not candidate_url.startswith(("http://", "https://")):
+                continue
+            try:
+                import urllib.request
+
+                def _download(url: str = candidate_url) -> bool:
+                    req = urllib.request.Request(  # noqa: S310
+                        url,
+                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                    )
+
+                    with urllib.request.urlopen(req, timeout=30) as resp, target_path.open("wb") as out:  # noqa: S310
+                        while chunk := resp.read(64 * 1024):
+                            out.write(chunk)
+                    return target_path.exists() and target_path.stat().st_size > 1024 * 1024
+
+                downloaded = await asyncio.to_thread(_download)
+                if downloaded:
+                    return target_path.resolve()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Failed downloading vulnerable APK from %s: %s", candidate_url, exc)
+                continue
+
         raise FileNotFoundError(
-            f"Vulnerable WhatsApp APK (v{VULNERABLE_VERSION_CODE}) not found in tools/apks/ or work directory. "
-            "To perform downgrade extraction, place whatsapp_2.11.431.apk into tools/apks/."
+            f"Vulnerable WhatsApp APK (v{VULNERABLE_VERSION_CODE}) not found in tools/apks/ "
+            "and automated download failed. "
+            "Please place whatsapp_2.11.431.apk into tools/apks/."
         )
+
 
     async def _download_current_apk(self, version: str) -> Path:
         """Locate a pre-staged current WhatsApp APK for post-extraction restoration."""
@@ -342,6 +469,7 @@ class WhatsAppDowngradeExtractor:
             f"Place whatsapp_current_{version}.apk into tools/apks/ to enable automated restoration."
         )
 
+
     @staticmethod
     def _unpack_ab_archive(ab_path: Path, dest_dir: Path) -> list[Path]:
         """Unpack an ``adb backup`` ``.ab`` file.
@@ -352,6 +480,15 @@ class WhatsAppDowngradeExtractor:
         raw_bytes = ab_path.read_bytes()
         if not raw_bytes.startswith(b"ANDROID BACKUP"):
             raise ValueError("Not a valid Android backup file (bad magic header)")
+
+        if len(raw_bytes) <= 120:
+            raise ValueError(
+                f"Android backup archive contains no application data ({len(raw_bytes)} bytes). "
+                "The backup prompt was not confirmed on the device screen. "
+                "Please ensure the device screen is unlocked, watch for the 'Full backup' prompt on the phone, "
+                "leave the password field empty, and tap 'Back up my data'."
+            )
+
 
         # Skip header lines (separated by newline \n)
         header_lines = 0
