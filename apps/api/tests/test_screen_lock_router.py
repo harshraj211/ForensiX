@@ -2,6 +2,7 @@
 
 import hashlib
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
@@ -104,7 +105,8 @@ def test_pin_4digit_mask_crack(tmp_path: Path) -> None:
 
 def test_screen_lock_extract_hashes_unacknowledged_root(tmp_path: Path) -> None:
     settings = Settings(environment="test", data_dir=tmp_path / "data")
-    app = create_app(settings)
+    mock_adb = MagicMock()
+    app = create_app(settings, adb_client=mock_adb)
 
     with TestClient(app) as client:
         db = app.state.database
@@ -137,3 +139,4 @@ def test_screen_lock_extract_hashes_unacknowledged_root(tmp_path: Path) -> None:
             },
         )
         assert res.status_code == 400
+
