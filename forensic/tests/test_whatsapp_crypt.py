@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-
 from forensix_forensic.extractors.whatsapp_downgrade import WhatsAppDowngradeExtractor
 
 

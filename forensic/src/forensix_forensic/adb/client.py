@@ -38,7 +38,6 @@ from .policy import (
     INVENTORY_MAX_ITEMS,
     MAX_ACQUIRED_FILE_BYTES,
     MAX_BACKUP_FILE_BYTES,
-    MAX_PACKAGE_APK_BYTES,
     MAX_PHYSICAL_BLOCK_BYTES,
     MAX_ROOTED_BUNDLE_BYTES,
     MAX_SCREENSHOT_BYTES,
@@ -490,14 +489,15 @@ class SystemAdbClient:
     async def pull_package_apk(
         self, serial: str, remote_path: str, destination: Path
     ) -> PulledFileResult:
-        """Copy one installed APK with a bounded local file size."""
+        """Copy one installed APK with a bounded local file size.
+
+        ``adb pull`` writes the APK **directly to the destination path**
+        (not to stdout), so we must call ``_run`` (which simply runs adb
+        and captures stdout/stderr as strings) instead of ``run_to_file``
+        (which redirects stdout to the file, yielding an empty APK).
+        """
         command = AdbCommandPolicy.pull_package_apk(serial, remote_path, destination)
-        result = await self._runner.run_to_file(
-            command.arguments,
-            destination,
-            timeout_seconds=command.timeout_seconds,
-            max_file_bytes=MAX_PACKAGE_APK_BYTES,
-        )
+        result = await self._run(command)
         if result.exit_code != 0:
             raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
         size_bytes = await asyncio.to_thread(_regular_file_size, destination)

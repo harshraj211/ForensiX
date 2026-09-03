@@ -448,12 +448,18 @@ class AdbCommandPolicy:
 
     @staticmethod
     def uninstall_package(serial: str, package_name: str) -> ApprovedAdbCommand:
-        """Uninstall a package, keeping data."""
+        """Uninstall a package while preserving its /data directory.
+
+        On Android 10+ (API 29+), ``adb uninstall -k`` was deprecated and
+        now exits with a non-zero code and a mandatory confirmation message.
+        The correct invocation on all modern Android versions is:
+        ``adb shell cmd package uninstall -k <package>``.
+        """
         _validate_serial(serial)
         _validate_package_name(package_name)
         return ApprovedAdbCommand(
             AdbOperation.UNINSTALL_PACKAGE,
-            ("-s", serial, "uninstall", "-k", package_name),
+            ("-s", serial, "shell", "cmd", "package", "uninstall", "-k", package_name),
             ADB_INSTALL_TIMEOUT_SECONDS,
         )
 
