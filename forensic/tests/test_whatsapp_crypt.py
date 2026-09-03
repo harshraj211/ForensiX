@@ -5,7 +5,9 @@ import tarfile
 import zlib
 from pathlib import Path
 
+import pytest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 
 from forensix_forensic.extractors.whatsapp_downgrade import WhatsAppDowngradeExtractor
 
@@ -73,3 +75,40 @@ def test_unpack_ab_archive(tmp_path: Path) -> None:
     assert found_key.name == "key"
     assert found_db is not None
     assert found_db.name == "msgstore.db"
+
+
+def test_unpack_ab_archive_empty_raises(tmp_path: Path) -> None:
+    ab_path = tmp_path / "empty.ab"
+    ab_path.write_bytes(b"ANDROID BACKUP\n5\n1\nnone\n")
+    dest_dir = tmp_path / "unpacked"
+    dest_dir.mkdir()
+
+    import pytest
+
+    with pytest.raises(ValueError, match="contains no application data"):
+        WhatsAppDowngradeExtractor._unpack_ab_archive(ab_path, dest_dir)
+
+
+@pytest.mark.asyncio
+async def test_backup_and_restore_installed_apks(tmp_path: Path) -> None:
+    from unittest.mock import AsyncMock
+
+    mock_adb = AsyncMock()
+    mock_adb.list_package_apks.return_value = (
+        "/data/app/com.whatsapp/base.apk",
+        "/data/app/com.whatsapp/split_config.arm64_v8a.apk",
+    )
+    mock_adb.pull_package_apk.return_value = True
+    mock_adb.install_packages.return_value = True
+
+    extractor = WhatsAppDowngradeExtractor(adb_client=mock_adb, work_dir=tmp_path)
+    apks = await extractor._backup_installed_apks("device-123")
+
+    assert len(apks) == 2
+    assert mock_adb.pull_package_apk.await_count == 2
+
+    # Test restore
+    restored = await extractor._restore_installed_apks("device-123", apks)
+    assert restored is True
+    mock_adb.install_packages.assert_awaited_once()
+
