@@ -110,4 +110,3 @@ async def test_backup_and_restore_installed_apks(tmp_path: Path) -> None:
     restored = await extractor._restore_installed_apks("device-123", apks)
     assert restored is True
     mock_adb.install_packages.assert_awaited_once()
-

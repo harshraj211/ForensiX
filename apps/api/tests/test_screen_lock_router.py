@@ -1,4 +1,4 @@
-﻿"""Unit tests for the screen lock assessment and password/PIN cracking endpoints."""
+"""Unit tests for the screen lock assessment and password/PIN cracking endpoints."""
 
 import hashlib
 from pathlib import Path

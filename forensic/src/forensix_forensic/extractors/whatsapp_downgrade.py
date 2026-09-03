@@ -128,7 +128,9 @@ class WhatsAppDowngradeExtractor:
             # ------------------------------------------------------------------
             # Step 1: identify the installed WhatsApp version
             # ------------------------------------------------------------------
-            await self._log(timeline, "STEP", "Identifying installed WhatsApp version on target device")
+            await self._log(
+                timeline, "STEP", "Identifying installed WhatsApp version on target device"
+            )
             original_version = await self._get_whatsapp_version(serial)
             if not original_version:
                 raise RuntimeError(
@@ -179,7 +181,9 @@ class WhatsAppDowngradeExtractor:
                 )
                 uninstalled = await self._adb.uninstall_package(serial, WHATSAPP_PACKAGE)
                 if not uninstalled:
-                    raise RuntimeError("Failed to uninstall WhatsApp binaries with data preservation (-k).")
+                    raise RuntimeError(
+                        "Failed to uninstall WhatsApp binaries with data preservation (-k)."
+                    )
                 installed = await self._adb.install_package(serial, str(downgrade_apk))
                 if not installed:
                     await self._log(
@@ -189,7 +193,9 @@ class WhatsAppDowngradeExtractor:
                     )
                     if original_apks:
                         await self._restore_installed_apks(serial, original_apks)
-                    raise RuntimeError("Failed to install vulnerable WhatsApp APK. Original APK restored.")
+                    raise RuntimeError(
+                        "Failed to install vulnerable WhatsApp APK. Original APK restored."
+                    )
 
             await self._log(timeline, "STEP", "Vulnerable WhatsApp version installed successfully")
             await asyncio.sleep(2)
@@ -234,7 +240,9 @@ class WhatsAppDowngradeExtractor:
                         "Could not automatically reinstall original version; operator must restore manually.",
                     )
                 else:
-                    await self._log(timeline, "STEP", "Original WhatsApp version reinstalled successfully")
+                    await self._log(
+                        timeline, "STEP", "Original WhatsApp version reinstalled successfully"
+                    )
 
             # ------------------------------------------------------------------
             # Step 5: unpack the ``.ab`` archive and extract artefacts
@@ -433,7 +441,10 @@ class WhatsAppDowngradeExtractor:
                         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
                     )
 
-                    with urllib.request.urlopen(req, timeout=30) as resp, target_path.open("wb") as out:  # noqa: S310
+                    with (
+                        urllib.request.urlopen(req, timeout=30) as resp,  # noqa: S310
+                        target_path.open("wb") as out,
+                    ):
                         while chunk := resp.read(64 * 1024):
                             out.write(chunk)
                     return target_path.exists() and target_path.stat().st_size > 1024 * 1024
@@ -451,7 +462,6 @@ class WhatsAppDowngradeExtractor:
             "Please place whatsapp_2.11.431.apk into tools/apks/."
         )
 
-
     async def _download_current_apk(self, version: str) -> Path:
         """Locate a pre-staged current WhatsApp APK for post-extraction restoration."""
         candidates = [
@@ -468,7 +478,6 @@ class WhatsAppDowngradeExtractor:
             f"Current WhatsApp APK (v{version}) not found in tools/apks/ or work directory. "
             f"Place whatsapp_current_{version}.apk into tools/apks/ to enable automated restoration."
         )
-
 
     @staticmethod
     def _unpack_ab_archive(ab_path: Path, dest_dir: Path) -> list[Path]:
@@ -488,7 +497,6 @@ class WhatsAppDowngradeExtractor:
                 "Please ensure the device screen is unlocked, watch for the 'Full backup' prompt on the phone, "
                 "leave the password field empty, and tap 'Back up my data'."
             )
-
 
         # Skip header lines (separated by newline \n)
         header_lines = 0

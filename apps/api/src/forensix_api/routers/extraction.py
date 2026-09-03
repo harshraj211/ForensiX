@@ -734,14 +734,22 @@ def _solve_pattern_key(target_hash_hex: str) -> str | None:
         return None
 
     jumps: dict[tuple[int, int], int] = {
-        (0, 2): 1, (2, 0): 1,
-        (0, 6): 3, (6, 0): 3,
-        (0, 8): 4, (8, 0): 4,
-        (1, 7): 4, (7, 1): 4,
-        (2, 6): 4, (6, 2): 4,
-        (2, 8): 5, (8, 2): 5,
-        (3, 5): 4, (5, 3): 4,
-        (6, 8): 7, (8, 6): 7,
+        (0, 2): 1,
+        (2, 0): 1,
+        (0, 6): 3,
+        (6, 0): 3,
+        (0, 8): 4,
+        (8, 0): 4,
+        (1, 7): 4,
+        (7, 1): 4,
+        (2, 6): 4,
+        (6, 2): 4,
+        (2, 8): 5,
+        (8, 2): 5,
+        (3, 5): 4,
+        (5, 3): 4,
+        (6, 8): 7,
+        (8, 6): 7,
     }
 
     found: list[int] | None = None
@@ -1034,9 +1042,7 @@ async def crack_screen_lock(
     launcher = HashcatLauncher(cfg, work_dir)
     valid_modes = (10, 13800, 18800)
     mode_enum = (
-        HashcatMode(request.mode)
-        if request.mode in valid_modes
-        else HashcatMode.ANDROID_GATEKEEPER
+        HashcatMode(request.mode) if request.mode in valid_modes else HashcatMode.ANDROID_GATEKEEPER
     )
 
     res = await launcher.run(hash_file, mode_enum, case_id)
