@@ -352,7 +352,7 @@ class EvidenceExaminationService:
                     input_locator=member.original_name,
                     input_sha256=member.sha256,
                 )
-                for parser in selected_documents:
+                for doc_parser in selected_documents:
                     if job_id and self._is_job_cancelled(database, job_id):
                         break
                     results.append(
@@ -361,7 +361,7 @@ class EvidenceExaminationService:
                             principal,
                             inspection_id,
                             context,
-                            parser,
+                            doc_parser,
                             member_path,
                         )
                     )
@@ -372,8 +372,11 @@ class EvidenceExaminationService:
                             database,
                             job_id,
                             progress,
-                            f"Parsed document {member.original_name} with {parser.metadata.name}",
-                            parser.metadata.parser_id,
+                            (
+                                f"Parsed document {member.original_name} "
+                                f"with {doc_parser.metadata.name}"
+                            ),
+                            doc_parser.metadata.parser_id,
                         )
             return results
         finally:
@@ -604,8 +607,18 @@ class EvidenceExaminationService:
             case_id = checkpoint.get("case_id") or job.case_id
             source_id = checkpoint.get("source_id")
             working_copy_id = checkpoint.get("working_copy_id")
+            if (
+                not isinstance(case_id, str)
+                or not isinstance(source_id, str)
+                or not isinstance(working_copy_id, str)
+            ):
+                raise EvidenceTwinError(f"Job {job_id} is missing required execution parameters.")
             parser_ids_raw = checkpoint.get("parser_ids")
-            parser_ids = tuple(parser_ids_raw) if parser_ids_raw else None
+            parser_ids = (
+                tuple(str(pid) for pid in parser_ids_raw)
+                if isinstance(parser_ids_raw, (list, tuple))
+                else None
+            )
 
             JobService().transition(session, job_id, JobState.RUNNING)
             JobService().update_progress(

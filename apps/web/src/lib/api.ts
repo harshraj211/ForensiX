@@ -2784,8 +2784,8 @@ export function runNativeEvidenceParsers(
 
 export interface ParserJob {
   id: string;
-  case_id: string;
-  owner_id: string;
+  case_id: string | null;
+  owner_id: string | null;
   state:
     | "created"
     | "validating"

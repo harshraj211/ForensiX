@@ -1145,8 +1145,8 @@ class EvidenceParserRunRequest(BaseModel):
 
 class ParserJobResponse(BaseModel):
     id: str
-    case_id: str
-    owner_id: str
+    case_id: str | None = None
+    owner_id: str | None = None
     state: JobState
     progress_percent: int
     current_step: str | None
