@@ -66,9 +66,7 @@ def test_parser_job_api_lifecycle_and_search(tmp_path: Path) -> None:
             BytesIO(_contacts_db(tmp_path / "contacts2.db")),
             source_name="contacts2.db",
         )
-        working_copy = EvidenceTwinService().create_working_copy(
-            db, principal, case_id, source.id
-        )
+        working_copy = EvidenceTwinService().create_working_copy(db, principal, case_id, source.id)
         source_id = source.id
         working_copy_id = working_copy.id
 
@@ -90,9 +88,7 @@ def test_parser_job_api_lifecycle_and_search(tmp_path: Path) -> None:
         job_id = job_data["id"]
 
         # 2. Get parser job status
-        get_res = client.get(
-            f"/api/v1/cases/{case_id}/evidence-sources/parser-jobs/{job_id}"
-        )
+        get_res = client.get(f"/api/v1/cases/{case_id}/evidence-sources/parser-jobs/{job_id}")
         assert get_res.status_code == 200
         fetched_job = get_res.json()
         assert fetched_job["id"] == job_id

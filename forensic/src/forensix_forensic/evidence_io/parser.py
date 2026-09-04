@@ -301,4 +301,3 @@ class DocumentParserRegistry:
 
     def metadata(self) -> tuple[ParserMetadata, ...]:
         return tuple(parser.metadata for parser in self._parsers.values())
-

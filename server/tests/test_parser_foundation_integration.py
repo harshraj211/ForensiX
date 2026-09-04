@@ -1,4 +1,4 @@
-﻿import json
+import json
 import sqlite3
 from collections.abc import Iterator
 from datetime import datetime
@@ -198,9 +198,7 @@ def test_fts5_full_text_search_across_content_and_metadata(
     assert miss_res.total == 0
 
 
-def test_background_parser_job_lifecycle(
-    database: Database, tmp_path: Path
-) -> None:
+def test_background_parser_job_lifecycle(database: Database, tmp_path: Path) -> None:
     principal, case_id = _principal_and_case(database)
     source = EvidenceTwinService().import_stream(
         database,
@@ -219,9 +217,7 @@ def test_background_parser_job_lifecycle(
     service = EvidenceExaminationService()
 
     # 1. Prepare job
-    job = service.prepare_parser_job(
-        database, principal, case_id, source.id, working_copy.id
-    )
+    job = service.prepare_parser_job(database, principal, case_id, source.id, working_copy.id)
     assert job.job_type == JobType.PARSING.value
     assert job.state == JobState.READY.value
     assert job.progress_percent == 5
@@ -236,9 +232,7 @@ def test_background_parser_job_lifecycle(
     assert fetched_job.id == job.id
 
     # 3. Execute job
-    results = service.execute_parser_job(
-        database, principal, job.id, registry=custom_registry
-    )
+    results = service.execute_parser_job(database, principal, job.id, registry=custom_registry)
     assert len(results) == 1
     assert results[0].run.status == "completed"
 
@@ -249,9 +243,7 @@ def test_background_parser_job_lifecycle(
     assert completed_job.result_reference == "artifacts:1"
 
 
-def test_background_parser_job_cancellation(
-    database: Database, tmp_path: Path
-) -> None:
+def test_background_parser_job_cancellation(database: Database, tmp_path: Path) -> None:
     principal, case_id = _principal_and_case(database)
     source = EvidenceTwinService().import_stream(
         database,
@@ -265,18 +257,14 @@ def test_background_parser_job_cancellation(
     )
 
     service = EvidenceExaminationService()
-    job = service.prepare_parser_job(
-        database, principal, case_id, source.id, working_copy.id
-    )
+    job = service.prepare_parser_job(database, principal, case_id, source.id, working_copy.id)
 
     # Cancel job
     cancelled_job = service.cancel_parser_job(database, principal, case_id, job.id)
     assert cancelled_job.cancellation_requested is True
 
 
-def test_strengthened_parser_provenance(
-    database: Database, tmp_path: Path
-) -> None:
+def test_strengthened_parser_provenance(database: Database, tmp_path: Path) -> None:
     principal, case_id = _principal_and_case(database)
     source = EvidenceTwinService().import_stream(
         database,

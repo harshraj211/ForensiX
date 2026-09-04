@@ -139,4 +139,3 @@ def test_screen_lock_extract_hashes_unacknowledged_root(tmp_path: Path) -> None:
             },
         )
         assert res.status_code == 400
-
