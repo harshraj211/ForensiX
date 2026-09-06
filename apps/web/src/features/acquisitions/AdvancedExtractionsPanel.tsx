@@ -4,10 +4,12 @@ import {
   AlertTriangle,
   CheckCircle2,
   Copy,
+  Cpu,
   Database,
   Flame,
   Hash,
   KeyRound,
+  Layers,
   LoaderCircle,
   Lock,
   MessageSquare,
@@ -17,7 +19,10 @@ import {
   Smartphone,
   Sparkles,
   Unlock,
+  Zap,
 } from "lucide-react";
+
+import { NonRootedSuitePanel } from "./NonRootedSuitePanel";
 
 import {
   assessScreenLock,
@@ -26,11 +31,18 @@ import {
   carveSqliteDatabase,
   crackScreenLock,
   detectDevices,
+  extractApkDowngrade,
+  extractCVE202431317,
   extractScreenLockHashes,
   extractSignalRooted,
   extractTelegramRooted,
   extractWhatsAppDowngrade,
   getCurrentUser,
+  listApkDowngradeProfiles,
+  scanDeviceApkDowngradeProfiles,
+  type ApkDowngradeDeviceScanItem,
+  type ApkDowngradeResult,
+  type CVE202431317Result,
   type SQLiteCarvingResult,
   type ScreenLockAssessResult,
   type ScreenLockBypassResult,
@@ -47,10 +59,20 @@ interface AdvancedExtractionsPanelProps {
 }
 
 export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelProps) {
-  const [activeTab, setActiveTab] = useState<"whatsapp" | "signal" | "telegram" | "sqlite" | "screenlock">("whatsapp");
+  const [activeTab, setActiveTab] = useState<
+    "non_rooted" | "whatsapp" | "cve202431317" | "apk_downgrade" | "screenlock" | "signal" | "telegram" | "sqlite"
+  >("non_rooted");
   const [serial, setSerial] = useState("");
   const [operatorId, setOperatorId] = useState("");
   const [sqlitePaths, setSqlitePaths] = useState("");
+
+  // APK Downgrade state
+  const [selectedProfileId, setSelectedProfileId] = useState("whatsapp");
+  const [apkPath, setApkPath] = useState("");
+  const [apkSha256, setApkSha256] = useState("");
+
+  // CVE-2024-31317 state
+  const [targetPartition, setTargetPartition] = useState("userdata");
 
   // Screen lock & cracking UI state
   const [crackMode, setCrackMode] = useState<number>(13800);
@@ -69,13 +91,40 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
     refetchInterval: 5000,
   });
 
+  const profilesQuery = useQuery({
+    queryKey: ["apk-downgrade-profiles", caseId],
+    queryFn: () => listApkDowngradeProfiles(caseId),
+  });
+
   const availableDevices = useMemo(() => devicesQuery.data?.devices ?? [], [devicesQuery.data?.devices]);
   const defaultOperator = currentUser.data?.username || "operator";
   const activeOperator = operatorId.trim() || defaultOperator;
   const effectiveSerial = serial || availableDevices[0]?.serial || "";
 
+  const deviceScanQuery = useQuery({
+    queryKey: ["apk-downgrade-device-scan", caseId, effectiveSerial],
+    queryFn: () => scanDeviceApkDowngradeProfiles(caseId, effectiveSerial),
+    enabled: Boolean(effectiveSerial),
+  });
+
   const waMutation = useMutation({
     mutationFn: () => extractWhatsAppDowngrade(caseId, effectiveSerial.trim(), activeOperator),
+  });
+
+  const apkDowngradeMutation = useMutation({
+    mutationFn: () =>
+      extractApkDowngrade(
+        caseId,
+        effectiveSerial.trim(),
+        activeOperator,
+        selectedProfileId,
+        [apkPath.trim()],
+        [apkSha256.trim()],
+      ),
+  });
+
+  const cve202431317Mutation = useMutation({
+    mutationFn: () => extractCVE202431317(caseId, effectiveSerial.trim(), activeOperator, targetPartition),
   });
 
   const signalMutation = useMutation({
@@ -154,7 +203,10 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
       {/* Tabs */}
       <div className="mt-6 flex flex-wrap gap-2 border-b border-slate-100 pb-4">
         {[
-          { id: "whatsapp", label: "WhatsApp Downgrade (Non-Root)", icon: MessageSquare },
+          { id: "non_rooted", label: "Non-Rooted Suite (5 Pillars)", icon: Zap },
+          { id: "whatsapp", label: "WhatsApp Downgrade", icon: MessageSquare },
+          { id: "apk_downgrade", label: "Generic APK Downgrade (46 Apps)", icon: Layers },
+          { id: "cve202431317", label: "CVE-2024-31317 Filesystem (Non-Root)", icon: Cpu },
           { id: "screenlock", label: "Lock Screen & PIN Brute-Force", icon: Lock },
           { id: "signal", label: "Signal SQLCipher (Rooted)", icon: KeyRound },
           { id: "telegram", label: "Telegram Caches (Rooted)", icon: Database },
@@ -239,6 +291,13 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
           </div>
         </div>
 
+      {/* Tab: Non-Rooted Suite */}
+      {activeTab === "non_rooted" && (
+        <div className="mt-5">
+          <NonRootedSuitePanel caseId={caseId} serial={effectiveSerial} />
+        </div>
+      )}
+
       {/* Tab: WhatsApp Downgrade */}
       {activeTab === "whatsapp" && (
         <div className="mt-5 space-y-4">
@@ -281,6 +340,220 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
           )}
 
           {waMutation.data && <WhatsAppResultView result={waMutation.data} />}
+        </div>
+      )}
+
+      {/* Tab: Generic APK Downgrade (46 App Profiles) */}
+      {activeTab === "apk_downgrade" && (
+        <div className="mt-5 space-y-4">
+          <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-xs leading-5 text-indigo-950">
+            <div className="flex gap-2">
+              <Layers size={16} className="shrink-0 text-indigo-700 mt-0.5" />
+              <div>
+                <p className="font-semibold text-indigo-900">Failure-Safe Rollback Downgrade Framework</p>
+                <p className="mt-0.5 text-indigo-800">
+                  Select from 46 pre-configured application profiles (messaging, browsers, social media, cloud storage).
+                  The engine validates examiner-supplied APK integrity hashes, backs up base and split packages, installs the legacy version, captures ADB backup, and restores the original application state.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Installed Device App Scanner Grid */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <Smartphone size={14} className="text-indigo-600" /> Target App Inventory Scanner
+                </h4>
+                <p className="text-[11px] text-slate-500">Scans connected device via ADB to identify installed target apps &amp; check rollback eligibility</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void deviceScanQuery.refetch()}
+                disabled={!effectiveSerial || deviceScanQuery.isFetching}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 shadow-sm"
+              >
+                {deviceScanQuery.isFetching ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                {deviceScanQuery.isFetching ? "Scanning Device…" : "Scan Installed Target Apps"}
+              </button>
+            </div>
+
+            {deviceScanQuery.data && (
+              <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 space-y-1 text-xs">
+                {deviceScanQuery.data.filter((item) => item.is_installed).length > 0 ? (
+                  deviceScanQuery.data
+                    .filter((item) => item.is_installed)
+                    .map((item) => (
+                      <div
+                        key={item.profile_id}
+                        className="flex items-center justify-between rounded-lg p-2 hover:bg-indigo-50/50 transition border border-transparent hover:border-indigo-100"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                          <div>
+                            <span className="font-bold text-slate-900">{item.display_name}</span>
+                            <span className="ml-2 font-mono text-[10px] text-slate-400">({item.package_name})</span>
+                            {item.version_name && (
+                              <span className="ml-2 text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                v{item.version_name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedProfileId(item.profile_id)}
+                          className={`rounded bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-black transition ${
+                            selectedProfileId === item.profile_id ? "ring-2 ring-indigo-500 bg-indigo-700" : ""
+                          }`}
+                        >
+                          {selectedProfileId === item.profile_id ? "Selected" : "Select for Downgrade"}
+                        </button>
+                      </div>
+                    ))
+                ) : (
+                  <p className="p-2 text-center text-slate-400 font-medium">No installed target apps detected on device. Connect device and click Scan.</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700" htmlFor="profile-id">
+                Application Profile (46 Supported Apps)
+              </label>
+              <select
+                id="profile-id"
+                value={selectedProfileId}
+                onChange={(e) => setSelectedProfileId(e.target.value)}
+                className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-slate-900 focus:outline-none"
+              >
+                {(profilesQuery.data ?? [
+                  { profile_id: "whatsapp", display_name: "WhatsApp", package_name: "com.whatsapp" },
+                  { profile_id: "facebook", display_name: "Facebook", package_name: "com.facebook.katana" },
+                  { profile_id: "messenger", display_name: "Facebook Messenger", package_name: "com.facebook.orca" },
+                  { profile_id: "instagram", display_name: "Instagram", package_name: "com.instagram.android" },
+                  { profile_id: "telegram", display_name: "Telegram", package_name: "org.telegram.messenger" },
+                  { profile_id: "signal", display_name: "Signal", package_name: "org.thoughtcrime.securesms" },
+                  { profile_id: "chrome", display_name: "Google Chrome", package_name: "com.android.chrome" },
+                  { profile_id: "session", display_name: "Session Messenger", package_name: "network.loki.messenger" },
+                  { profile_id: "threema", display_name: "Threema", package_name: "ch.threema.app" },
+                ]).map((p) => (
+                  <option key={p.profile_id} value={p.profile_id}>
+                    {p.display_name} ({p.package_name})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700" htmlFor="apk-path">
+                Examiner Downgrade APK Path
+              </label>
+              <input
+                id="apk-path"
+                type="text"
+                value={apkPath}
+                onChange={(e) => setApkPath(e.target.value)}
+                placeholder="e.g. C:\tools\apks\legacy_whatsapp.apk"
+                className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700" htmlFor="apk-sha256">
+              Expected APK SHA-256 Digest (Integrity Pre-Check)
+            </label>
+            <input
+              id="apk-sha256"
+              type="text"
+              value={apkSha256}
+              onChange={(e) => setApkSha256(e.target.value)}
+              placeholder="e.g. e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={!effectiveSerial.trim() || !apkPath.trim() || !apkSha256.trim() || apkDowngradeMutation.isPending}
+            onClick={() => apkDowngradeMutation.mutate()}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-slate-900 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-black disabled:opacity-40"
+          >
+            {apkDowngradeMutation.isPending ? (
+              <LoaderCircle size={16} className="animate-spin" />
+            ) : (
+              <Layers size={16} />
+            )}
+            {apkDowngradeMutation.isPending ? "Executing Rollback Downgrade…" : "Launch Application Downgrade"}
+          </button>
+
+          {apkDowngradeMutation.isError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+              {apkDowngradeMutation.error instanceof Error ? apkDowngradeMutation.error.message : "Downgrade extraction failed."}
+            </div>
+          )}
+
+          {apkDowngradeMutation.data && <ApkDowngradeResultView result={apkDowngradeMutation.data} />}
+        </div>
+      )}
+
+      {/* Tab: CVE-2024-31317 Non-Rooted Filesystem Acquisition */}
+      {activeTab === "cve202431317" && (
+        <div className="mt-5 space-y-4">
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-xs leading-5 text-cyan-950">
+            <div className="flex gap-2">
+              <Cpu size={16} className="shrink-0 text-cyan-700 mt-0.5" />
+              <div>
+                <p className="font-semibold text-cyan-950">Non-Rooted System / Userdata Filesystem Acquisition (CVE-2024-31317)</p>
+                <p className="mt-0.5 text-cyan-900">
+                  Exploits Android init process vulnerability on devices with Security Patch Level (SPL) ≤ June 2024.
+                  Captures raw block-level system or userdata filesystem images over ADB without requiring root access.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700" htmlFor="target-partition">
+              Target Partition
+            </label>
+            <select
+              id="target-partition"
+              value={targetPartition}
+              onChange={(e) => setTargetPartition(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-slate-900 focus:outline-none"
+            >
+              <option value="userdata">userdata (User data and application sandboxes)</option>
+              <option value="system">system (System OS partition)</option>
+              <option value="vendor">vendor (Vendor binary partition)</option>
+            </select>
+          </div>
+
+          <button
+            type="button"
+            disabled={!effectiveSerial.trim() || cve202431317Mutation.isPending}
+            onClick={() => cve202431317Mutation.mutate()}
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-slate-900 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-black disabled:opacity-40"
+          >
+            {cve202431317Mutation.isPending ? (
+              <LoaderCircle size={16} className="animate-spin" />
+            ) : (
+              <Cpu size={16} />
+            )}
+            {cve202431317Mutation.isPending ? "Executing CVE-2024-31317 Acquisition…" : "Execute Non-Rooted Filesystem Vector"}
+          </button>
+
+          {cve202431317Mutation.isError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+              {cve202431317Mutation.error instanceof Error ? cve202431317Mutation.error.message : "CVE-2024-31317 acquisition failed."}
+            </div>
+          )}
+
+          {cve202431317Mutation.data && <CVE202431317ResultView result={cve202431317Mutation.data} />}
         </div>
       )}
 
@@ -1157,6 +1430,104 @@ function ScreenLockBypassView({ result }: { result: ScreenLockBypassResult }) {
           <span className="font-semibold text-slate-800">{result.db_patched ? "Yes" : "No"}</span>
         </div>
       </dl>
+    </div>
+  );
+}
+
+function ApkDowngradeResultView({ result }: { result: ApkDowngradeResult }) {
+  return (
+    <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-indigo-950 font-bold">
+          <CheckCircle2 size={18} className="text-indigo-600" />
+          <span>APK Downgrade Extraction Complete</span>
+        </div>
+        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-900">
+          {result.duration_seconds.toFixed(2)}s
+        </span>
+      </div>
+
+      <dl className="grid gap-3 text-xs sm:grid-cols-2">
+        <div>
+          <dt className="font-medium text-slate-500">Target Profile &amp; Package</dt>
+          <dd className="mt-0.5 font-semibold text-slate-900">{result.profile_id} ({result.package_name})</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-slate-500">Android Version / API</dt>
+          <dd className="mt-0.5 font-semibold text-slate-900">Android {result.android_release} (API {result.android_api})</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-slate-500">Original vs Downgrade Version</dt>
+          <dd className="mt-0.5 font-semibold text-slate-900">{result.original_version ?? "Unknown"} &rarr; {result.downgrade_version ?? "Downgraded"}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-slate-500">Backup File Size</dt>
+          <dd className="mt-0.5 font-semibold text-slate-900">{(result.backup_file_size_bytes / (1024 * 1024)).toFixed(2)} MB</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="font-medium text-slate-500">Package Restoration Status</dt>
+          <dd className="mt-0.5 font-semibold text-emerald-700">
+            {result.restored ? "✓ Original APK package and splits successfully restored" : "⚠ Check device package manager"}
+          </dd>
+        </div>
+      </dl>
+
+      {result.backup_sha256 && (
+        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs">
+          <span className="font-semibold text-slate-500 block mb-1">ADB Backup File SHA-256</span>
+          <code className="font-mono text-[11px] text-slate-800 break-all select-all">{result.backup_sha256}</code>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CVE202431317ResultView({ result }: { result: CVE202431317Result }) {
+  return (
+    <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-cyan-950 font-bold">
+          <ShieldCheck size={18} className="text-cyan-600" />
+          <span>CVE-2024-31317 Security Vector Execution</span>
+        </div>
+        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-cyan-100 text-cyan-900">
+          {result.duration_seconds.toFixed(2)}s
+        </span>
+      </div>
+
+      <dl className="grid gap-3 text-xs sm:grid-cols-2">
+        <div>
+          <dt className="font-medium text-slate-500">Target Partition</dt>
+          <dd className="mt-0.5 font-semibold text-slate-900">{result.partition_name}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-slate-500">Security Patch Level</dt>
+          <dd className="mt-0.5 font-semibold text-slate-900">{result.security_patch_level}</dd>
+        </div>
+        <div>
+          <dt className="font-medium text-slate-500">Vulnerability Assessment</dt>
+          <dd className="mt-0.5 font-semibold text-emerald-700">
+            {result.vulnerable ? "Confirmed Vulnerable (SPL ≤ June 2024)" : "Patch Level Too New"}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-medium text-slate-500">Extracted Image Size</dt>
+          <dd className="mt-0.5 font-semibold text-slate-900">{(result.image_size_bytes / (1024 * 1024)).toFixed(2)} MB</dd>
+        </div>
+      </dl>
+
+      {result.image_file_path && (
+        <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs space-y-1">
+          <span className="font-semibold text-slate-500 block">Acquired Image File Path</span>
+          <code className="font-mono text-[11px] text-slate-800 break-all select-all block">{result.image_file_path}</code>
+          {result.image_sha256 && (
+            <>
+              <span className="font-semibold text-slate-500 block mt-2">Image SHA-256 Digest</span>
+              <code className="font-mono text-[11px] text-slate-800 break-all select-all block">{result.image_sha256}</code>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
