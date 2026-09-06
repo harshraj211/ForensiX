@@ -1,20 +1,28 @@
-"""Default registry of native Android artifact parsers."""
+"""Default registry of native Android application artifact adapters and parsers."""
 
 from forensix_forensic.evidence_io import ParserRegistry
 
 from .applications import (
+    AccessibleAppArtifactJSONParser,
     DiscordMessageParser,
     GmailMessageParser,
+    SignalAdapter,
     SnapchatMessageParser,
-    TelegramMessageParser,
+    TelegramAdapter,
     TikTokMessageParser,
     WeChatMessageParser,
-    WhatsAppMessageParser,
+    WhatsAppAdapter,
+    WhatsAppBackupArtifactParser,
     meta_message_parsers,
 )
 from .cloud_tokens import AndroidCloudTokensParser
-from .communications import AndroidCallLogParser, AndroidMmsParser, AndroidSmsParser
-from .contacts import AndroidContactsParser
+from .communications import (
+    AndroidCallLogAdapter,
+    AndroidMmsParser,
+    AndroidSmsParser,
+    AndroidTelephonyAdapter,
+)
+from .contacts import AndroidContactsAdapter
 from .system import (
     AndroidBluetoothDevicesParser,
     AndroidCalendarEventParser,
@@ -34,14 +42,25 @@ from .system import (
 )
 
 
-def android_parser_registry() -> ParserRegistry:
-    registry = ParserRegistry()
-    registry.register(AndroidContactsParser())
+class ApplicationAdapterRegistry(ParserRegistry):
+    """Extended registry for version-resilient Android application adapters."""
+
+    def list_adapters(self) -> tuple[object, ...]:
+        return self.list_parsers()
+
+
+def android_parser_registry() -> ApplicationAdapterRegistry:
+    registry = ApplicationAdapterRegistry()
+    registry.register(AndroidContactsAdapter())
     registry.register(AndroidSmsParser())
     registry.register(AndroidMmsParser())
-    registry.register(AndroidCallLogParser())
-    registry.register(WhatsAppMessageParser())
-    registry.register(TelegramMessageParser())
+    registry.register(AndroidTelephonyAdapter())
+    registry.register(AndroidCallLogAdapter())
+    registry.register(WhatsAppAdapter())
+    registry.register(WhatsAppBackupArtifactParser())
+    registry.register(AccessibleAppArtifactJSONParser())
+    registry.register(TelegramAdapter())
+    registry.register(SignalAdapter())
     registry.register(SnapchatMessageParser())
     registry.register(DiscordMessageParser())
     registry.register(TikTokMessageParser())

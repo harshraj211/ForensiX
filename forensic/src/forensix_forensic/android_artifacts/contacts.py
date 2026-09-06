@@ -1,18 +1,20 @@
-"""Android ContactsProvider contacts2.db parser."""
+"""Android ContactsProvider contacts2.db adapter."""
 
-# ruff: noqa: S608 -- query fragments below are selected only from code-defined columns.
+# ruff: noqa: E501, S608 -- query fragments below are selected only from code-defined columns.
+
 
 from collections import defaultdict
 from collections.abc import Mapping
+from pathlib import Path
 
 from forensix_forensic.evidence_io import (
     ParsedArtifact,
     ParserContext,
-    ParserMetadata,
     SafeSQLiteError,
     SafeSQLiteReader,
 )
 
+from .adapter import AdapterMetadata, AdapterParseResult, AdapterParseStatus, BaseApplicationAdapter
 from .common import compact_metadata, integer, parser_error, require_columns, text
 
 _NAME = "vnd.android.cursor.item/name"
@@ -22,21 +24,33 @@ _ORGANIZATION = "vnd.android.cursor.item/organization"
 _ADDRESS = "vnd.android.cursor.item/postal-address_v2"
 
 
-class AndroidContactsParser:
-    metadata = ParserMetadata(
+class AndroidContactsAdapter(BaseApplicationAdapter):
+    """Android ContactsProvider contacts2.db forensic adapter."""
+
+    metadata = AdapterMetadata(
         parser_id="android.contacts_provider",
-        name="Android Contacts Provider",
-        version="1.0.0",
+        name="Android Contacts Provider Adapter",
+        version="1.1.0",
+        package_name="com.android.providers.contacts",
+        application_name="Android Contacts Provider",
         artifact_categories=("contact",),
         required_tables=frozenset({"data", "mimetypes", "raw_contacts"}),
         access_level="filesystem",
+        maturity="validated",
+        source_path_hints=(),
+        supported_schema_families=("android_contacts2_db",),
+        supported_formats=("sqlite",),
     )
 
     def can_parse(self, tables: frozenset[str]) -> bool:
         return self.metadata.required_tables.issubset(tables)
 
-    def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
-        del context
+    def parse_adapter(
+        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+    ) -> AdapterParseResult:
+        if reader is None:
+            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+
         data_columns = require_columns(
             reader, "data", {"raw_contact_id", "mimetype_id", "data1", "data2", "data3"}
         )
@@ -66,12 +80,19 @@ class AndroidContactsParser:
             rows = reader.execute_select(query)
         except SafeSQLiteError as error:
             raise parser_error(error) from error
+
         grouped: dict[int, list[Mapping[str, object]]] = defaultdict(list)
         for row in rows:
             identifier = integer(row.get("raw_contact_id"))
             if identifier is not None:
                 grouped[identifier].append(row)
-        return [self._artifact(identifier, values) for identifier, values in grouped.items()]
+
+        artifacts = [self._artifact(identifier, values) for identifier, values in grouped.items()]
+        return AdapterParseResult(
+            status=AdapterParseStatus.SUPPORTED,
+            artifacts=artifacts,
+            detected_schema="android_contacts2_db",
+        )
 
     @staticmethod
     def _artifact(identifier: int, rows: list[Mapping[str, object]]) -> ParsedArtifact:
@@ -131,6 +152,10 @@ class AndroidContactsParser:
                     "addresses": addresses,
                     "account_name": account_name,
                     "account_type": account_type,
+                    "application": "android.contacts",
                 }
             ),
         )
+
+
+AndroidContactsParser = AndroidContactsAdapter

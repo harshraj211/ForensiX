@@ -1,6 +1,7 @@
 """Versioned parsers for Android databases obtained through lawful elevated access."""
 
 from .applications import (
+    AccessibleAppArtifactJSONParser,
     DiscordMessageParser,
     GmailMessageParser,
     MetaMessageParser,
@@ -8,6 +9,7 @@ from .applications import (
     TelegramMessageParser,
     TikTokMessageParser,
     WeChatMessageParser,
+    WhatsAppBackupArtifactParser,
     WhatsAppMessageParser,
 )
 from .cloud_tokens import AndroidCloudTokensParser
@@ -41,6 +43,7 @@ from .system import (
 )
 
 __all__ = [
+    "AccessibleAppArtifactJSONParser",
     "AndroidArtifactParserError",
     "AndroidBluetoothConfigParser",
     "AndroidBluetoothDevicesParser",
@@ -73,6 +76,7 @@ __all__ = [
     "TelegramMessageParser",
     "TikTokMessageParser",
     "WeChatMessageParser",
+    "WhatsAppBackupArtifactParser",
     "WhatsAppMessageParser",
     "android_document_parser_registry",
     "android_parser_registry",
