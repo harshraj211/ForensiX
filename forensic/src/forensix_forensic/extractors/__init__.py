@@ -60,6 +60,7 @@ from .hardware import (
     hdlc_encode,
     parse_pit,
 )
+from .cve_2024_31317 import CVE202431317Extractor, CVE202431317Result
 from .signal_rooted import SignalExtractionResult, SignalRootedExtractor
 from .sqlite_carver import CarvedFragment, CarvingResult, SQLiteCarver
 from .streaming_manifest import ExtractionManifest, ManifestEntry, StreamingManifestCollector
@@ -136,5 +137,7 @@ __all__ = [
     "WhatsAppBackupResult",
     "WhatsAppCloudDownloader",
     "WhatsAppCloudToken",
+    "CVE202431317Extractor",
+    "CVE202431317Result",
     "get_apk_downgrade_profile",
 ]
