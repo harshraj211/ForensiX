@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8765, ge=1024, le=65535)
     deployment_transport: Literal["loopback_http", "https"] = "loopback_http"
     groq_api_key: str | None = Field(default=None, min_length=20, max_length=256)
+    xkiro_api_key: str | None = Field(default=None, max_length=512)
     session_ttl_minutes: int = Field(default=480, ge=15, le=1440)
     login_max_failures: int = Field(default=5, ge=3, le=20)
     login_lockout_minutes: int = Field(default=15, ge=1, le=1440)
