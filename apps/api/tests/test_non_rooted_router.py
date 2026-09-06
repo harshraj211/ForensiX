@@ -1,6 +1,7 @@
 """Unit tests for non-rooted extraction router endpoints."""
 
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -12,7 +13,7 @@ from forensix_server.config import Settings
 
 def _create_authenticated_client(tmp_path: Path):
     settings = Settings(environment="test", data_dir=tmp_path / "data")
-    app = create_app(settings)
+    app = create_app(settings, adb_client=AsyncMock())
     client = TestClient(app)
 
     db = app.state.database
