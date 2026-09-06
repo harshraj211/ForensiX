@@ -96,6 +96,26 @@ class ApkDowngradeRequest(BaseModel):
     )
 
 
+class ApkDowngradeProfileResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    profile_id: str
+    display_name: str
+    package_name: str
+
+
+class ApkDowngradeDeviceScanItemResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    profile_id: str
+    display_name: str
+    package_name: str
+    is_installed: bool
+    version_name: str | None
+    capability_status: str
+    capability_reason: str | None
+
+
 class PreservedApkResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -385,9 +405,92 @@ class AuthorisedEntryResponse(BaseModel):
     error_message: str | None
 
 
+class CVE202431317Request(BaseModel):
+    """Request body for targeted non-rooted filesystem extraction (CVE-2024-31317)."""
+
+    serial: str = Field(min_length=1, max_length=255)
+    case_id: str = Field(min_length=1, max_length=255)
+    operator_id: str = Field(min_length=1, max_length=255)
+    target_partition: str = Field(default="userdata", min_length=1, max_length=64)
+    security_vector_acknowledged: bool = Field(
+        description="Operator explicitly acknowledges CVE-2024-31317 execution risks.",
+    )
+
+
+class CVE202431317Response(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    extraction_id: str
+    serial: str
+    security_patch_level: str
+    vulnerable: bool
+    partition_name: str
+    image_file_path: str | None
+    image_size_bytes: int
+    image_sha256: str
+    timeline: list[ExtractionTimelineEntry]
+    duration_seconds: float
+    success: bool
+    error_message: str | None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/apk-downgrade/profiles",
+    response_model=list[ApkDowngradeProfileResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List available app profiles for APK downgrade extraction",
+)
+async def list_apk_downgrade_profiles(
+    case_id: str,
+    _authenticated: Annotated[object, Depends(require_device_operator)],
+) -> list[ApkDowngradeProfileResponse]:
+    from forensix_forensic.extractors import APK_DOWNGRADE_PROFILES
+
+    return [
+        ApkDowngradeProfileResponse(
+            profile_id=p.profile_id,
+            display_name=p.display_name,
+            package_name=p.package_name,
+        )
+        for p in APK_DOWNGRADE_PROFILES.values()
+    ]
+
+
+@router.get(
+    "/apk-downgrade/scan-device",
+    response_model=list[ApkDowngradeDeviceScanItemResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Scan connected device for installed apps and downgrade compatibility",
+)
+async def scan_device_apk_downgrade_profiles(
+    case_id: str,
+    serial: str,
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+    _authenticated: Annotated[object, Depends(require_device_operator)],
+) -> list[ApkDowngradeDeviceScanItemResponse]:
+    from forensix_forensic.extractors import ApkDowngradeExtractor
+
+    work_dir = Path(tempfile.gettempdir())
+    extractor = ApkDowngradeExtractor(adb_client, work_dir)
+    items = await extractor.scan_device_profiles(serial)
+
+    return [
+        ApkDowngradeDeviceScanItemResponse(
+            profile_id=i["profile_id"],
+            display_name=i["display_name"],
+            package_name=i["package_name"],
+            is_installed=i["is_installed"],
+            version_name=i["version_name"],
+            capability_status=i["capability_status"],
+            capability_reason=i["capability_reason"],
+        )
+        for i in items
+    ]
 
 
 @router.post(
@@ -1171,3 +1274,58 @@ async def attempt_authorised_entry(
         timeline=timeline_entries,
         error_message=res.error_message,
     )
+
+
+@router.post(
+    "/cve-2024-31317",
+    response_model=CVE202431317Response,
+    status_code=status.HTTP_201_CREATED,
+    summary="Non-rooted full filesystem acquisition via CVE-2024-31317 (SPL <= June 2024)",
+    description=(
+        "Executes targeted init vulnerability security vector for non-rooted full filesystem "
+        "or userdata partition acquisition on devices with SPL <= June 2024."
+    ),
+)
+async def cve_2024_31317_extract(
+    case_id: str,
+    request: CVE202431317Request,
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+    _authenticated: Annotated[object, Depends(require_device_operator)],
+) -> CVE202431317Response:
+    if not request.security_vector_acknowledged:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Operator must explicitly acknowledge CVE-2024-31317 execution risks.",
+        )
+
+    from forensix_forensic.extractors import (
+        CVE202431317Extractor,
+        StreamingManifestCollector,
+    )
+
+    work_dir = Path(tempfile.mkdtemp(prefix="forensix_cve_2024_31317_"))
+    try:
+        manifest = StreamingManifestCollector(work_dir)
+        extractor = CVE202431317Extractor(adb_client, work_dir, manifest=manifest)
+        result = await extractor.extract(
+            request.serial,
+            case_id=case_id,
+            operator_id=request.operator_id,
+            target_partition=request.target_partition,
+        )
+        return CVE202431317Response(
+            extraction_id=result.extraction_id,
+            serial=result.serial,
+            security_patch_level=result.security_patch_level,
+            vulnerable=result.vulnerable,
+            partition_name=result.partition_name,
+            image_file_path=result.image_file_path,
+            image_size_bytes=result.image_size_bytes,
+            image_sha256=result.image_sha256,
+            timeline=[ExtractionTimelineEntry(**e) for e in result.timeline],
+            duration_seconds=result.duration_seconds,
+            success=result.success,
+            error_message=result.error_message,
+        )
+    finally:
+        pass
