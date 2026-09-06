@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from forensix_api.dependencies import get_adb_client
 from forensix_api.main import create_app
 from forensix_server.auth import AuthService
 from forensix_server.cases import CaseService
@@ -14,6 +15,12 @@ def _create_authenticated_client(tmp_path: Path):
     settings = Settings(environment="test", data_dir=tmp_path / "data")
     app = create_app(settings)
     client = TestClient(app)
+
+    class FakeAdb:
+        async def shell(self, serial: str, command: str) -> str:
+            return ""
+
+    app.dependency_overrides[get_adb_client] = lambda: FakeAdb()
 
     db = app.state.database
     db.initialize()
