@@ -3262,6 +3262,462 @@ export function extractCloudTokens(
   });
 }
 
+export interface KeystoreVaultDecryptResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  decrypted_vaults: Array<{
+    package_name: string;
+    vault_file: string;
+    key_alias: string;
+    decrypted_keys_count: number;
+    sha256_hash: string;
+    sample_content: Record<string, string>;
+  }>;
+  master_key_derivation_status: string;
+  total_vaults_unlocked: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface RawDiskCarveResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  carved_media_items: Array<{
+    file_type: string;
+    offset_bytes: number;
+    size_bytes: number;
+    sha256_hash: string;
+    has_gps: boolean;
+    latitude: number | null;
+    longitude: number | null;
+    camera_model: string | null;
+  }>;
+  total_carved_files: number;
+  total_bytes_carved: number;
+  gps_locations_plotted_count: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface IdentityPersonaCorrelateResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  personas: Array<{
+    persona_id: string;
+    primary_name: string;
+    phone_numbers: string[];
+    email_addresses: string[];
+    app_handles: Record<string, string>;
+    message_count: number;
+    confidence_score: number;
+  }>;
+  total_correlated_identities: number;
+  total_cross_app_messages: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface FbeStateMatrixResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  device_unlock_status: string;
+  fbe_version: string;
+  partitions: Array<{
+    storage_type: string;
+    path: string;
+    bfu_readable: boolean;
+    description: string;
+    estimated_files_count: number;
+  }>;
+  bfu_accessible_databases_count: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface AiVisionOcrRecordResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  target_app: string;
+  scanned_frames_count: number;
+  transcribed_messages: Array<{
+    sender: string;
+    message_text: string;
+    timestamp_str: string;
+    ocr_confidence: number;
+    screen_frame_index: number;
+  }>;
+  pdf_certificate_path: string;
+  certificate_sha256: string;
+  ai_engine_used: string;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export function decryptKeystoreVaults(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<KeystoreVaultDecryptResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/deep/keystore-vault-decrypt`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function carveRawDisk(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<RawDiskCarveResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/deep/raw-disk-carve`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function correlateIdentityPersonas(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<IdentityPersonaCorrelateResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/deep/identity-persona-correlate`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function evaluateFbeMatrix(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<FbeStateMatrixResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/deep/fbe-state-matrix`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function recordAiVisionOcrSession(
+  caseId: string,
+  payload: { serial: string; case_id: string; target_app?: string; operator_id?: string },
+): Promise<AiVisionOcrRecordResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/deep/ai-vision-ocr-record`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface PrivateSpaceProfile {
+  user_id: number;
+  user_name: string;
+  user_type: string;
+  is_unlocked: boolean;
+  is_quiet_mode_enabled: boolean;
+  installed_target_packages: string[];
+  extracted_database_count: number;
+}
+
+export interface Android15PrivateSpaceResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  timestamp: string;
+  profiles_found: PrivateSpaceProfile[];
+  total_private_apps_detected: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message?: string;
+}
+
+export interface Crypt16_17DecryptResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  timestamp: string;
+  backup_format: string;
+  cipher_algorithm: string;
+  hkdf_key_derived: boolean;
+  total_messages_unlocked: number;
+  total_chat_threads: number;
+  sha256_hash: string;
+  duration_seconds: number;
+  success: boolean;
+  error_message?: string;
+}
+
+export interface EphemeralRamKeyItem {
+  package_name: string;
+  pid: number;
+  memory_region: string;
+  key_type: string;
+  entropy_score: number;
+  key_sha256: string;
+}
+
+export interface EphemeralRamScanResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  timestamp: string;
+  keys_extracted: EphemeralRamKeyItem[];
+  total_processes_scanned: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message?: string;
+}
+
+export function scanAndroid15PrivateSpace(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<Android15PrivateSpaceResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/nextgen/android15-private-space-scan`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function decryptWhatsAppCrypt16_17(
+  caseId: string,
+  payload: { serial: string; case_id: string; backup_file_name?: string; operator_id?: string },
+): Promise<Crypt16_17DecryptResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/nextgen/whatsapp-crypt16-17-decrypt`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function scanEphemeralRamKeys(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<EphemeralRamScanResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/nextgen/ephemeral-ram-key-scan`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface CloudSyncItem {
+  service_name: string;
+  target_account: string;
+  token_type: string;
+  synced_artifacts_count: number;
+  data_size_bytes: number;
+  sha256_hash: string;
+}
+
+export interface CloudTokenReplayResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  timestamp: string;
+  synced_services: CloudSyncItem[];
+  total_artifacts_synced: number;
+  total_bytes_downloaded: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message?: string;
+}
+
+export interface LiveTouchRecordResult {
+  session_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  timestamp: string;
+  video_output_path: string;
+  duration_seconds: number;
+  fps: number;
+  total_touch_events_mapped: number;
+  sha256_seal: string;
+  success: boolean;
+  error_message?: string;
+}
+
+export interface AnomalyItem {
+  anomaly_id: string;
+  anomaly_type: string;
+  severity: string;
+  description: string;
+  affected_artifact: string;
+  timestamp_range: string;
+  confidence_score: number;
+}
+
+export interface TimelineAnomalyResult {
+  scan_id: string;
+  case_id: string;
+  operator_id: string;
+  timestamp: string;
+  anomalies_detected: AnomalyItem[];
+  total_events_analyzed: number;
+  alibi_verification_score: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message?: string;
+}
+
+export interface CarvedInodeItem {
+  inode_number: number;
+  file_name: string;
+  file_type: string;
+  size_bytes: number;
+  unallocated_block_range: string;
+  sha256_hash: string;
+}
+
+export interface PhysicalImageMountResult {
+  mount_id: string;
+  image_path: string;
+  case_id: string;
+  operator_id: string;
+  timestamp: string;
+  filesystem_type: string;
+  block_size_bytes: number;
+  total_inodes_scanned: number;
+  carved_inodes: CarvedInodeItem[];
+  duration_seconds: number;
+  success: boolean;
+  error_message?: string;
+}
+
+export function replayCloudTokens(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<CloudTokenReplayResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/breakthrough/cloud-token-replay`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function recordLiveTouch(
+  caseId: string,
+  payload: { serial: string; case_id: string; duration_sec?: number; operator_id?: string },
+): Promise<LiveTouchRecordResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/breakthrough/live-touch-record`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function scanTimelineAnomalies(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<TimelineAnomalyResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/breakthrough/timeline-anomaly-scan`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function mountPhysicalImage(
+  caseId: string,
+  payload: { serial: string; case_id: string; image_path?: string; operator_id?: string },
+): Promise<PhysicalImageMountResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/breakthrough/physical-image-mount`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface AiGatewayStatus {
+  xkiro_vision_available: boolean;
+  xkiro_api_key_configured: boolean;
+  groq_reasoning_available: boolean;
+  active_vision_model: string;
+  active_reasoning_model: string;
+  supported_capabilities: string[];
+  total_audit_events_logged: number;
+}
+
+export interface AiMediaScanItem {
+  item_id: string;
+  file_name: string;
+  category: string;
+  confidence: number;
+  detected_labels: string[];
+  extracted_text: string;
+  sha256_hash: string;
+  risk_level: string;
+}
+
+export interface AiMediaScanResult {
+  case_id: string;
+  total_scanned: number;
+  items: AiMediaScanItem[];
+}
+
+export interface AiCopilotResponse {
+  case_id: string;
+  answer: string;
+  model_used: string;
+  referenced_artifacts: string[];
+  confidence_score: number;
+  timestamp: string;
+}
+
+export interface AiAuditLogItem {
+  audit_id: string;
+  case_id: string;
+  operator_id: string;
+  timestamp: string;
+  model_name: string;
+  provider: string;
+  input_sha256: string;
+  response_sha256: string;
+  prompt_summary: string;
+  court_admissible_signature: string;
+}
+
+export interface AiAuditLogsResult {
+  case_id: string;
+  total_audit_records: number;
+  audit_logs: AiAuditLogItem[];
+}
+
+export function getAiGatewayStatus(caseId: string): Promise<AiGatewayStatus> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/ai-gateway/status`);
+}
+
+export function scanMediaAiIntelligence(
+  caseId: string,
+  fileNames?: string[],
+): Promise<AiMediaScanResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/ai-gateway/scan-media`, {
+    method: "POST",
+    body: JSON.stringify({ file_names: fileNames }),
+  });
+}
+
+export function queryAiCopilot(
+  caseId: string,
+  queryText: string,
+): Promise<AiCopilotResponse> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/ai-gateway/copilot-query`, {
+    method: "POST",
+    body: JSON.stringify({ query_text: queryText }),
+  });
+}
+
+export function getAiAuditLogs(caseId: string): Promise<AiAuditLogsResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/ai-gateway/audit-logs`);
+}
+
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = options.method?.toUpperCase() ?? "GET";
   const headers = new Headers(options.headers);
