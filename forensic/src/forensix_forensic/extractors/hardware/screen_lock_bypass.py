@@ -44,9 +44,21 @@ class WipeRiskTooHighError(RuntimeError):
     """Raised when the pre-bypass risk assessment detects CRITICAL wipe risk."""
 
 
+class FBESafetyBlockError(RuntimeError):
+    """Raised when lock bypass is attempted on a File-Based Encrypted (FBE) or unknown device."""
+
+
 # ---------------------------------------------------------------------------
 # Enumerations and config
 # ---------------------------------------------------------------------------
+
+
+class EncryptionState(StrEnum):
+    """Encryption state classification for lock bypass safety."""
+
+    LEGACY_FDE = "legacy_fde"
+    MODERN_FBE = "modern_fbe"
+    UNKNOWN = "unknown"
 
 
 class BypassVector(StrEnum):
@@ -88,6 +100,7 @@ class ScreenLockBypassResult:
     previous_lock_type: str
     android_api_level: int
     api_path: str
+    encryption_state: str
     lock_disabled_success: bool
     db_patched: bool
     ramdisk_patched: bool
@@ -137,6 +150,8 @@ class ScreenLockBypassEngine:
             If the device does not grant root access.
         WipeRiskTooHighError
             If pre-bypass assessment detects imminent wipe risk.
+        FBESafetyBlockError
+            If lock bypass is attempted on an FBE or unknown device.
         """
         bypass_id = str(uuid4())
         started_at = datetime.now(UTC).isoformat()
@@ -164,7 +179,7 @@ class ScreenLockBypassEngine:
                 started_at=started_at,
                 t0=t0,
             )
-        except (RootNotAvailableError, WipeRiskTooHighError):
+        except (RootNotAvailableError, WipeRiskTooHighError, FBESafetyBlockError):
             raise
         except Exception as exc:  # noqa: BLE001
             return self._error_result(
@@ -234,11 +249,39 @@ class ScreenLockBypassEngine:
             {"api_level": str(api_level), "api_path": api_path.value},
         )
 
-        # Pre-flight 3 — detect current lock type from DB
+        # Pre-flight 3 — detect encryption state (FBE vs FDE)
+        encryption_state = await self._detect_encryption_state(serial, api_level)
+        self._log(
+            "encryption_state_detected",
+            {"encryption_state": encryption_state.value},
+        )
+
+        # Pre-flight 4 — FBE SAFETY GUARD: Fail-closed on FBE or UNKNOWN
+        if encryption_state == EncryptionState.MODERN_FBE:
+            reason = (
+                f"FBE SAFETY GUARD ACTIVATED: Device serial '{serial}' (API level {api_level}) "
+                "uses File-Based Encryption (FBE). Modifying locksettings.db or gatekeeper keys "
+                "on FBE devices corrupts synthetic password metadata in TEE/Keymaster and "
+                "permanently renders Credential-Encrypted (CE) storage unreadable. "
+                "Operation blocked."
+            )
+            self._log("fbe_safety_guard_blocked", {"reason": reason, "api_level": str(api_level)})
+            raise FBESafetyBlockError(reason)
+
+        if encryption_state == EncryptionState.UNKNOWN:
+            reason = (
+                f"FBE SAFETY GUARD ACTIVATED: Device serial '{serial}' returned an "
+                "indeterminate encryption state. Fail-closed policy applied to prevent "
+                "potential FBE storage corruption."
+            )
+            self._log("fbe_safety_guard_blocked", {"reason": reason, "api_level": str(api_level)})
+            raise FBESafetyBlockError(reason)
+
+        # Pre-flight 5 — detect current lock type from DB
         lock_type = await self._detect_lock_type(serial, api_level)
         self._log("lock_type_detected", {"lock_type": lock_type})
 
-        # Pre-flight 4 — pre-patch hash and backup
+        # Pre-flight 6 — pre-patch hash and backup
         pre_hash = await self._read_remote_file_hash(serial, db_path)
         self._log("pre_patch_hash", {"path": db_path, "sha256": pre_hash})
 
@@ -284,6 +327,7 @@ class ScreenLockBypassEngine:
             previous_lock_type=lock_type,
             android_api_level=api_level,
             api_path=api_path.value,
+            encryption_state=encryption_state.value,
             lock_disabled_success=db_patched or ramdisk_patched,
             db_patched=db_patched,
             ramdisk_patched=ramdisk_patched,
@@ -335,6 +379,42 @@ class ScreenLockBypassEngine:
             return int(str(out or "28").strip())
         except Exception:  # noqa: BLE001
             return 28
+
+    async def _detect_encryption_state(self, serial: str, api_level: int) -> EncryptionState:
+        """Detect whether the device uses File-Based Encryption (FBE) or legacy FDE.
+
+        Classification rules:
+        - API >= 30 (Android 11+): FBE is mandatory by Android CDD.
+        - Check ``ro.crypto.type``: "file" -> MODERN_FBE, "block" -> LEGACY_FDE.
+        - Check ``ro.crypto.state``: "encrypted" with API < 24 -> LEGACY_FDE.
+        - If dry_run: returns LEGACY_FDE to allow dry-run logging without raising error.
+        - Default: UNKNOWN (fail-closed).
+        """
+        if self._cfg.dry_run:
+            return EncryptionState.LEGACY_FDE
+
+        # Android 11+ (API 30+) strictly enforces FBE for all devices
+        if api_level >= 30:
+            return EncryptionState.MODERN_FBE
+
+        try:
+            type_raw = await self._adb.shell(serial, "getprop ro.crypto.type")
+            crypto_type = str(type_raw or "").strip().lower()
+            if crypto_type == "file":
+                return EncryptionState.MODERN_FBE
+            if crypto_type == "block":
+                return EncryptionState.LEGACY_FDE
+
+            state_raw = await self._adb.shell(serial, "getprop ro.crypto.state")
+            crypto_state = str(state_raw or "").strip().lower()
+            if crypto_state == "encrypted" and api_level < 24:
+                return EncryptionState.LEGACY_FDE
+            if api_level >= 28 and (crypto_type == "file" or crypto_state == "encrypted"):
+                return EncryptionState.MODERN_FBE
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+        return EncryptionState.UNKNOWN
 
     async def _detect_lock_type(self, serial: str, api_level: int) -> str:
         """Query the current lock type from locksettings.db.
@@ -529,6 +609,7 @@ class ScreenLockBypassEngine:
             previous_lock_type="UNKNOWN",
             android_api_level=0,
             api_path=AndroidApiPath.LEGACY.value,
+            encryption_state=EncryptionState.UNKNOWN.value,
             lock_disabled_success=False,
             db_patched=False,
             ramdisk_patched=False,

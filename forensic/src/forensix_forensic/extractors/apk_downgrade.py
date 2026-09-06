@@ -9,6 +9,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -18,7 +19,26 @@ if TYPE_CHECKING:
     from forensix_forensic.adb.client import AdbClient
 
 MIN_ANDROID_API = 21
-MAX_ANDROID_API = 33
+MAX_ANDROID_API = 30
+
+
+class DowngradeCapabilityStatus(StrEnum):
+    """Classification of target device capability for APK downgrade extraction."""
+
+    SUPPORTED = "supported"
+    LEGACY_SUPPORTED = "legacy_supported"
+    UNSUPPORTED = "unsupported"
+    UNSAFE = "unsafe"
+    UNKNOWN = "unknown"
+
+
+class DowngradeCapabilityBlockError(RuntimeError):
+    """Raised when an APK downgrade extraction is blocked prior to ADB mutations."""
+
+    def __init__(self, status: DowngradeCapabilityStatus, reason: str) -> None:
+        self.status = status
+        self.reason = reason
+        super().__init__(f"APK downgrade capability check failed [{status.value}]: {reason}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +112,8 @@ class ApkDowngradeResult:
     duration_seconds: float
     success: bool
     error_message: str | None
+    capability_status: DowngradeCapabilityStatus = DowngradeCapabilityStatus.UNKNOWN
+    capability_reason: str | None = None
 
 
 class ApkDowngradeExtractor:
@@ -100,6 +122,109 @@ class ApkDowngradeExtractor:
     def __init__(self, adb_client: AdbClient, work_dir: Path) -> None:
         self._adb = adb_client
         self._work_dir = work_dir.resolve()
+
+    async def assess_capability(
+        self,
+        serial: str,
+        profile: ApkDowngradeProfile,
+        *,
+        downgrade_apk_paths: tuple[Path, ...] | None = None,
+        expected_sha256: tuple[str, ...] | None = None,
+    ) -> tuple[DowngradeCapabilityStatus, str, int, str, str | None]:
+        """Perform pre-flight capability assessment before any ADB state modifications."""
+        try:
+            properties = await self._adb.get_properties(serial)
+        except Exception as error:
+            return (
+                DowngradeCapabilityStatus.UNKNOWN,
+                f"Failed to query device properties: {error}",
+                0,
+                "unknown",
+                None,
+            )
+
+        raw_api = properties.get("ro.build.version.sdk", "")
+        android_release = properties.get("ro.build.version.release", "unknown")
+        if not raw_api.isdigit():
+            return (
+                DowngradeCapabilityStatus.UNKNOWN,
+                (
+                    "Device did not report a valid Android API level "
+                    "(ro.build.version.sdk property missing or invalid)."
+                ),
+                0,
+                android_release,
+                None,
+            )
+
+        android_api = int(raw_api)
+
+        if android_api >= 31:
+            return (
+                DowngradeCapabilityStatus.UNSUPPORTED,
+                (
+                    f"Android 12+ (API {android_api}) does not support third-party ADB backup; "
+                    "APK downgrade is unsupported on modern Android."
+                ),
+                android_api,
+                android_release,
+                None,
+            )
+
+        if android_api < profile.min_api or android_api > profile.max_api:
+            return (
+                DowngradeCapabilityStatus.UNSUPPORTED,
+                (
+                    f"{profile.display_name} downgrade is limited to Android API "
+                    f"{profile.min_api}-{profile.max_api}; device reports API {android_api}."
+                ),
+                android_api,
+                android_release,
+                None,
+            )
+
+        if downgrade_apk_paths is not None and expected_sha256 is not None:
+            try:
+                await asyncio.to_thread(
+                    _verify_staged_apks, downgrade_apk_paths, expected_sha256
+                )
+            except Exception as error:
+                return (
+                    DowngradeCapabilityStatus.UNSAFE,
+                    f"Staged APK verification failed: {error}",
+                    android_api,
+                    android_release,
+                    None,
+                )
+
+        original_version: str | None = None
+        try:
+            package_dump = await self._adb.dump_package(serial, profile.package_name)
+            original_version = _parse_version(package_dump)
+            if original_version is None:
+                return (
+                    DowngradeCapabilityStatus.UNSAFE,
+                    f"{profile.display_name} is not installed or has no version metadata.",
+                    android_api,
+                    android_release,
+                    None,
+                )
+        except Exception as error:
+            return (
+                DowngradeCapabilityStatus.UNSAFE,
+                f"Failed to inspect target package {profile.package_name}: {error}",
+                android_api,
+                android_release,
+                None,
+            )
+
+        return (
+            DowngradeCapabilityStatus.LEGACY_SUPPORTED,
+            f"Legacy Android API {android_api} supports APK downgrade extraction.",
+            android_api,
+            android_release,
+            original_version,
+        )
 
     async def extract(
         self,
@@ -130,26 +255,35 @@ class ApkDowngradeExtractor:
         restored = False
         success = False
         error_message: str | None = None
+        capability_status = DowngradeCapabilityStatus.UNKNOWN
+        capability_reason: str | None = None
 
         run_dir.mkdir(parents=True, exist_ok=False)
         originals_dir.mkdir()
         try:
-            properties = await self._adb.get_properties(serial)
-            android_release = properties.get("ro.build.version.release", "unknown")
-            android_api = _parse_android_api(properties)
-            if not profile.min_api <= android_api <= profile.max_api:
-                raise RuntimeError(
-                    f"{profile.display_name} downgrade is limited to Android 5-13 "
-                    f"(API 21-33); device reports API {android_api}."
-                )
-            _log(timeline, "STEP", f"Android {android_release} (API {android_api}) accepted")
+            (
+                status,
+                reason,
+                android_api,
+                android_release,
+                original_version,
+            ) = await self.assess_capability(
+                serial,
+                profile,
+                downgrade_apk_paths=downgrade_apk_paths,
+                expected_sha256=expected_sha256,
+            )
+            capability_status = status
+            capability_reason = reason
+            _log(timeline, "CAPABILITY_CHECK", f"Capability status [{status.value}]: {reason}")
 
-            package_dump = await self._adb.dump_package(serial, profile.package_name)
-            original_version = _parse_version(package_dump)
-            if original_version is None:
-                raise RuntimeError(
-                    f"{profile.display_name} is not installed or has no version metadata."
-                )
+            if status not in (
+                DowngradeCapabilityStatus.SUPPORTED,
+                DowngradeCapabilityStatus.LEGACY_SUPPORTED,
+            ):
+                raise DowngradeCapabilityBlockError(status, reason)
+
+            _log(timeline, "STEP", f"Android {android_release} (API {android_api}) accepted")
             _log(timeline, "STEP", f"Installed version: {original_version}")
 
             staged_apks = await asyncio.to_thread(
@@ -178,7 +312,7 @@ class ApkDowngradeExtractor:
                 operator_id=operator_id,
                 serial=serial,
                 profile=profile,
-                original_version=original_version,
+                original_version=original_version or "unknown",
                 preserved=preserved,
                 state="prepared",
             )
@@ -202,6 +336,9 @@ class ApkDowngradeExtractor:
             _update_journal_state(journal_path, "backup_captured")
             _log(timeline, "STEP", f"ADB backup captured: {backup_size} bytes")
             success = True
+        except DowngradeCapabilityBlockError as error:
+            error_message = error.reason
+            _log(timeline, "ERROR", error_message)
         except Exception as error:
             error_message = str(error)
             _log(timeline, "ERROR", error_message)
@@ -250,6 +387,8 @@ class ApkDowngradeExtractor:
             duration_seconds=time.monotonic() - started,
             success=success and restored,
             error_message=error_message,
+            capability_status=capability_status,
+            capability_reason=capability_reason,
         )
 
 

@@ -18,8 +18,10 @@ from uuid import uuid4
 
 from .agent_result import (
     AgentExtractionResult,
+    app_artifacts_from_json,
     call_logs_from_json,
     contacts_from_json,
+    device_metadata_from_json,
     installed_apps_from_json,
     sms_from_json,
 )
@@ -67,6 +69,8 @@ class AgentCollector:
             sms_data = await self._pull_and_parse_json(serial, "sms.json")
             call_log_data = await self._pull_and_parse_json(serial, "call_logs.json")
             apps_data = await self._pull_and_parse_json(serial, "installed_apps.json")
+            meta_data = await self._pull_and_parse_json(serial, "device_metadata.json")
+            artifacts_data = await self._pull_and_parse_json(serial, "app_artifacts.json")
 
             contacts = contacts_from_json(contacts_data) if isinstance(contacts_data, list) else ()
             sms_msgs = sms_from_json(sms_data) if isinstance(sms_data, list) else ()
@@ -75,6 +79,14 @@ class AgentCollector:
             )
             installed_apps = (
                 installed_apps_from_json(apps_data) if isinstance(apps_data, list) else ()
+            )
+            device_metadata = (
+                device_metadata_from_json(meta_data) if isinstance(meta_data, dict) else None
+            )
+            app_artifacts = (
+                app_artifacts_from_json(artifacts_data)
+                if isinstance(artifacts_data, list)
+                else ()
             )
 
             if self._cfg.cleanup_after_pull:
@@ -92,7 +104,9 @@ class AgentCollector:
                 sms_messages=sms_msgs,
                 call_logs=call_logs,
                 installed_apps=installed_apps,
-                media_file_count=0,
+                media_file_count=sum(
+                    1 for a in app_artifacts if a.artifact_category == "media"
+                ),
                 output_dir=str(self._output_dir),
                 timeline=list(self._timeline),
                 started_at=started_at,
@@ -100,6 +114,8 @@ class AgentCollector:
                 duration_seconds=round(duration, 3),
                 success=True,
                 error_message=None,
+                device_metadata=device_metadata,
+                app_artifacts=app_artifacts,
             )
 
         except Exception as exc:  # noqa: BLE001
