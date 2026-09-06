@@ -40,7 +40,6 @@ import {
   getCurrentUser,
   listApkDowngradeProfiles,
   scanDeviceApkDowngradeProfiles,
-  type ApkDowngradeDeviceScanItem,
   type ApkDowngradeResult,
   type CVE202431317Result,
   type SQLiteCarvingResult,
@@ -403,7 +402,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
                         </div>
                         <button
                           type="button"
-                          onClick={() => setSelectedProfileId(item.profile_id)}
+                          onClick={() => { setSelectedProfileId(item.profile_id); }}
                           className={`rounded bg-slate-900 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-black transition ${
                             selectedProfileId === item.profile_id ? "ring-2 ring-indigo-500 bg-indigo-700" : ""
                           }`}
@@ -427,7 +426,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
               <select
                 id="profile-id"
                 value={selectedProfileId}
-                onChange={(e) => setSelectedProfileId(e.target.value)}
+                onChange={(e) => { setSelectedProfileId(e.target.value); }}
                 className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-slate-900 focus:outline-none"
               >
                 {(profilesQuery.data ?? [
@@ -456,7 +455,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
                 id="apk-path"
                 type="text"
                 value={apkPath}
-                onChange={(e) => setApkPath(e.target.value)}
+                onChange={(e) => { setApkPath(e.target.value); }}
                 placeholder="e.g. C:\tools\apks\legacy_whatsapp.apk"
                 className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
               />
@@ -471,7 +470,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
               id="apk-sha256"
               type="text"
               value={apkSha256}
-              onChange={(e) => setApkSha256(e.target.value)}
+              onChange={(e) => { setApkSha256(e.target.value); }}
               placeholder="e.g. e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
               className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none"
             />
@@ -480,7 +479,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
           <button
             type="button"
             disabled={!effectiveSerial.trim() || !apkPath.trim() || !apkSha256.trim() || apkDowngradeMutation.isPending}
-            onClick={() => apkDowngradeMutation.mutate()}
+            onClick={() => { apkDowngradeMutation.mutate(); }}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-slate-900 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-black disabled:opacity-40"
           >
             {apkDowngradeMutation.isPending ? (
@@ -524,7 +523,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
             <select
               id="target-partition"
               value={targetPartition}
-              onChange={(e) => setTargetPartition(e.target.value)}
+              onChange={(e) => { setTargetPartition(e.target.value); }}
               className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-900 focus:border-slate-900 focus:outline-none"
             >
               <option value="userdata">userdata (User data and application sandboxes)</option>
@@ -536,7 +535,7 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
           <button
             type="button"
             disabled={!effectiveSerial.trim() || cve202431317Mutation.isPending}
-            onClick={() => cve202431317Mutation.mutate()}
+            onClick={() => { cve202431317Mutation.mutate(); }}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-slate-900 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-black disabled:opacity-40"
           >
             {cve202431317Mutation.isPending ? (

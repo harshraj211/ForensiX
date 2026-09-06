@@ -8,11 +8,13 @@ Provides comprehensive diagnostic extraction without requiring root access:
 5. **Per-App Network Traffic Volume** (`dumpsys netstats`): Details RX/TX byte counts per application UID over cellular & Wi-Fi.
 """
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -133,7 +135,7 @@ class DumpsysTelemetryMiner:
 
     async def _run_adb_shell(self, serial: str, cmd: str) -> str:
         if hasattr(self.adb, "shell"):
-            return await self.adb.shell(serial, cmd)
+            return str(await self.adb.shell(serial, cmd))
         return ""
 
     def _parse_usagestats(self, raw: str) -> list[AppUsageRecord]:
@@ -195,7 +197,10 @@ class DumpsysTelemetryMiner:
         records: list[BluetoothDeviceRecord] = []
         if not raw:
             return records
-        macs = re.findall(r"([0-9A-FA-F]{2}:[0-9A-FA-F]{2}:[0-9A-FA-F]{2}:[0-9A-FA-F]{2}:[0-9A-FA-F]{2}:[0-9A-FA-F]{2})", raw)
+        macs = re.findall(
+            r"([0-9A-FA-F]{2}:[0-9A-FA-F]{2}:[0-9A-FA-F]{2}:[0-9A-FA-F]{2}:[0-9A-FA-F]{2}:[0-9A-FA-F]{2})",
+            raw,
+        )
         names = re.findall(r"name\s*=\s*([^\n,]+)", raw)
         for i, mac in enumerate(macs[:20]):
             name = names[i].strip() if i < len(names) else f"Device_{mac[-5:]}"
@@ -213,7 +218,9 @@ class DumpsysTelemetryMiner:
         cell_id = re.search(r"mCellIdentity=(.*?)\n", raw)
         mcc_mnc = re.search(r"mOperatorAlphaLong=(.*?)\n", raw)
         return {
-            "cell_identity": cell_id.group(1).strip() if cell_id else "CellIdentityLte: cid=48291, lac=104",
+            "cell_identity": cell_id.group(1).strip()
+            if cell_id
+            else "CellIdentityLte: cid=48291, lac=104",
             "operator": mcc_mnc.group(1).strip() if mcc_mnc else "LTE / 5G Carrier",
             "registered_cells_count": 1,
         }

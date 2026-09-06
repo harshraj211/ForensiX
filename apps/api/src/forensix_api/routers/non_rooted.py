@@ -10,10 +10,9 @@ Provides REST endpoints for:
 
 from __future__ import annotations
 
-import time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from forensix_api.dependencies import get_adb_client, require_device_operator
@@ -46,7 +45,9 @@ class BaseNonRootedRequest(BaseModel):
 
 
 class AccessibilityScrapeRequest(BaseNonRootedRequest):
-    target_package: str = Field(default="com.whatsapp", description="Target application package name")
+    target_package: str = Field(
+        default="com.whatsapp", description="Target application package name"
+    )
 
 
 class VendorBackupRequest(BaseNonRootedRequest):

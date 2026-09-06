@@ -3,6 +3,8 @@
 Acquires filesystem data / userdata partition images on devices with Security Patch Level (SPL) <= June 2024.
 """
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import asyncio
@@ -99,23 +101,35 @@ class CVE202431317Extractor:
         error_message: str | None = None
 
         try:
-            await self._log(timeline, "STEP", "Evaluating device Security Patch Level for CVE-2024-31317 vulnerability")
+            await self._log(
+                timeline,
+                "STEP",
+                "Evaluating device Security Patch Level for CVE-2024-31317 vulnerability",
+            )
             vulnerable, spl, reason = await self.assess_capability(serial)
             await self._log(timeline, "STEP", f"Assessment result: {reason}")
 
             if not vulnerable:
                 raise RuntimeError(f"Device capability check blocked extraction: {reason}")
 
-            await self._log(timeline, "STEP", f"Staging CVE-2024-31317 vector payload for partition: {target_partition}")
+            await self._log(
+                timeline,
+                "STEP",
+                f"Staging CVE-2024-31317 vector payload for partition: {target_partition}",
+            )
             await asyncio.sleep(0.5)
 
             # Establish stream channel and acquire block stream
-            await self._log(timeline, "STEP", f"Executing vector payload to stream /dev/block/by-name/{target_partition}")
-            
+            await self._log(
+                timeline,
+                "STEP",
+                f"Executing vector payload to stream /dev/block/by-name/{target_partition}",
+            )
+
             # Using ADB shell stream reading target block device
             remote_block = f"/dev/block/by-name/{target_partition}"
             cmd = f"test -e {remote_block} && dd if={remote_block} bs=1M status=none"
-            
+
             digest = sha256()
             out_bytes = 0
 
@@ -130,10 +144,12 @@ class CVE202431317Extractor:
                     image_path.write_bytes(data)
                     digest.update(data)
                     out_bytes = len(data)
-            
+
             if out_bytes == 0:
                 # Synthetic/Simulated fallback for testing environments
-                dummy_header = f"FORENSIX_CVE_2024_31317_IMAGE_{target_partition}_{extraction_id}".encode("utf-8")
+                dummy_header = (
+                    f"FORENSIX_CVE_2024_31317_IMAGE_{target_partition}_{extraction_id}".encode()
+                )
                 dummy_payload = dummy_header + b"\x00" * (1024 * 1024)
                 image_path.write_bytes(dummy_payload)
                 digest.update(dummy_payload)
@@ -175,8 +191,8 @@ class CVE202431317Extractor:
         return CVE202431317Result(
             extraction_id=extraction_id,
             serial=serial,
-            security_patch_level=spl if 'spl' in locals() else "unknown",
-            vulnerable=vulnerable if 'vulnerable' in locals() else False,
+            security_patch_level=spl if "spl" in locals() else "unknown",
+            vulnerable=vulnerable if "vulnerable" in locals() else False,
             partition_name=target_partition,
             image_file_path=str(image_path) if success else None,
             image_size_bytes=image_size,

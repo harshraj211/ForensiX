@@ -52,7 +52,7 @@ class VendorBackupExtractor:
 
         try:
             # 1. Perform vendor RPC handshake probe via ADB
-            handshake = await self._run_vendor_handshake(serial, vendor_type)
+            await self._run_vendor_handshake(serial, vendor_type)
 
             # 2. Extract vendor backup bundles (SMS/CallLog/Contacts/App backups)
             items = [
@@ -114,5 +114,5 @@ class VendorBackupExtractor:
         if hasattr(self.adb, "shell"):
             cmd = "getprop ro.product.manufacturer"
             res = await self.adb.shell(serial, cmd)
-            return res
+            return str(res)
         return "samsung"

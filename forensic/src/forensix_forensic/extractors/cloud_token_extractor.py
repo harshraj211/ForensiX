@@ -12,6 +12,9 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+# Token labels are descriptive evidence metadata, not credentials.
+# ruff: noqa: S106
+
 
 @dataclass(frozen=True, slots=True)
 class CloudTokenItem:

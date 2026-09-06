@@ -90,11 +90,11 @@ class AccessibilityAgentExtractor:
     async def _run_uiautomator_dump(self, serial: str) -> str:
         if hasattr(self.adb, "shell"):
             cmd = "uiautomator dump /sdcard/window_dump.xml && cat /sdcard/window_dump.xml"
-            return await self.adb.shell(serial, cmd)
+            return str(await self.adb.shell(serial, cmd))
         return ""
 
     def _parse_ui_hierarchy(self, xml_str: str, target_package: str) -> list[UiTranscriptRecord]:
-        # Return fallback mock structured records if uiautomator output is empty in test/mock environment
+        # Return fallback records when UI Automator output is empty in tests.
         if not xml_str or "node" not in xml_str:
             return [
                 UiTranscriptRecord(

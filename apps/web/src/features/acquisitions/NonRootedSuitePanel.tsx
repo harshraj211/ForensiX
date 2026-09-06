@@ -8,8 +8,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Smartphone,
-  ShieldCheck,
   Zap,
 } from "lucide-react";
 import {
@@ -144,7 +142,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
         <div className="mt-6 flex flex-wrap gap-2 border-t border-cyan-800/60 pt-4">
           <button
             type="button"
-            onClick={() => setActiveTab("telemetry")}
+            onClick={() => { setActiveTab("telemetry"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
               activeTab === "telemetry"
                 ? "bg-cyan-500 text-slate-950 shadow-sm"
@@ -155,7 +153,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("vendor")}
+            onClick={() => { setActiveTab("vendor"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
               activeTab === "vendor"
                 ? "bg-cyan-500 text-slate-950 shadow-sm"
@@ -166,7 +164,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("accessibility")}
+            onClick={() => { setActiveTab("accessibility"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
               activeTab === "accessibility"
                 ? "bg-cyan-500 text-slate-950 shadow-sm"
@@ -177,7 +175,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("providers")}
+            onClick={() => { setActiveTab("providers"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
               activeTab === "providers"
                 ? "bg-cyan-500 text-slate-950 shadow-sm"
@@ -188,7 +186,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("cloud")}
+            onClick={() => { setActiveTab("cloud"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
               activeTab === "cloud"
                 ? "bg-cyan-500 text-slate-950 shadow-sm"
@@ -219,7 +217,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
             </div>
             <button
               type="button"
-              onClick={handleRunTelemetry}
+              onClick={() => { void handleRunTelemetry(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-cyan-800 disabled:opacity-50"
             >
@@ -269,7 +267,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
           <div className="flex items-center gap-3">
             <select
               value={vendorType}
-              onChange={(e) => setVendorType(e.target.value)}
+              onChange={(e) => { setVendorType(e.target.value); }}
               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
             >
               <option value="samsung_smartswitch">Samsung Smart Switch RPC</option>
@@ -279,7 +277,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
 
             <button
               type="button"
-              onClick={handleRunVendorBackup}
+              onClick={() => { void handleRunVendorBackup(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-cyan-800 disabled:opacity-50"
             >
@@ -323,13 +321,13 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
             <input
               type="text"
               value={targetPackage}
-              onChange={(e) => setTargetPackage(e.target.value)}
+              onChange={(e) => { setTargetPackage(e.target.value); }}
               placeholder="e.g. com.whatsapp"
               className="w-64 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-sm"
             />
             <button
               type="button"
-              onClick={handleRunAccessibilityScrape}
+              onClick={() => { void handleRunAccessibilityScrape(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-cyan-800 disabled:opacity-50"
             >
@@ -372,7 +370,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
             </div>
             <button
               type="button"
-              onClick={handleRunProviderHarvest}
+              onClick={() => { void handleRunProviderHarvest(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-cyan-800 disabled:opacity-50"
             >
@@ -411,7 +409,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
             </div>
             <button
               type="button"
-              onClick={handleRunCloudTokens}
+              onClick={() => { void handleRunCloudTokens(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-cyan-800 disabled:opacity-50"
             >

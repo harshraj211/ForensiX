@@ -410,10 +410,8 @@ class ApkDowngradeExtractor:
     async def scan_device_profiles(self, serial: str) -> list[dict[str, Any]]:
         """Scans device via ADB to check installation & downgrade readiness for all 46 profiles."""
         installed_packages: set[str] = set()
-        try:
+        with suppress(Exception):
             installed_packages = set(await self._adb.list_packages(serial))
-        except Exception:
-            pass
 
         results: list[dict[str, Any]] = []
         for profile in APK_DOWNGRADE_PROFILES.values():

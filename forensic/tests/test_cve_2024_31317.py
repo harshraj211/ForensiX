@@ -1,11 +1,11 @@
 """Tests for CVE-2024-31317 targeted filesystem extractor."""
 
-import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock
 
+import pytest
+
 from forensix_forensic.extractors.cve_2024_31317 import (
-    MAX_VULNERABLE_SPL,
     CVE202431317Extractor,
 )
 

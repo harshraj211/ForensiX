@@ -4,6 +4,8 @@ Automates extraction of accessible content providers via ADB shell query interfa
 Retrieves media indexes, deleted file remnants, SIM card ICCIDs, system settings, and telephony data.
 """
 
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 import asyncio

@@ -1,6 +1,7 @@
 """Unit tests for non-rooted extraction router endpoints."""
 
 from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from forensix_api.main import create_app

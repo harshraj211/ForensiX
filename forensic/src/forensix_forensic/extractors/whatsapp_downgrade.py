@@ -541,27 +541,33 @@ class WhatsAppDowngradeExtractor:
             with tarfile.open(fileobj=io.BytesIO(tar_data), mode="r:*") as tar:
                 all_members = tar.getmembers()
                 if len(all_members) > max_files:
-                    raise ValueError(f"Backup archive contains too many members ({len(all_members)} > {max_files})")
+                    raise ValueError(
+                        f"Backup archive contains too many members ({len(all_members)} > {max_files})"
+                    )
                 for member in all_members:
                     if not member.isfile():
                         continue
                     if member.size > max_file_size:
-                        raise ValueError(f"Member {member.name} exceeds max file size limit ({member.size} bytes)")
+                        raise ValueError(
+                            f"Member {member.name} exceeds max file size limit ({member.size} bytes)"
+                        )
                     total_extracted += member.size
                     if total_extracted > max_total_size:
-                        raise ValueError(f"Archive extraction total size exceeds limit ({max_total_size} bytes)")
-                    
+                        raise ValueError(
+                            f"Archive extraction total size exceeds limit ({max_total_size} bytes)"
+                        )
+
                     # Guard against path traversal, absolute paths, or symlinks
                     if member.issym() or member.islnk():
                         continue
                     clean_name = member.name.lstrip("/").replace("\\", "/")
                     if ".." in clean_name.split("/"):
                         continue
-                    
+
                     dest_path = (dest_dir / clean_name).resolve()
                     if not dest_path.is_relative_to(dest_dir.resolve()):
                         continue
-                    
+
                     dest_path.parent.mkdir(parents=True, exist_ok=True)
                     extracted_file = tar.extractfile(member)
                     if extracted_file:
