@@ -17,12 +17,16 @@ import {
   ShieldAlert,
   ShieldCheck,
   Smartphone,
+  Brain,
   Sparkles,
   Unlock,
   Zap,
 } from "lucide-react";
 
 import { NonRootedSuitePanel } from "./NonRootedSuitePanel";
+import { DeepForensicsPanel } from "./DeepForensicsPanel";
+import { NextGenForensicsPanel } from "./NextGenForensicsPanel";
+import { BreakthroughForensicsPanel } from "./BreakthroughForensicsPanel";
 
 import {
   assessScreenLock,
@@ -59,8 +63,8 @@ interface AdvancedExtractionsPanelProps {
 
 export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelProps) {
   const [activeTab, setActiveTab] = useState<
-    "non_rooted" | "whatsapp" | "cve202431317" | "apk_downgrade" | "screenlock" | "signal" | "telegram" | "sqlite"
-  >("non_rooted");
+    "breakthrough" | "nextgen" | "deep" | "non_rooted" | "whatsapp" | "cve202431317" | "apk_downgrade" | "screenlock" | "signal" | "telegram" | "sqlite"
+  >("breakthrough");
   const [serial, setSerial] = useState("");
   const [operatorId, setOperatorId] = useState("");
   const [sqlitePaths, setSqlitePaths] = useState("");
@@ -202,6 +206,9 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
       {/* Tabs */}
       <div className="mt-6 flex flex-wrap gap-2 border-b border-slate-100 pb-4">
         {[
+          { id: "breakthrough", label: "Breakthrough Suite (Cloud, Touch & EXT4)", icon: Zap },
+          { id: "nextgen", label: "Next-Gen Suite (Android 15 & Crypt16)", icon: Zap },
+          { id: "deep", label: "Tier-1 Deep Forensics & AI", icon: Brain },
           { id: "non_rooted", label: "Non-Rooted Suite (5 Pillars)", icon: Zap },
           { id: "whatsapp", label: "WhatsApp Downgrade", icon: MessageSquare },
           { id: "apk_downgrade", label: "Generic APK Downgrade (46 Apps)", icon: Layers },
@@ -289,6 +296,27 @@ export function AdvancedExtractionsPanel({ caseId }: AdvancedExtractionsPanelPro
             />
           </div>
         </div>
+
+      {/* Tab: Breakthrough Suite */}
+      {activeTab === "breakthrough" && (
+        <div className="mt-6">
+          <BreakthroughForensicsPanel caseId={caseId} serial={effectiveSerial.trim()} />
+        </div>
+      )}
+
+      {/* Tab: Next-Gen Suite */}
+      {activeTab === "nextgen" && (
+        <div className="mt-6">
+          <NextGenForensicsPanel caseId={caseId} serial={effectiveSerial.trim()} />
+        </div>
+      )}
+
+      {/* Tab: Tier-1 Deep Forensics */}
+      {activeTab === "deep" && (
+        <div className="mt-5">
+          <DeepForensicsPanel caseId={caseId} serial={effectiveSerial} />
+        </div>
+      )}
 
       {/* Tab: Non-Rooted Suite */}
       {activeTab === "non_rooted" && (
