@@ -69,14 +69,18 @@ class TestUnisocFdlRegistry:
 
 
 class TestScreenLockBypassEngine:
-    def test_bypass_lock_settings_db_patch(self, tmp_path: Path) -> None:
+    def test_bypass_lock_settings_db_patch_legacy_fde(self, tmp_path: Path) -> None:
         mock_adb = AsyncMock()
 
         async def mock_shell(serial: str, cmd: str) -> str:
             if "id" in cmd:
                 return "uid=0(root) gid=0(root)"
-            if "getprop" in cmd:
-                return "28"
+            if "ro.build.version.sdk" in cmd:
+                return "23"  # API 23 (Android 6.0) -> LEGACY_FDE
+            if "ro.crypto.type" in cmd:
+                return "block"
+            if "ro.crypto.state" in cmd:
+                return "encrypted"
             if "lockscreen.disabled" in cmd and "SELECT" in cmd:
                 return "1"
             if "lockscreen.password_type" in cmd:
@@ -107,8 +111,86 @@ class TestScreenLockBypassEngine:
         assert result.success is True
         assert result.db_patched is True
         assert result.vector_used == "locksettings_db_patch"
-        assert result.android_api_level == 28
+        assert result.android_api_level == 23
+        assert result.encryption_state == "legacy_fde"
         assert len(result.timeline) > 0
+
+    def test_fbe_safety_guard_blocks_api30_plus(self, tmp_path: Path) -> None:
+        from forensix_forensic.extractors.hardware import FBESafetyBlockError
+
+        mock_adb = AsyncMock()
+
+        async def mock_shell(serial: str, cmd: str) -> str:
+            if "id" in cmd:
+                return "uid=0(root) gid=0(root)"
+            if "ro.build.version.sdk" in cmd:
+                return "31"  # Android 12 -> Modern FBE
+            return ""
+
+        mock_adb.shell = mock_shell
+
+        engine = ScreenLockBypassEngine(adb=mock_adb, output_dir=tmp_path)
+
+        with pytest.raises(FBESafetyBlockError, match="FBE SAFETY GUARD ACTIVATED"):
+            asyncio.run(
+                engine.bypass_lock(
+                    serial="emulator-5554",
+                    case_id="CASE-2026-001",
+                    operator_id="examiner@lab.example",
+                )
+            )
+
+    def test_fbe_safety_guard_blocks_fbe_property(self, tmp_path: Path) -> None:
+        from forensix_forensic.extractors.hardware import FBESafetyBlockError
+
+        mock_adb = AsyncMock()
+
+        async def mock_shell(serial: str, cmd: str) -> str:
+            if "id" in cmd:
+                return "uid=0(root) gid=0(root)"
+            if "ro.build.version.sdk" in cmd:
+                return "28"  # Android 9
+            if "ro.crypto.type" in cmd:
+                return "file"  # File-Based Encryption
+            return ""
+
+        mock_adb.shell = mock_shell
+
+        engine = ScreenLockBypassEngine(adb=mock_adb, output_dir=tmp_path)
+
+        with pytest.raises(FBESafetyBlockError, match="uses File-Based Encryption"):
+            asyncio.run(
+                engine.bypass_lock(
+                    serial="emulator-5554",
+                    case_id="CASE-2026-001",
+                    operator_id="examiner@lab.example",
+                )
+            )
+
+    def test_fbe_safety_guard_blocks_unknown_encryption_state(self, tmp_path: Path) -> None:
+        from forensix_forensic.extractors.hardware import FBESafetyBlockError
+
+        mock_adb = AsyncMock()
+
+        async def mock_shell(serial: str, cmd: str) -> str:
+            if "id" in cmd:
+                return "uid=0(root) gid=0(root)"
+            if "ro.build.version.sdk" in cmd:
+                return "28"
+            return ""  # Empty crypto props -> UNKNOWN
+
+        mock_adb.shell = mock_shell
+
+        engine = ScreenLockBypassEngine(adb=mock_adb, output_dir=tmp_path)
+
+        with pytest.raises(FBESafetyBlockError, match="indeterminate encryption state"):
+            asyncio.run(
+                engine.bypass_lock(
+                    serial="emulator-5554",
+                    case_id="CASE-2026-001",
+                    operator_id="examiner@lab.example",
+                )
+            )
 
     def test_bypass_lock_root_not_available(self, tmp_path: Path) -> None:
         mock_adb = AsyncMock()
