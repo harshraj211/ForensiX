@@ -706,6 +706,10 @@ def _validate_root_command(command: str) -> None:
         raise ValueError("Root command must contain between 1 and 2048 characters")
     if "\x00" in command or "\r" in command or "\n" in command:
         raise ValueError("Root command contains a prohibited control character")
+    # Reject high-risk command injection operators (command chaining/substitution)
+    for forbidden in (";", "&&", "||", "`", "$("):
+        if forbidden in command:
+            raise ValueError(f"Root command contains a prohibited operator: '{forbidden}'")
     allowed_prefixes = (
         "cat ",
         "cp ",
@@ -719,11 +723,13 @@ def _validate_root_command(command: str) -> None:
         "sqlite3 ",
         "sha256sum ",
         "md5sum ",
+        "base64 ",
         "am ",
         "pm ",
         "input ",
         "getprop ",
         "setprop ",
+        "id",
         "id ",
     )
     normalized = command.strip()
