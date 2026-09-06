@@ -1,5 +1,6 @@
 """Protected durable acquisition-job preparation and observation endpoints."""
 
+import json
 from datetime import UTC, datetime
 from typing import Annotated, Literal, cast
 
@@ -20,14 +21,24 @@ from forensix_api.schemas import (
     AcquisitionJobPrepareRequest,
     AcquisitionJobResponse,
     AcquisitionPartialResponse,
+    AcquisitionPipelineExecuteRequest,
+    AcquisitionPipelineResultResponse,
+    AcquisitionPlanRecommendationResponse,
     AcquisitionResumeRequest,
+    AcquisitionVectorEvaluationResponse,
+    AppAcquisitionRouteResponse,
     BulkAcquireItemResponse,
     BulkAcquireRequest,
     BulkAcquireResponse,
     EvidenceVerificationResponse,
     JobEventResponse,
 )
+from forensix_forensic.acquisitions import AcquisitionPipelineOrchestrator
 from forensix_forensic.adb import AdbClient
+from forensix_forensic.capabilities import (
+    AcquisitionVectorDecisionEngine,
+    DeviceCapabilitySnapshot,
+)
 from forensix_server.acquisitions import (
     AcquisitionExecutionService,
     AcquisitionFileService,
@@ -40,12 +51,14 @@ from forensix_server.acquisitions import (
     job_checkpoint,
 )
 from forensix_server.auth import AuthenticatedSession
+from forensix_server.cases import CaseNotFoundError, CaseService
 from forensix_server.db import (
     AcquiredEvidenceFileRecord,
     AcquisitionInventoryItemRecord,
     AcquisitionInventoryRecord,
     AcquisitionPartialRecord,
     ArtifactRecord,
+    CaseDeviceAssessmentRecord,
     Database,
     EvidenceVerificationRecord,
     JobEventRecord,
@@ -557,3 +570,98 @@ def _verification_response(
 
 def _aware_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+@router.post("/recommend-plan", response_model=AcquisitionPlanRecommendationResponse)
+def recommend_acquisition_plan(
+    case_id: str,
+    assessment_id: str = Query(..., min_length=36, max_length=36),
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)] = None,  # type: ignore[assignment]
+    database: Annotated[Database, Depends(get_database)] = None,  # type: ignore[assignment]
+) -> AcquisitionPlanRecommendationResponse:
+    with database.session() as session:
+        CaseService().get(session, authenticated.principal, case_id)
+        assessment = session.get(CaseDeviceAssessmentRecord, assessment_id)
+        if assessment is None or assessment.case_id != case_id:
+            raise CaseNotFoundError("Assessment snapshot not found for this case device.")
+
+        snapshot_data = json.loads(assessment.snapshot_json)
+        snapshot = DeviceCapabilitySnapshot.model_validate(snapshot_data)
+
+    engine = AcquisitionVectorDecisionEngine()
+    recommendation = engine.evaluate(snapshot)
+
+    return AcquisitionPlanRecommendationResponse(
+        primary_vector=recommendation.primary_vector.value,
+        fallback_vectors=[v.value for v in recommendation.fallback_vectors],
+        vector_evaluations={
+            k: AcquisitionVectorEvaluationResponse(
+                vector=v.vector.value,
+                status=v.status.value,
+                yield_score=v.yield_score,
+                risk_level=v.risk_level.value,
+                reason_code=v.reason_code,
+                explanation=v.explanation,
+                evidence=v.evidence,
+                prerequisites=list(v.prerequisites),
+                target_surfaces=list(v.target_surfaces),
+            )
+            for k, v in recommendation.vector_evaluations.items()
+        },
+        app_routes={
+            k: AppAcquisitionRouteResponse(
+                package_name=r.package_name,
+                app_name=r.app_name,
+                recommended_surface=r.recommended_surface,
+                vector=r.vector.value,
+                expected_yield=r.expected_yield,
+                explanation=r.explanation,
+            )
+            for k, r in recommendation.app_routes.items()
+        },
+        warnings=list(recommendation.warnings),
+        limitations=list(recommendation.limitations),
+        assessed_serial=recommendation.assessed_serial,
+        recommended_at_iso=recommendation.recommended_at_iso,
+    )
+
+
+@router.post("/execute-pipeline", response_model=AcquisitionPipelineResultResponse)
+async def execute_acquisition_pipeline(
+    case_id: str,
+    request: AcquisitionPipelineExecuteRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
+    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
+) -> AcquisitionPipelineResultResponse:
+    with database.session() as session:
+        CaseService().get(session, authenticated.principal, case_id)
+        assessment = session.get(CaseDeviceAssessmentRecord, request.assessment_id)
+        if assessment is None or assessment.case_id != case_id:
+            raise CaseNotFoundError("Assessment snapshot not found for this case device.")
+
+        snapshot_data = json.loads(assessment.snapshot_json)
+        snapshot = DeviceCapabilitySnapshot.model_validate(snapshot_data)
+
+    engine = AcquisitionVectorDecisionEngine()
+    recommendation = engine.evaluate(snapshot)
+
+    output_base_dir = database.data_dir / "acquisitions" / case_id
+    orchestrator = AcquisitionPipelineOrchestrator()
+
+    result = await orchestrator.execute_plan(
+        recommendation=recommendation,
+        adb_client=adb_client,
+        case_id=case_id,
+        output_base_dir=output_base_dir,
+    )
+
+    return AcquisitionPipelineResultResponse(
+        acquisition_id=result.acquisition_id,
+        success=result.success,
+        state=result.state.value,
+        vector_used=result.vector_used.value,
+        output_dir=result.output_dir,
+        archive_path=result.archive_path,
+        error_message=result.error_message,
+    )
