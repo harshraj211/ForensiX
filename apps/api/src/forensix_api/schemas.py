@@ -1691,3 +1691,50 @@ class SimilarMediaResponse(BaseModel):
     base: MediaAnalysisResponse
     matches: list[SimilarMediaItem]
     max_distance: int
+
+
+class AcquisitionVectorEvaluationResponse(BaseModel):
+    vector: str
+    status: str
+    yield_score: int
+    risk_level: str
+    reason_code: str
+    explanation: str
+    evidence: str
+    prerequisites: list[str]
+    target_surfaces: list[str]
+
+
+class AppAcquisitionRouteResponse(BaseModel):
+    package_name: str
+    app_name: str | None = None
+    recommended_surface: str
+    vector: str
+    expected_yield: str
+    explanation: str
+
+
+class AcquisitionPlanRecommendationResponse(BaseModel):
+    primary_vector: str
+    fallback_vectors: list[str]
+    vector_evaluations: dict[str, AcquisitionVectorEvaluationResponse]
+    app_routes: dict[str, AppAcquisitionRouteResponse]
+    warnings: list[str]
+    limitations: list[str]
+    assessed_serial: str
+    recommended_at_iso: str | None = None
+
+
+class AcquisitionPipelineExecuteRequest(BaseModel):
+    device_id: str = Field(min_length=36, max_length=36)
+    assessment_id: str = Field(min_length=36, max_length=36)
+
+
+class AcquisitionPipelineResultResponse(BaseModel):
+    acquisition_id: str
+    success: bool
+    state: str
+    vector_used: str
+    output_dir: str
+    archive_path: str | None = None
+    error_message: str | None = None
