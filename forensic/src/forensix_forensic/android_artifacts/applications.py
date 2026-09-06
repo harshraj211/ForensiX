@@ -9,6 +9,7 @@ TikTok, Gmail, WeChat, Meta apps, and accessible Agent artifacts.
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 from forensix_forensic.evidence_io import (
     ParsedArtifact,
@@ -48,7 +49,11 @@ class WhatsAppAdapter(BaseApplicationAdapter):
         access_level="filesystem",
         maturity="validated",
         source_path_hints=("com.whatsapp", "msgstore", "wa.db"),
-        supported_schema_families=("whatsapp_v14_message", "whatsapp_legacy_message", "whatsapp_wa_contacts"),
+        supported_schema_families=(
+            "whatsapp_v14_message",
+            "whatsapp_legacy_message",
+            "whatsapp_wa_contacts",
+        ),
         supported_formats=("sqlite", "crypt12", "crypt14", "crypt15"),
     )
 
@@ -56,7 +61,11 @@ class WhatsAppAdapter(BaseApplicationAdapter):
         return "message" in tables or "messages" in tables or "wa_contacts" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
             return AdapterParseResult(
@@ -266,10 +275,19 @@ class WhatsAppAdapter(BaseApplicationAdapter):
                         '"message_row_id"',
                         *(
                             optional_column(m_cols, name)
-                            for name in ("file_path", "file_size", "mime_type", "file_hash", "width", "height")
+                            for name in (
+                                "file_path",
+                                "file_size",
+                                "mime_type",
+                                "file_hash",
+                                "width",
+                                "height",
+                            )
                         ),
                     ]
-                    m_rows = reader.execute_select(f'SELECT {", ".join(m_select)} FROM "message_media"')  # noqa: S608
+                    m_rows = reader.execute_select(
+                        f'SELECT {", ".join(m_select)} FROM "message_media"'  # noqa: S608
+                    )
                     for mr in m_rows:
                         m_id = integer(mr.get("message_row_id"))
                         if m_id is not None:
@@ -289,7 +307,9 @@ class WhatsAppAdapter(BaseApplicationAdapter):
                             for name in ("quoted_row_id", "text_data", "parent_message_row_id")
                         ),
                     ]
-                    q_rows = reader.execute_select(f'SELECT {", ".join(q_select)} FROM "message_quoted"')  # noqa: S608
+                    q_rows = reader.execute_select(
+                        f'SELECT {", ".join(q_select)} FROM "message_quoted"'  # noqa: S608
+                    )
                     for qr in q_rows:
                         q_id = integer(qr.get("message_row_id"))
                         if q_id is not None:
@@ -399,7 +419,7 @@ class WhatsAppAdapter(BaseApplicationAdapter):
 
         raw_status = integer(row.get("status"))
         is_deleted = raw_status == -1
-        artifact_status = "deleted" if is_deleted else "active"
+        artifact_status: Literal["deleted", "active"] = "deleted" if is_deleted else "active"
 
         raw_timestamp = row.get("timestamp")
         timestamp_details = normalize_timestamp_detailed(raw_timestamp, seconds=is_seconds)
@@ -582,7 +602,11 @@ class TelegramAdapter(BaseApplicationAdapter):
         return artifacts
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
             if source_path and source_path.name == "userconf.xml" and source_path.is_file():
@@ -599,7 +623,11 @@ class TelegramAdapter(BaseApplicationAdapter):
             )
 
         tables = reader.table_names()
-        table_name = "messages" if "messages" in tables else ("messages_v2" if "messages_v2" in tables else "")
+        table_name = (
+            "messages"
+            if "messages" in tables
+            else ("messages_v2" if "messages_v2" in tables else "")
+        )
         if not table_name:
             return AdapterParseResult(
                 status=AdapterParseStatus.UNKNOWN_SCHEMA,
@@ -637,7 +665,9 @@ class TelegramAdapter(BaseApplicationAdapter):
         except SafeSQLiteError as error:
             raise parser_error(error) from error
 
-        if not {"message", "text"}.intersection(columns) and not ("data" in columns or "media" in columns):
+        if not {"message", "text"}.intersection(columns) and not (
+            "data" in columns or "media" in columns
+        ):
             return AdapterParseResult(
                 status=AdapterParseStatus.UNKNOWN_SCHEMA,
                 reason="Telegram table missing message, text, data, or media columns",
@@ -796,7 +826,11 @@ class SignalAdapter(BaseApplicationAdapter):
         return "sms" in tables or "mms" in tables or "recipient" in tables or "thread" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         # 1. Check if database is encrypted (SQLCipher header check)
         is_encrypted = False
@@ -856,7 +890,9 @@ class SignalAdapter(BaseApplicationAdapter):
 
         columns = reader.column_names(table_name)
         id_col = '"_id"' if "_id" in columns else '"id"'
-        date_col = '"date"' if "date" in columns else ('"date_sent"' if "date_sent" in columns else id_col)
+        date_col = (
+            '"date"' if "date" in columns else ('"date_sent"' if "date_sent" in columns else id_col)
+        )
 
         selected = [
             f"{id_col} AS _id",
@@ -923,7 +959,11 @@ class MetaMessageParser(BaseApplicationAdapter):
         return "messages" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
             return AdapterParseResult(
@@ -997,10 +1037,16 @@ class SnapchatMessageParser(BaseApplicationAdapter):
         return "Chat" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
         columns = require_columns(reader, "Chat", {"_id", "createdAt"})
         selected = [
             '"_id"',
@@ -1063,10 +1109,16 @@ class DiscordMessageParser(BaseApplicationAdapter):
         return "discord_messages" in tables or "messages" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
         tables = reader.table_names()
         table_name = "discord_messages" if "discord_messages" in tables else "messages"
         columns = reader.column_names(table_name)
@@ -1154,10 +1206,16 @@ class TikTokMessageParser(BaseApplicationAdapter):
         return "msg_table" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
         columns = require_columns(reader, "msg_table", {"msg_id", "create_time"})
         selected = [
             '"msg_id"',
@@ -1225,10 +1283,16 @@ class GmailMessageParser(BaseApplicationAdapter):
         return "messages" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
         columns = require_columns(reader, "messages", {"_id", "dateSentMs"})
         if not {"fromAddress", "subject", "snippet", "toAddresses"}.intersection(columns):
             return AdapterParseResult(
@@ -1306,10 +1370,16 @@ class WeChatMessageParser(BaseApplicationAdapter):
         return "wechat_message" in tables or "message" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
         tables = reader.table_names()
         table_name = "wechat_message" if "wechat_message" in tables else "message"
         columns = reader.column_names(table_name)
@@ -1386,15 +1456,25 @@ class WhatsAppBackupArtifactParser(BaseApplicationAdapter):
         return "msgstore" in name or "wa.db" in name
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if source_path:
-            art = self.parse_backup_file(source_path.name, source_path.stat().st_size if source_path.exists() else 0, context)
+            art = self.parse_backup_file(
+                source_path.name, source_path.stat().st_size if source_path.exists() else 0, context
+            )
             return AdapterParseResult(
-                status=AdapterParseStatus.ENCRYPTED_UNPARSED if art.metadata.get("encrypted") else AdapterParseStatus.SUPPORTED,
+                status=AdapterParseStatus.ENCRYPTED_UNPARSED
+                if art.metadata.get("encrypted")
+                else AdapterParseStatus.SUPPORTED,
                 artifacts=[art],
             )
-        return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="File path required")
+        return AdapterParseResult(
+            status=AdapterParseStatus.UNSUPPORTED, reason="File path required"
+        )
 
     def parse_backup_file(
         self, file_name: str, size_bytes: int, context: ParserContext, header_bytes: bytes = b""
@@ -1459,22 +1539,26 @@ class AccessibleAppArtifactJSONParser(BaseApplicationAdapter):
         return False
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
-        return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="JSON payload parsing requires parse_json_data")
+        return AdapterParseResult(
+            status=AdapterParseStatus.UNSUPPORTED,
+            reason="JSON payload parsing requires parse_json_data",
+        )
 
     def parse_json_data(
         self, data: list[dict[str, object]], context: ParserContext
     ) -> list[ParsedArtifact]:
         artifacts: list[ParsedArtifact] = []
         for idx, item in enumerate(data):
-            if not isinstance(item, dict):
-                continue
-
             pkg = str(item.get("package_name") or "unknown_package")
             category = str(item.get("artifact_category") or "other")
             rel_path = str(item.get("relative_path") or f"artifact_{idx}")
-            size_bytes = int(item.get("size_bytes") or 0)
+            size_bytes = integer(item.get("size_bytes")) or 0
             mime_type = str(item.get("mime_type") or "application/octet-stream")
 
             artifacts.append(

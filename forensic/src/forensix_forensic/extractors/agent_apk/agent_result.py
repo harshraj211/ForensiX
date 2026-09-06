@@ -192,7 +192,9 @@ def installed_apps_from_json(data: list[dict[str, Any]]) -> tuple[AgentInstalled
     return tuple(res)
 
 
-def app_artifacts_from_json(data: list[dict[str, Any]]) -> tuple[AgentAppArtifact, ...]:
+def app_artifacts_from_json(
+    data: list[dict[str, Any]] | None,
+) -> tuple[AgentAppArtifact, ...]:
     """Parse JSON dictionary list into AgentAppArtifact objects."""
     res: list[AgentAppArtifact] = []
     if not isinstance(data, list):

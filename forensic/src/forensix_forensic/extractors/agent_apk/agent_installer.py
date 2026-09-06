@@ -57,7 +57,7 @@ class AgentInstaller:
             sha = hashlib.sha256(self._cfg.apk_path.read_bytes()).hexdigest()
 
             # Install APK via ADB
-            await self._adb.shell(serial, f"pm install -r {self._cfg.apk_path}")  # type: ignore[attr-defined]
+            await self._adb.shell(serial, f"pm install -r {self._cfg.apk_path}")
 
             # Grant permissions
             permissions = [
@@ -71,16 +71,12 @@ class AgentInstaller:
 
             for perm in permissions:
                 try:
-                    await self._adb.shell(  # type: ignore[attr-defined]
-                        serial, f"pm grant {self._cfg.package_name} {perm}"
-                    )
+                    await self._adb.shell(serial, f"pm grant {self._cfg.package_name} {perm}")
                 except Exception:  # noqa: BLE001, S112
                     continue
 
             # Create staging dir
-            await self._adb.shell(  # type: ignore[attr-defined]
-                serial, f"mkdir -p {self._cfg.output_staging_dir_on_device}"
-            )
+            await self._adb.shell(serial, f"mkdir -p {self._cfg.output_staging_dir_on_device}")
 
             self._log("install_success", {"package": self._cfg.package_name, "sha256": sha})
             return InstallResult(
@@ -109,7 +105,7 @@ class AgentInstaller:
                 f"am start-foreground-service -n {self._cfg.package_name}/.AgentService "
                 f"--es case_id {case_id}"
             )
-            await self._adb.shell(serial, cmd)  # type: ignore[attr-defined]
+            await self._adb.shell(serial, cmd)
             return True
         except Exception as exc:  # noqa: BLE001
             self._log("start_service_failed", {"error": str(exc)})
@@ -119,7 +115,7 @@ class AgentInstaller:
         """Uninstall agent APK from device post-collection."""
         self._log("uninstall", {"serial": serial})
         try:
-            await self._adb.shell(serial, f"pm uninstall {self._cfg.package_name}")  # type: ignore[attr-defined]
+            await self._adb.shell(serial, f"pm uninstall {self._cfg.package_name}")
             return True
         except Exception as exc:  # noqa: BLE001
             self._log("uninstall_failed", {"error": str(exc)})

@@ -2,7 +2,6 @@
 
 # ruff: noqa: E501, S608 -- query fragments below are selected only from code-defined columns.
 
-
 from collections import defaultdict
 from collections.abc import Mapping
 from pathlib import Path
@@ -46,10 +45,16 @@ class AndroidContactsAdapter(BaseApplicationAdapter):
         return self.metadata.required_tables.issubset(tables)
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
 
         data_columns = require_columns(
             reader, "data", {"raw_contact_id", "mimetype_id", "data1", "data2", "data3"}

@@ -2,7 +2,6 @@
 
 # ruff: noqa: E501
 
-
 from collections import defaultdict
 from collections.abc import Mapping
 from pathlib import Path
@@ -59,10 +58,16 @@ class AndroidSmsParser(BaseApplicationAdapter):
         return "sms" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
 
         columns = require_columns(reader, "sms", {"_id", "date", "type"})
         selected = [
@@ -113,7 +118,9 @@ class AndroidSmsParser(BaseApplicationAdapter):
             source_locator=f"sms:{identifier}",
             status="active",
             confidence="high",
-            metadata=compact_metadata({**row, "direction": sms_type, "application": "android.telephony"}),
+            metadata=compact_metadata(
+                {**row, "direction": sms_type, "application": "android.telephony"}
+            ),
         )
 
 
@@ -139,10 +146,16 @@ class AndroidMmsParser(BaseApplicationAdapter):
         return self.metadata.required_tables.issubset(tables)
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
 
         pdu_columns = require_columns(reader, "pdu", {"_id", "date", "msg_box"})
         part_columns = require_columns(reader, "part", {"mid", "ct"})
@@ -171,9 +184,15 @@ class AndroidMmsParser(BaseApplicationAdapter):
             optional_column(addr_columns, "charset"),
         ]
         try:
-            pdus = reader.execute_select(f'SELECT {", ".join(pdu_select)} FROM "pdu" ORDER BY "date", "_id"')  # noqa: S608
-            parts = reader.execute_select(f'SELECT {", ".join(part_select)} FROM "part" ORDER BY "mid"')  # noqa: S608
-            addresses = reader.execute_select(f'SELECT {", ".join(addr_select)} FROM "addr" ORDER BY "msg_id"')  # noqa: S608
+            pdus = reader.execute_select(
+                f'SELECT {", ".join(pdu_select)} FROM "pdu" ORDER BY "date", "_id"'  # noqa: S608
+            )
+            parts = reader.execute_select(
+                f'SELECT {", ".join(part_select)} FROM "part" ORDER BY "mid"'  # noqa: S608
+            )
+            addresses = reader.execute_select(
+                f'SELECT {", ".join(addr_select)} FROM "addr" ORDER BY "msg_id"'  # noqa: S608
+            )
         except SafeSQLiteError as error:
             raise parser_error(error) from error
 
@@ -218,7 +237,12 @@ class AndroidMmsParser(BaseApplicationAdapter):
             status="active",
             confidence="high",
             metadata=compact_metadata(
-                {**row, "addresses": addresses.get(identifier, []), "parts": message_parts, "application": "android.telephony"}
+                {
+                    **row,
+                    "addresses": addresses.get(identifier, []),
+                    "parts": message_parts,
+                    "application": "android.telephony",
+                }
             ),
         )
 
@@ -245,10 +269,16 @@ class AndroidTelephonyAdapter(BaseApplicationAdapter):
         return "sms" in tables or "pdu" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
 
         artifacts: list[ParsedArtifact] = []
         sms_adapter = AndroidSmsParser()
@@ -290,10 +320,16 @@ class AndroidCallLogAdapter(BaseApplicationAdapter):
         return "calls" in tables
 
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         if reader is None:
-            return AdapterParseResult(status=AdapterParseStatus.UNSUPPORTED, reason="Reader required")
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
 
         columns = require_columns(reader, "calls", {"_id", "number", "date", "duration", "type"})
         selected = [
@@ -346,7 +382,9 @@ class AndroidCallLogAdapter(BaseApplicationAdapter):
             source_locator=f"calls:{identifier}",
             status="active",
             confidence="high",
-            metadata=compact_metadata({**row, "call_type": call_type, "application": "android.calllog"}),
+            metadata=compact_metadata(
+                {**row, "call_type": call_type, "application": "android.calllog"}
+            ),
         )
 
 

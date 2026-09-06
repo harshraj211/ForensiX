@@ -185,9 +185,7 @@ class ApkDowngradeExtractor:
 
         if downgrade_apk_paths is not None and expected_sha256 is not None:
             try:
-                await asyncio.to_thread(
-                    _verify_staged_apks, downgrade_apk_paths, expected_sha256
-                )
+                await asyncio.to_thread(_verify_staged_apks, downgrade_apk_paths, expected_sha256)
             except Exception as error:
                 return (
                     DowngradeCapabilityStatus.UNSAFE,

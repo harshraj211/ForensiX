@@ -32,6 +32,7 @@ class AdbOperation(StrEnum):
     BACKUP_PACKAGE = "backup_package"
     DUMP_PACKAGE = "dump_package"
     ROOT_EXEC = "root_exec"
+    SHELL = "shell"
 
 
 class SharedStorageRoot(StrEnum):
@@ -522,6 +523,17 @@ class AdbCommandPolicy:
         )
 
     @staticmethod
+    def shell(serial: str, command: str) -> ApprovedAdbCommand:
+        """Execute a bounded shell command from an internal forensic workflow."""
+        _validate_serial(serial)
+        _validate_shell_command(command)
+        return ApprovedAdbCommand(
+            AdbOperation.SHELL,
+            ("-s", serial, "shell", command),
+            8.0,
+        )
+
+    @staticmethod
     def storage_root_readable(serial: str, root: SharedStorageRoot) -> ApprovedAdbCommand:
         return AdbCommandPolicy._storage_test(
             serial, root, "-r", AdbOperation.STORAGE_ROOT_READABLE
@@ -671,6 +683,13 @@ def _validate_package_name(package_name: str) -> None:
         raise ValueError("Package name must contain between 1 and 255 characters")
     if not re.fullmatch(r"[a-zA-Z0-9._]+", package_name):
         raise ValueError("Package name contains invalid characters")
+
+
+def _validate_shell_command(command: str) -> None:
+    if not command or len(command) > 4_096:
+        raise ValueError("ADB shell command must contain between 1 and 4096 characters")
+    if any(ord(character) < 32 or ord(character) == 127 for character in command):
+        raise ValueError("ADB shell command contains a prohibited control character")
 
 
 def _validate_remote_path(remote_path: str) -> None:

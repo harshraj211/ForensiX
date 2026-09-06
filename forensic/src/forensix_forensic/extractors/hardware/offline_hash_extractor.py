@@ -150,7 +150,7 @@ class OfflineHashExtractor:
                 'su -c "sqlite3 /data/system/locksettings.db '  # noqa: S608
                 "'SELECT name,value FROM locksettings;'\""
             )
-            output = await self._adb.shell(serial, cmd)  # type: ignore[attr-defined]
+            output = await self._adb.shell(serial, cmd)
             for line in output.splitlines():
                 if "|" in line:
                     k, _, v = line.partition("|")
@@ -163,7 +163,7 @@ class OfflineHashExtractor:
         blobs: list[GatekeeperBlob] = []
         try:
             ls_cmd = "su -c 'ls /data/misc/gatekeeper/'"
-            ls_out = await self._adb.shell(serial, ls_cmd)  # type: ignore[attr-defined]
+            ls_out = await self._adb.shell(serial, ls_cmd)
             filenames = [f.strip() for f in ls_out.splitlines() if f.strip() and "No such" not in f]
             for fn in filenames:
                 remote_path = f"/data/misc/gatekeeper/{fn}"
@@ -193,7 +193,7 @@ class OfflineHashExtractor:
         files: list[SpblobFile] = []
         try:
             ls_cmd = "su -c 'ls /data/system_de/0/spblob/'"
-            ls_out = await self._adb.shell(serial, ls_cmd)  # type: ignore[attr-defined]
+            ls_out = await self._adb.shell(serial, ls_cmd)
             filenames = [f.strip() for f in ls_out.splitlines() if f.strip() and "No such" not in f]
             for fn in filenames:
                 remote_path = f"/data/system_de/0/spblob/{fn}"

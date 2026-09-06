@@ -51,23 +51,23 @@ class ApplicationAdapterRegistry(ParserRegistry):
 
 def android_parser_registry() -> ApplicationAdapterRegistry:
     registry = ApplicationAdapterRegistry()
-    registry.register(AndroidContactsAdapter())
-    registry.register(AndroidSmsParser())
-    registry.register(AndroidMmsParser())
-    registry.register(AndroidTelephonyAdapter())
-    registry.register(AndroidCallLogAdapter())
-    registry.register(WhatsAppAdapter())
-    registry.register(WhatsAppBackupArtifactParser())
-    registry.register(AccessibleAppArtifactJSONParser())
-    registry.register(TelegramAdapter())
-    registry.register(SignalAdapter())
-    registry.register(SnapchatMessageParser())
-    registry.register(DiscordMessageParser())
-    registry.register(TikTokMessageParser())
-    registry.register(GmailMessageParser())
-    registry.register(WeChatMessageParser())
+    registry.register(AndroidContactsAdapter())  # type: ignore[arg-type]
+    registry.register(AndroidSmsParser())  # type: ignore[arg-type]
+    registry.register(AndroidMmsParser())  # type: ignore[arg-type]
+    registry.register(AndroidTelephonyAdapter())  # type: ignore[arg-type]
+    registry.register(AndroidCallLogAdapter())  # type: ignore[arg-type]
+    registry.register(WhatsAppAdapter())  # type: ignore[arg-type]
+    registry.register(WhatsAppBackupArtifactParser())  # type: ignore[arg-type]
+    registry.register(AccessibleAppArtifactJSONParser())  # type: ignore[arg-type]
+    registry.register(TelegramAdapter())  # type: ignore[arg-type]
+    registry.register(SignalAdapter())  # type: ignore[arg-type]
+    registry.register(SnapchatMessageParser())  # type: ignore[arg-type]
+    registry.register(DiscordMessageParser())  # type: ignore[arg-type]
+    registry.register(TikTokMessageParser())  # type: ignore[arg-type]
+    registry.register(GmailMessageParser())  # type: ignore[arg-type]
+    registry.register(WeChatMessageParser())  # type: ignore[arg-type]
     for parser in meta_message_parsers():
-        registry.register(parser)
+        registry.register(parser)  # type: ignore[arg-type]
     registry.register(AndroidCalendarEventParser())
     registry.register(AndroidDownloadsParser())
     registry.register(ChromeHistoryParser())

@@ -87,7 +87,6 @@ def integer(value: object) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-    return int(numeric) if (numeric := integer_or_none(value)) is not None else None
 
 
 def integer_or_none(value: object) -> int | None:

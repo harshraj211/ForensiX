@@ -134,6 +134,8 @@ class AdbClient(Protocol):
 
     async def root_exec(self, serial: str, command: str) -> str: ...
 
+    async def shell(self, serial: str, command: str) -> str: ...
+
 
 class SystemAdbClient:
     def __init__(self, runner: SubprocessAdbRunner) -> None:
@@ -524,6 +526,13 @@ class SystemAdbClient:
     async def root_exec(self, serial: str, command: str) -> str:
         """Execute an approved command via ``su -c`` and return stdout."""
         result = await self._run(AdbCommandPolicy.root_exec(serial, command))
+        if result.exit_code != 0:
+            raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
+        return result.stdout
+
+    async def shell(self, serial: str, command: str) -> str:
+        """Execute one approved read-only capability probe and return stdout."""
+        result = await self._run(AdbCommandPolicy.shell(serial, command))
         if result.exit_code != 0:
             raise AdbCommandError(result.exit_code, _safe_summary(result.stderr))
         return result.stdout

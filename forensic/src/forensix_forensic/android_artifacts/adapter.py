@@ -6,7 +6,6 @@ and abstract base class for version-resilient application forensic adapters.
 
 # ruff: noqa: E501
 
-
 import abc
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -80,7 +79,11 @@ class ApplicationAdapter(abc.ABC):
 
     @abc.abstractmethod
     def parse_adapter(
-        self, reader: SafeSQLiteReader | None, context: ParserContext, *, source_path: Path | None = None
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
     ) -> AdapterParseResult:
         """Parse target evidence using the adapter contract and return structured result."""
         ...
@@ -104,7 +107,8 @@ class BaseApplicationAdapter(BaseEvidenceParser, ApplicationAdapter, abc.ABC):
             and not result.artifacts
         ):
             raise AndroidArtifactParserError(
-                result.reason or f"Application database schema '{result.detected_schema}' is unsupported or unrecognised."
+                result.reason
+                or f"Application database schema '{result.detected_schema}' is unsupported or unrecognised."
             )
         return result.artifacts
 

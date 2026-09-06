@@ -84,14 +84,12 @@ class AgentCollector:
                 device_metadata_from_json(meta_data) if isinstance(meta_data, dict) else None
             )
             app_artifacts = (
-                app_artifacts_from_json(artifacts_data)
-                if isinstance(artifacts_data, list)
-                else ()
+                app_artifacts_from_json(artifacts_data) if isinstance(artifacts_data, list) else ()
             )
 
             if self._cfg.cleanup_after_pull:
                 with suppress(Exception):
-                    await self._adb.shell(serial, f"rm -rf {self._cfg.staging_dir}")  # type: ignore[attr-defined]
+                    await self._adb.shell(serial, f"rm -rf {self._cfg.staging_dir}")
 
             finished_at = datetime.now(UTC).isoformat()
             duration = asyncio.get_event_loop().time() - t0
@@ -104,9 +102,7 @@ class AgentCollector:
                 sms_messages=sms_msgs,
                 call_logs=call_logs,
                 installed_apps=installed_apps,
-                media_file_count=sum(
-                    1 for a in app_artifacts if a.artifact_category == "media"
-                ),
+                media_file_count=sum(1 for a in app_artifacts if a.artifact_category == "media"),
                 output_dir=str(self._output_dir),
                 timeline=list(self._timeline),
                 started_at=started_at,
@@ -133,7 +129,7 @@ class AgentCollector:
         t0 = asyncio.get_event_loop().time()
         while (asyncio.get_event_loop().time() - t0) < self._cfg.max_wait_seconds:
             try:
-                out = await self._adb.shell(serial, f"test -f {done_file} && echo YES || echo NO")  # type: ignore[attr-defined]
+                out = await self._adb.shell(serial, f"test -f {done_file} && echo YES || echo NO")
                 if "YES" in out:
                     return True
             except Exception:  # noqa: BLE001, S110

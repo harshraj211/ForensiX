@@ -355,5 +355,3 @@ class TestAgentApk:
         assert len(res.app_artifacts) == 2
         assert res.media_file_count == 1
         assert res.app_artifacts[0].package_name == "com.whatsapp"
-
-

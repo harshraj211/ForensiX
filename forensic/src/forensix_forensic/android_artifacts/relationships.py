@@ -6,7 +6,6 @@ Person ↕ Contact ↕ Account ↕ Conversation ↕ Message ↕ Media ↕ Artifa
 
 # ruff: noqa: E501
 
-
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -60,7 +59,9 @@ class ForensicMedia(ForensicNode):
     pass
 
 
-def create_contact_node(contact_id: str, display_name: str, phone: str | None = None) -> ForensicContact:
+def create_contact_node(
+    contact_id: str, display_name: str, phone: str | None = None
+) -> ForensicContact:
     meta = {}
     if phone:
         meta["phone"] = phone
@@ -72,7 +73,9 @@ def create_contact_node(contact_id: str, display_name: str, phone: str | None = 
     )
 
 
-def create_message_node(message_id: str, summary: str, timestamp_utc: str | None = None) -> ForensicMessage:
+def create_message_node(
+    message_id: str, summary: str, timestamp_utc: str | None = None
+) -> ForensicMessage:
     meta = {}
     if timestamp_utc:
         meta["timestamp_utc"] = timestamp_utc

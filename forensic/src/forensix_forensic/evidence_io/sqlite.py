@@ -153,6 +153,16 @@ class SafeSQLiteReader:
         )
         return frozenset(str(row["name"]) for row in rows)
 
+    def has_table(self, table: str) -> bool:
+        if not _IDENTIFIER.fullmatch(table):
+            raise SafeSQLiteError("The SQLite table identifier is invalid.")
+        rows = self.execute_select(
+            "SELECT 1 FROM sqlite_schema WHERE type = ? AND name = ? LIMIT 1",
+            ("table", table),
+            max_rows=1,
+        )
+        return bool(rows)
+
     def column_names(self, table: str) -> frozenset[str]:
         if not _IDENTIFIER.fullmatch(table):
             raise SafeSQLiteError("The SQLite table identifier is invalid.")

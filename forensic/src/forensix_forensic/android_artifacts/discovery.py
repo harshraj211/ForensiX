@@ -7,7 +7,6 @@ readability status, and encryption state.
 
 # ruff: noqa: E501
 
-
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,7 +34,9 @@ class ApplicationInventorySummary:
     total_applications_found: int = 0
     total_artifacts_found: int = 0
     discovered_artifacts: list[DiscoveredArtifactSummary] = field(default_factory=list)
-    applications_by_package: dict[str, list[DiscoveredArtifactSummary]] = field(default_factory=dict)
+    applications_by_package: dict[str, list[DiscoveredArtifactSummary]] = field(
+        default_factory=dict
+    )
 
     def add_artifact(self, summary: DiscoveredArtifactSummary) -> None:
         self.discovered_artifacts.append(summary)
