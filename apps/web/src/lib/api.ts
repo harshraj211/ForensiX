@@ -1949,6 +1949,117 @@ export interface AuthorisedEntryResult {
   error_message: string | null;
 }
 
+export interface PreservedApkInfo {
+  source_path: string;
+  local_path: string;
+  sha256: string;
+  size_bytes: number;
+}
+
+export interface ApkDowngradeResult {
+  extraction_id: string;
+  profile_id: string;
+  package_name: string;
+  android_release: string;
+  android_api: number;
+  original_version: string | null;
+  downgrade_version: string | null;
+  backup_path: string | null;
+  backup_file_size_bytes: number;
+  backup_sha256: string;
+  preserved_apks: PreservedApkInfo[];
+  restored: boolean;
+  timeline: ExtractionTimelineEntry[];
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+  capability_status: string;
+  capability_reason: string;
+}
+
+export interface ApkDowngradeProfile {
+  profile_id: string;
+  display_name: string;
+  package_name: string;
+}
+
+export interface ApkDowngradeDeviceScanItem {
+  profile_id: string;
+  display_name: string;
+  package_name: string;
+  is_installed: boolean;
+  version_name: string | null;
+  capability_status: string;
+  capability_reason: string | null;
+}
+
+export interface CVE202431317Result {
+  extraction_id: string;
+  serial: string;
+  security_patch_level: string;
+  vulnerable: boolean;
+  partition_name: string;
+  image_file_path: string | null;
+  image_size_bytes: number;
+  image_sha256: string | null;
+  timeline: ExtractionTimelineEntry[];
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export function listApkDowngradeProfiles(caseId: string): Promise<ApkDowngradeProfile[]> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/extractions/apk-downgrade/profiles`);
+}
+
+export function scanDeviceApkDowngradeProfiles(
+  caseId: string,
+  serial: string,
+): Promise<ApkDowngradeDeviceScanItem[]> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/extractions/apk-downgrade/scan-device?serial=${encodeURIComponent(serial)}`,
+  );
+}
+
+export function extractApkDowngrade(
+  caseId: string,
+  serial: string,
+  operatorId: string,
+  profileId: string,
+  downgradeApkPaths: string[],
+  expectedSha256: string[],
+): Promise<ApkDowngradeResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/extractions/apk-downgrade`, {
+    method: "POST",
+    body: JSON.stringify({
+      serial,
+      operator_id: operatorId,
+      profile_id: profileId,
+      downgrade_apk_paths: downgradeApkPaths,
+      expected_sha256: expectedSha256,
+      downgrade_acknowledged: true,
+    }),
+  });
+}
+
+export function extractCVE202431317(
+  caseId: string,
+  serial: string,
+  operatorId: string,
+  targetPartition = "userdata",
+): Promise<CVE202431317Result> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/extractions/cve-2024-31317`, {
+    method: "POST",
+    body: JSON.stringify({
+      serial,
+      case_id: caseId,
+      operator_id: operatorId,
+      target_partition: targetPartition,
+      security_vector_acknowledged: true,
+    }),
+  });
+}
+
 export function extractWhatsAppDowngrade(
   caseId: string,
   serial: string,
@@ -2998,6 +3109,157 @@ export function listAcquisitionJobEvents(
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/acquisitions/${encodeURIComponent(jobId)}/events`,
   );
+}
+
+export interface DumpsysTelemetryResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  usage_stats: Array<{
+    package_name: string;
+    last_time_used: string;
+    total_time_in_foreground_ms: number;
+    launch_count: number;
+  }>;
+  wifi_networks: Array<{
+    ssid: string;
+    bssid: string;
+    status: string;
+    last_connected_timestamp: string | null;
+  }>;
+  bluetooth_devices: Array<{
+    name: string;
+    mac_address: string;
+    connected_state: string;
+    bond_state: string;
+  }>;
+  cell_tower_info: Record<string, unknown>;
+  network_traffic_summary: Record<string, unknown>;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface VendorBackupResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  vendor_type: string;
+  extracted_items: Array<{
+    package_name: string;
+    data_type: string;
+    file_count: number;
+    size_bytes: number;
+    sha256_hash: string;
+  }>;
+  total_size_bytes: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface AccessibilityScrapeResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  target_package: string;
+  transcripts: Array<{
+    target_package: string;
+    sender_or_title: string;
+    content_text: string;
+    timestamp_text: string;
+    element_id: string;
+  }>;
+  screens_scraped_count: number;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface ContentProviderHarvestResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  queried_uris: string[];
+  total_records_extracted: number;
+  sample_records: Array<{
+    provider_uri: string;
+    column_values: Record<string, string>;
+  }>;
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export interface CloudTokenExtractResult {
+  extraction_id: string;
+  serial: string;
+  case_id: string;
+  operator_id: string;
+  extracted_tokens: Array<{
+    service_name: string;
+    account_identifier: string;
+    token_type: string;
+    expires_at: string | null;
+  }>;
+  cloud_targets_ready: string[];
+  duration_seconds: number;
+  success: boolean;
+  error_message: string | null;
+}
+
+export function extractDumpsysTelemetry(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<DumpsysTelemetryResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/non-rooted/dumpsys-telemetry`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function extractVendorBackup(
+  caseId: string,
+  payload: { serial: string; case_id: string; vendor_type?: string; operator_id?: string },
+): Promise<VendorBackupResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/non-rooted/vendor-backup`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function scrapeAccessibilityTranscripts(
+  caseId: string,
+  payload: { serial: string; case_id: string; target_package?: string; operator_id?: string },
+): Promise<AccessibilityScrapeResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/non-rooted/accessibility-scrape`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function harvestContentProviders(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<ContentProviderHarvestResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/non-rooted/content-provider-harvest`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function extractCloudTokens(
+  caseId: string,
+  payload: { serial: string; case_id: string; operator_id?: string },
+): Promise<CloudTokenExtractResult> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/non-rooted/cloud-tokens`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
