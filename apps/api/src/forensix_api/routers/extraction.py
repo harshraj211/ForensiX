@@ -124,6 +124,8 @@ class ApkDowngradeResponse(BaseModel):
     duration_seconds: float
     success: bool
     error_message: str | None
+    capability_status: str = "unknown"
+    capability_reason: str | None = None
 
 
 class SignalExtractionRequest(BaseModel):
@@ -454,6 +456,12 @@ async def apk_downgrade_extract(
         duration_seconds=result.duration_seconds,
         success=result.success,
         error_message=result.error_message,
+        capability_status=str(
+            result.capability_status.value
+            if hasattr(result.capability_status, "value")
+            else result.capability_status
+        ),
+        capability_reason=result.capability_reason,
     )
 
 
