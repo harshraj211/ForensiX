@@ -279,6 +279,7 @@ def run_evidence_twin_validation(workspace: Path) -> SealedEvidenceTwinValidatio
                 ValidationStatus.FAIL,
                 "The Evidence Twin validation stopped safely after an operational error.",
                 error_type=type(error).__name__,
+                error_message=str(error),
             )
         )
     finally:
