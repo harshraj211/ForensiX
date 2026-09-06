@@ -41,9 +41,8 @@ class ADBCommandRunner:
 
                 output_str = str(output).strip()
 
-                if (
-                    "device" in output_str.lower()
-                    and ("device offline" in output_str.lower() or "not found" in output_str.lower())
+                if "device" in output_str.lower() and (
+                    "device offline" in output_str.lower() or "not found" in output_str.lower()
                 ):
                     raise DeviceNotConnectedError(f"Device {serial} is disconnected or offline.")
 
@@ -57,7 +56,9 @@ class ADBCommandRunner:
 
             except TimeoutError:
                 if attempt == retries:
-                    raise AdbCommandError(f"Command '{command}' timed out after {timeout}s.") from None
+                    raise AdbCommandError(
+                        f"Command '{command}' timed out after {timeout}s."
+                    ) from None
                 logger.warning(
                     f"ADB command '{command}' timed out. Retrying ({attempt + 1}/{retries})..."
                 )

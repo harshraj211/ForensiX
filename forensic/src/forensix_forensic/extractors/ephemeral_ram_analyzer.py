@@ -67,7 +67,13 @@ class EphemeralRamKeyAnalyzer:
                         parts = line.split()
                         if len(parts) >= 9:
                             pid_str, pkg = parts[1], parts[8]
-                            if any(k in pkg for k in ["securesms", "whatsapp", "telegram", "proton"]) and pid_str.isdigit():
+                            if (
+                                any(
+                                    k in pkg
+                                    for k in ["securesms", "whatsapp", "telegram", "proton"]
+                                )
+                                and pid_str.isdigit()
+                            ):
                                 target_pids.append((int(pid_str), pkg))
 
                     processes_scanned = len(target_pids)

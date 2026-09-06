@@ -112,7 +112,9 @@ class WhatsAppCrypt16_17Extractor:
                 aesgcm = AESGCM(derived_key)
                 plaintext = aesgcm.decrypt(actual_iv, ciphertext_with_tag, None)
             except Exception as e:
-                raise DecryptionError(f"AES-GCM decryption failed: invalid key, IV, or MAC. {e}") from e
+                raise DecryptionError(
+                    f"AES-GCM decryption failed: invalid key, IV, or MAC. {e}"
+                ) from e
 
             out_db = f"decrypted_{extraction_id}.db"
             with open(out_db, "wb") as f_out:
