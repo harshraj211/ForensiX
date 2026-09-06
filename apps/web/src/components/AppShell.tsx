@@ -18,6 +18,7 @@ import {
   Menu,
   PanelsTopLeft,
   ShieldCheck,
+  Sparkles,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -68,6 +69,7 @@ export function AppShell() {
     ? [
         { label: "Overview", to: `/cases/${caseId}`, icon: Boxes, end: true },
         { label: "Command Center", to: `/cases/${caseId}/command-center`, icon: LayoutDashboard },
+        { label: "AI Intelligence", to: `/cases/${caseId}/ai-center`, icon: Sparkles },
         { label: "Devices", to: `/cases/${caseId}/devices`, icon: Activity },
         { label: "Acquisitions", to: `/cases/${caseId}/acquisitions`, icon: HardDriveDownload },
         { label: "Evidence", to: `/cases/${caseId}/evidence`, icon: ShieldCheck },
