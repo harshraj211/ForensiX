@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from .utils.errors import ArtifactNotFoundError, DecryptionError
+
 AESGCM: Any
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM as _AESGCM
@@ -20,8 +22,6 @@ try:
     AESGCM = _AESGCM
 except ImportError:
     AESGCM = None
-
-from .utils.errors import ArtifactNotFoundError, DecryptionError
 
 logger = logging.getLogger(__name__)
 
