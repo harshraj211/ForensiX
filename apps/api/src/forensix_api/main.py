@@ -34,6 +34,7 @@ from forensix_api.routers import (
     integrations,
     key_evidence,
     media_analysis,
+    non_rooted,
     reports,
     rooted,
     storyboard,
@@ -130,6 +131,7 @@ def create_app(
     app.include_router(rooted.physical_probe_router)
     app.include_router(rooted.physical_capture_router)
     app.include_router(extraction.router)
+    app.include_router(non_rooted.router)
     app.include_router(evidence_sources.router)
     app.include_router(devices.router)
 
