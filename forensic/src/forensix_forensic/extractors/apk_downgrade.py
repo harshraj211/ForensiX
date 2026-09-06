@@ -7,12 +7,13 @@ import json
 import re
 import time
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -82,6 +83,23 @@ APK_DOWNGRADE_PROFILES: dict[str, ApkDowngradeProfile] = {
         ApkDowngradeProfile("threema", "Threema", "ch.threema.app"),
         ApkDowngradeProfile("vk", "VKontakte", "com.vkontakte.android"),
         ApkDowngradeProfile("tamtam", "TamTam", "chat.tamtam"),
+        ApkDowngradeProfile("samsung_browser", "Samsung Internet", "com.sec.android.app.sbrowser"),
+        ApkDowngradeProfile("edge", "Microsoft Edge", "com.microsoft.emmx"),
+        ApkDowngradeProfile("reddit", "Reddit", "com.reddit.frontpage"),
+        ApkDowngradeProfile("linkedin", "LinkedIn", "com.linkedin.android"),
+        ApkDowngradeProfile("pinterest", "Pinterest", "com.pinterest"),
+        ApkDowngradeProfile("youtube", "YouTube", "com.google.android.youtube"),
+        ApkDowngradeProfile("spotify", "Spotify", "com.spotify.music"),
+        ApkDowngradeProfile("google_drive", "Google Drive", "com.google.android.apps.docs"),
+        ApkDowngradeProfile("google_photos", "Google Photos", "com.google.android.apps.photos"),
+        ApkDowngradeProfile("outlook", "Microsoft Outlook", "com.microsoft.office.outlook"),
+        ApkDowngradeProfile("teams", "Microsoft Teams", "com.microsoft.teams"),
+        ApkDowngradeProfile("google_maps", "Google Maps", "com.google.android.apps.maps"),
+        ApkDowngradeProfile("dropbox", "Dropbox", "com.dropbox.android"),
+        ApkDowngradeProfile("onedrive", "Microsoft OneDrive", "com.microsoft.skydrive"),
+        ApkDowngradeProfile("mega", "MEGA", "nz.mega.android"),
+        ApkDowngradeProfile("box", "Box", "com.box.android"),
+        ApkDowngradeProfile("google_keep", "Google Keep", "com.google.android.keep"),
     )
 }
 
@@ -388,6 +406,42 @@ class ApkDowngradeExtractor:
             capability_status=capability_status,
             capability_reason=capability_reason,
         )
+
+    async def scan_device_profiles(self, serial: str) -> list[dict[str, Any]]:
+        """Scans device via ADB to check installation & downgrade readiness for all 46 profiles."""
+        installed_packages: set[str] = set()
+        try:
+            installed_packages = set(await self._adb.list_packages(serial))
+        except Exception:
+            pass
+
+        results: list[dict[str, Any]] = []
+        for profile in APK_DOWNGRADE_PROFILES.values():
+            is_installed = profile.package_name in installed_packages
+            version_name: str | None = None
+            if is_installed:
+                with suppress(Exception):
+                    pkg_dump = await self._adb.dump_package(serial, profile.package_name)
+                    version_name = _parse_version(pkg_dump)
+
+            cap_status, cap_reason, _, _, _ = await self.assess_capability(serial, profile)
+            results.append(
+                {
+                    "profile_id": profile.profile_id,
+                    "display_name": profile.display_name,
+                    "package_name": profile.package_name,
+                    "is_installed": is_installed,
+                    "version_name": version_name,
+                    "capability_status": str(
+                        cap_status.value if hasattr(cap_status, "value") else cap_status
+                    ),
+                    "capability_reason": cap_reason,
+                }
+            )
+
+        # Sort installed packages first
+        results.sort(key=lambda item: (not item["is_installed"], item["display_name"]))
+        return results
 
 
 def get_apk_downgrade_profile(profile_id: str) -> ApkDowngradeProfile:
