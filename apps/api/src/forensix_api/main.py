@@ -19,13 +19,16 @@ from forensix_api.middleware import request_id_middleware
 from forensix_api.routers import (
     acquisitions,
     ai,
+    ai_gateway_router,
     analytics,
     apk,
     artifacts,
     auth,
+    breakthrough_forensics_router,
     cases,
     correlation,
     custody,
+    deep_forensics,
     devices,
     evidence_sources,
     exports,
@@ -34,6 +37,7 @@ from forensix_api.routers import (
     integrations,
     key_evidence,
     media_analysis,
+    nextgen_forensics_router,
     non_rooted,
     reports,
     rooted,
@@ -107,6 +111,7 @@ def create_app(
     app.add_exception_handler(ApiSecurityError, security_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(CaseError, case_error_handler)  # type: ignore[arg-type]
     app.include_router(ai.router)
+    app.include_router(ai_gateway_router.router)
     app.include_router(apk.router)
     app.include_router(health.router)
     app.include_router(integrations.router)
@@ -132,6 +137,9 @@ def create_app(
     app.include_router(rooted.physical_capture_router)
     app.include_router(extraction.router)
     app.include_router(non_rooted.router)
+    app.include_router(deep_forensics.router)
+    app.include_router(nextgen_forensics_router.router)
+    app.include_router(breakthrough_forensics_router.router)
     app.include_router(evidence_sources.router)
     app.include_router(devices.router)
 
