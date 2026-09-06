@@ -20,6 +20,7 @@ import { MediaMapPage } from "./features/evidence/MediaMapPage";
 import { ArtifactSearchPage } from "./features/evidence/ArtifactSearchPage";
 import { KeyEvidencePage } from "./features/evidence/KeyEvidencePage";
 import { InvestigationStoryboardPage } from "./features/evidence/InvestigationStoryboardPage";
+import { AiIntelligenceCenterPage } from "./features/cases/AiIntelligenceCenterPage";
 
 export function App() {
   return (
@@ -31,6 +32,7 @@ export function App() {
           <Route path="/cases" element={<CasesPage />} />
           <Route path="/cases/:caseId" element={<CaseDetailPage />} />
           <Route path="/cases/:caseId/command-center" element={<CommandCenterPage />} />
+          <Route path="/cases/:caseId/ai-center" element={<AiIntelligenceCenterPage />} />
           <Route path="/cases/:caseId/devices" element={<DeviceDetectionPage />} />
           <Route path="/cases/:caseId/acquisitions" element={<AcquisitionPlanningPage />} />
           <Route path="/cases/:caseId/evidence" element={<EvidenceExplorerPage />} />
