@@ -1,6 +1,15 @@
 """Capability-gated device assessment."""
 
 from .assessor import DeviceCapabilityAssessor
+from .decision_engine import (
+    AcquisitionPlanRecommendation,
+    AcquisitionVector,
+    AcquisitionVectorDecisionEngine,
+    AppAcquisitionRoute,
+    VectorEvaluation,
+    VectorRiskLevel,
+    VectorStatus,
+)
 from .locked_device import (
     INITIAL_LAB_TARGET_CHIPSETS,
     LOCKED_DEVICE_PROFILES,
@@ -12,6 +21,7 @@ from .locked_device import (
 )
 from .models import (
     AcquisitionReadiness,
+    AndroidDeviceState,
     CapabilityDecision,
     CapabilityStatus,
     DeviceCapabilitySnapshot,
@@ -31,7 +41,12 @@ from .temporary_root_workflow import (
 )
 
 __all__ = [
+    "AcquisitionPlanRecommendation",
     "AcquisitionReadiness",
+    "AcquisitionVector",
+    "AcquisitionVectorDecisionEngine",
+    "AndroidDeviceState",
+    "AppAcquisitionRoute",
     "CapabilityDecision",
     "CapabilityStatus",
     "DeviceCapabilityAssessor",
@@ -52,4 +67,7 @@ __all__ = [
     "TemporaryRootProfileMismatchError",
     "TemporaryRootWorkflow",
     "TemporaryRootWorkflowResult",
+    "VectorEvaluation",
+    "VectorRiskLevel",
+    "VectorStatus",
 ]

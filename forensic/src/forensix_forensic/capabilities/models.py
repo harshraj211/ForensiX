@@ -8,6 +8,7 @@ from forensix_forensic.adb.models import SharedStorageRootProbe
 
 class CapabilityStatus(StrEnum):
     SUPPORTED = "supported"
+    LEGACY_SUPPORTED = "legacy_supported"
     UNSUPPORTED = "unsupported"
     UNKNOWN = "unknown"
     BLOCKED = "blocked"
@@ -19,6 +20,33 @@ class CapabilityDecision(BaseModel):
     status: CapabilityStatus
     reason_code: str
     explanation: str
+    capability: str | None = None
+    evidence: str | None = None
+    limitations: str | None = None
+
+    @property
+    def reason(self) -> str:
+        return self.explanation
+
+
+class AndroidDeviceState(BaseModel):
+    """Structured representation of observed device state independent of available capabilities."""
+
+    model_config = ConfigDict(frozen=True)
+
+    adb_state: str = "unknown"
+    authorization_state: str = "unknown"
+    lock_state: str = "unknown"
+    root_state: str = "unknown"
+    encryption_state: str = "unknown"
+    storage_access_state: str = "unknown"
+    accessibility_state: str = "unknown"
+    usage_stats_state: str = "unknown"
+    notification_listener_state: str = "unknown"
+    shared_storage_state: str = "unknown"
+    bootloader_state: str = "unknown"
+    chipset_family: str = "unknown"
+    chipset_model: str | None = None
 
 
 class AcquisitionReadiness(BaseModel):
@@ -72,6 +100,7 @@ class DeviceCapabilitySnapshot(BaseModel):
     storage_roots: tuple[SharedStorageRootProbe, ...] = ()
     battery_level: int | None = Field(default=None, ge=0, le=100)
     battery_status: str | None = None
+    device_state: AndroidDeviceState = Field(default_factory=AndroidDeviceState)
     acquisition_readiness: AcquisitionReadiness = AcquisitionReadiness(
         encryption_type="unknown",
         credential_storage_state="unknown",
@@ -106,4 +135,4 @@ class DeviceCapabilitySnapshot(BaseModel):
     )
     capabilities: dict[str, CapabilityDecision]
     warnings: tuple[str, ...]
-    assessor_version: str = "0.4.0"
+    assessor_version: str = "0.5.0"
