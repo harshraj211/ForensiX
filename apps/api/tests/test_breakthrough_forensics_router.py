@@ -1,7 +1,7 @@
 """Unit tests for Breakthrough Forensic Suite API router."""
 
 from pathlib import Path
-import pytest
+
 from fastapi.testclient import TestClient
 
 from forensix_api.main import create_app
@@ -41,7 +41,11 @@ def _create_authenticated_client(tmp_path: Path):
 
 def test_cloud_token_replay(tmp_path: Path):
     client, case_id = _create_authenticated_client(tmp_path)
-    payload = {"serial": "emulator-5554", "case_id": case_id, "operator_id": "breakthrough_examiner"}
+    payload = {
+        "serial": "emulator-5554",
+        "case_id": case_id,
+        "operator_id": "breakthrough_examiner",
+    }
     resp = client.post(f"/api/v1/cases/{case_id}/breakthrough/cloud-token-replay", json=payload)
     assert resp.status_code == 200
     data = resp.json()
@@ -69,7 +73,11 @@ def test_live_touch_record(tmp_path: Path):
 
 def test_timeline_anomaly_scan(tmp_path: Path):
     client, case_id = _create_authenticated_client(tmp_path)
-    payload = {"serial": "emulator-5554", "case_id": case_id, "operator_id": "breakthrough_examiner"}
+    payload = {
+        "serial": "emulator-5554",
+        "case_id": case_id,
+        "operator_id": "breakthrough_examiner",
+    }
     resp = client.post(f"/api/v1/cases/{case_id}/breakthrough/timeline-anomaly-scan", json=payload)
     assert resp.status_code == 200
     data = resp.json()

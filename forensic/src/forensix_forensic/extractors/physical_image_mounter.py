@@ -4,10 +4,10 @@ Parses EXT4 and F2FS filesystem superblocks and inode tables directly in Python
 to carve deleted files from unallocated inodes on raw disk images (.raw, .img, .dd).
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -53,7 +53,7 @@ class PhysicalImageMounter:
         operator_id: str = "operator",
     ) -> PhysicalImageMountResult:
         mount_id = str(uuid4())
-        t0 = datetime.now(timezone.utc)
+        t0 = datetime.now(UTC)
 
         try:
             items = [
@@ -75,14 +75,14 @@ class PhysicalImageMounter:
                 ),
             ]
 
-            duration = (datetime.now(timezone.utc) - t0).total_seconds()
+            duration = (datetime.now(UTC) - t0).total_seconds()
 
             return PhysicalImageMountResult(
                 mount_id=mount_id,
                 image_path=image_path,
                 case_id=case_id,
                 operator_id=operator_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 filesystem_type="EXT4 / F2FS Dual Superblock",
                 block_size_bytes=4096,
                 total_inodes_scanned=65536,
@@ -91,13 +91,13 @@ class PhysicalImageMounter:
                 success=True,
             )
         except Exception as exc:
-            duration = (datetime.now(timezone.utc) - t0).total_seconds()
+            duration = (datetime.now(UTC) - t0).total_seconds()
             return PhysicalImageMountResult(
                 mount_id=mount_id,
                 image_path=image_path,
                 case_id=case_id,
                 operator_id=operator_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 filesystem_type="UNKNOWN",
                 block_size_bytes=0,
                 total_inodes_scanned=0,

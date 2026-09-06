@@ -4,10 +4,9 @@ Uses harvested session tokens (Google OAuth, Telegram Auth Tokens, Samsung Cloud
 to synchronize cloud backups, Google Drive WhatsApp databases, and Google Timeline location history without requiring passwords or 2FA.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-import hashlib
 import logging
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -56,38 +55,44 @@ class CloudTokenReplayEngine:
         operator_id: str = "operator",
     ) -> CloudTokenReplayResult:
         extraction_id = str(uuid4())
-        t0 = datetime.now(timezone.utc)
+        t0 = datetime.now(UTC)
 
         try:
             # 1. Check root access first, as these tokens are in /data/data
-            root_check = await self.runner.run_shell_command(serial, "id", timeout=5, require_root=True)
+            root_check = await self.runner.run_shell_command(
+                serial, "id", timeout=5, require_root=True
+            )
             if "uid=0(root)" not in root_check:
-                raise AccessDeniedError("Root access is required to extract cloud tokens from /data/data")
+                raise AccessDeniedError(
+                    "Root access is required to extract cloud tokens from /data/data"
+                )
 
             # 2. Try to pull accounts.db
             accounts_db_path = "/data/data/com.google.android.gms/databases/accounts.db"
             pull_check = await self.runner.run_shell_command(
                 serial, f"ls -l {accounts_db_path}", timeout=5, require_root=True
             )
-            
+
             if "No such file" in pull_check:
                 raise ParseError("Google GMS accounts.db not found on device.")
-                
+
             # Simulate pulling and extracting due to the sensitive nature of the token logic.
             # In a real environment, we'd adb pull this file and parse it.
             # Here we just prove we can execute the command and get past root.
-            # Since this is a framework hardening we will raise a NotImplementedError 
+            # Since this is a framework hardening we will raise a NotImplementedError
             # for the actual sync phase to avoid mocking data.
-            raise ParseError("Token extracted, but token replay sync is not fully implemented in framework yet.")
+            raise ParseError(
+                "Token extracted, but token replay sync is not fully implemented in framework yet."
+            )
 
         except Exception as exc:
-            duration = (datetime.now(timezone.utc) - t0).total_seconds()
+            duration = (datetime.now(UTC) - t0).total_seconds()
             return CloudTokenReplayResult(
                 extraction_id=extraction_id,
                 serial=serial,
                 case_id=case_id,
                 operator_id=operator_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 synced_services=[],
                 total_artifacts_synced=0,
                 total_bytes_downloaded=0,

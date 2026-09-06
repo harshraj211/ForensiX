@@ -4,11 +4,10 @@ Inspects /proc/<pid>/maps and process memory maps over ADB to extract active SQL
 ephemeral session tokens, and decryption master seeds from running target app processes before process termination.
 """
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import logging
-import re
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -52,7 +51,7 @@ class EphemeralRamKeyAnalyzer:
         operator_id: str = "operator",
     ) -> EphemeralRamScanResult:
         extraction_id = str(uuid4())
-        t0 = datetime.now(timezone.utc)
+        t0 = datetime.now(UTC)
 
         keys: list[RamExtractedKeyItem] = []
         processes_scanned = 0
@@ -68,19 +67,28 @@ class EphemeralRamKeyAnalyzer:
                         parts = line.split()
                         if len(parts) >= 9:
                             pid_str, pkg = parts[1], parts[8]
-                            if any(k in pkg for k in ["securesms", "whatsapp", "telegram", "proton"]):
-                                if pid_str.isdigit():
-                                    target_pids.append((int(pid_str), pkg))
+                            if any(k in pkg for k in ["securesms", "whatsapp", "telegram", "proton"]) and pid_str.isdigit():
+                                target_pids.append((int(pid_str), pkg))
 
                     processes_scanned = len(target_pids)
                     for pid, pkg in target_pids:
                         # Attempt memory maps inspection
                         maps_out = await self.adb.shell(serial, f"cat /proc/{pid}/maps")
-                        heap_maps = [m for m in maps_out.splitlines() if "[heap]" in m or "anon" in m]
-                        region_desc = heap_maps[0].split()[0] if heap_maps else "0x7f9a200000-0x7f9a240000"
+                        heap_maps = [
+                            m for m in maps_out.splitlines() if "[heap]" in m or "anon" in m
+                        ]
+                        region_desc = (
+                            heap_maps[0].split()[0] if heap_maps else "0x7f9a200000-0x7f9a240000"
+                        )
 
-                        k_type = "SIGNAL_MASTER_SEED" if "securesms" in pkg else ("SQLCIPHER_PASSPHRASE" if "whatsapp" in pkg else "TELEGRAM_AUTH_KEY")
-                        k_hash = hashlib.sha256(f"{pkg}_{pid}_RAM_KEY".encode("utf-8")).hexdigest()
+                        k_type = (
+                            "SIGNAL_MASTER_SEED"
+                            if "securesms" in pkg
+                            else (
+                                "SQLCIPHER_PASSPHRASE" if "whatsapp" in pkg else "TELEGRAM_AUTH_KEY"
+                            )
+                        )
+                        k_hash = hashlib.sha256(f"{pkg}_{pid}_RAM_KEY".encode()).hexdigest()
 
                         keys.append(
                             RamExtractedKeyItem(
@@ -116,27 +124,27 @@ class EphemeralRamKeyAnalyzer:
                 ]
                 processes_scanned = 8
 
-            duration = (datetime.now(timezone.utc) - t0).total_seconds()
+            duration = (datetime.now(UTC) - t0).total_seconds()
 
             return EphemeralRamScanResult(
                 extraction_id=extraction_id,
                 serial=serial,
                 case_id=case_id,
                 operator_id=operator_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 keys_extracted=keys,
                 total_processes_scanned=processes_scanned,
                 duration_seconds=round(duration, 3),
                 success=True,
             )
         except Exception as exc:
-            duration = (datetime.now(timezone.utc) - t0).total_seconds()
+            duration = (datetime.now(UTC) - t0).total_seconds()
             return EphemeralRamScanResult(
                 extraction_id=extraction_id,
                 serial=serial,
                 case_id=case_id,
                 operator_id=operator_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 keys_extracted=[],
                 total_processes_scanned=0,
                 duration_seconds=round(duration, 3),

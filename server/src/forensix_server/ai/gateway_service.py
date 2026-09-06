@@ -4,10 +4,10 @@ Handles multi-model routing (Xkiro Vision & Multimodal OCR, Groq Narrative & Rea
 offline graceful fallback, and cryptographic chain-of-custody audit logging for court admissibility.
 """
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -66,8 +66,12 @@ class AiGatewayService:
             "xkiro_vision_available": xkiro_configured,
             "xkiro_api_key_configured": xkiro_configured,
             "groq_reasoning_available": groq_configured,
-            "active_vision_model": "xkiro-vision-v2" if xkiro_configured else "fallback-local-ocr-v1",
-            "active_reasoning_model": "groq-llama-3.1-8b-instant" if groq_configured else "rule-based-forensic-synthesizer",
+            "active_vision_model": "xkiro-vision-v2"
+            if xkiro_configured
+            else "fallback-local-ocr-v1",
+            "active_reasoning_model": "groq-llama-3.1-8b-instant"
+            if groq_configured
+            else "rule-based-forensic-synthesizer",
             "supported_capabilities": [
                 "SENSITIVE_DOC_OCR",
                 "CRYPTO_SEED_PHRASE_DETECTOR",
@@ -96,18 +100,32 @@ class AiGatewayService:
             category = "IDENTITY_DOC"
             confidence = 0.96
             labels = ["Passport Document", "Face Photograph", "MRZ Code Zone", "Official Stamp"]
-            text = "REPUBLIC OF INDIA / PASSPORT / NO: Z8492014 / SURNAME: KUMAR / GIVEN NAME: HARSH"
+            text = (
+                "REPUBLIC OF INDIA / PASSPORT / NO: Z8492014 / SURNAME: KUMAR / GIVEN NAME: HARSH"
+            )
             risk = "CRITICAL"
-        elif any(k in lower_name for k in ["seed", "wallet", "crypto", "phrase", "btc", "eth", "bank", "receipt"]):
+        elif any(
+            k in lower_name
+            for k in ["seed", "wallet", "crypto", "phrase", "btc", "eth", "bank", "receipt"]
+        ):
             category = "FINANCIAL_CRYPTO"
             confidence = 0.98
-            labels = ["Crypto Seed Phrase Paper", "BIP39 Words", "Bitcoin Address QR", "Banking Transaction"]
+            labels = [
+                "Crypto Seed Phrase Paper",
+                "BIP39 Words",
+                "Bitcoin Address QR",
+                "Banking Transaction",
+            ]
             text = "BIP39 12-Word Seed: abandon amount abandon amount abandon amount abandon amount abandon amount abandon amount secret"
             risk = "CRITICAL"
         elif any(k in lower_name for k in ["gun", "weapon", "cash", "money", "narcotics", "drug"]):
             category = "THREAT_CONTRABAND"
             confidence = 0.92
-            labels = ["Firearm / Pistol", "Currency Stacks ($100 bills)", "Illegal Substance Package"]
+            labels = [
+                "Firearm / Pistol",
+                "Currency Stacks ($100 bills)",
+                "Illegal Substance Package",
+            ]
             text = "VISUAL DETECT: 9mm Semi-Automatic Handgun + 3x Stacks of $100 Cash Bundles"
             risk = "CRITICAL"
         else:
@@ -153,7 +171,11 @@ class AiGatewayService:
     ) -> CopilotAnswer:
         """Executes natural language queries over case evidence using AI reasoning."""
         query_hash = hashlib.sha256(query_text.encode("utf-8")).hexdigest()
-        model_name = "groq-llama-3.1-8b-instant" if settings.groq_api_key else ("xkiro-reasoning-v1" if settings.xkiro_api_key else "rule-based-forensic-copilot")
+        model_name = (
+            "groq-llama-3.1-8b-instant"
+            if settings.groq_api_key
+            else ("xkiro-reasoning-v1" if settings.xkiro_api_key else "rule-based-forensic-copilot")
+        )
 
         q_lower = query_text.lower()
         if "crypto" in q_lower or "seed" in q_lower or "money" in q_lower or "payment" in q_lower:
@@ -162,14 +184,22 @@ class AiGatewayService:
                 "the extracted media store (DCIM/Screenshots/IMG_20260906.jpg). Additionally, WhatsApp message "
                 "threads with contact '+1 (555) 019-2831' reference a USDT transfer of 15,000 USD at 01:42 AM."
             )
-            artifacts = ["DCIM/Screenshots/IMG_20260906.jpg", "WhatsApp/msgstore.db:msg_4091", "Crypto_Persona_USDT"]
+            artifacts = [
+                "DCIM/Screenshots/IMG_20260906.jpg",
+                "WhatsApp/msgstore.db:msg_4091",
+                "Crypto_Persona_USDT",
+            ]
         elif "time" in q_lower or "night" in q_lower or "location" in q_lower or "gps" in q_lower:
             answer = (
                 "Timeline Correlation Report: Device EXIF GPS logs place the target device at coordinates "
                 "28.6139° N, 77.2090° E (New Delhi) between 11:30 PM and 02:15 AM. During this period, 4 encrypted "
                 "Signal messages and 2 unanswered phone calls were logged."
             )
-            artifacts = ["EXIF_GPS_Log_008.jpg", "Signal_Encrypted_Preferences.xml", "Call_History_004"]
+            artifacts = [
+                "EXIF_GPS_Log_008.jpg",
+                "Signal_Encrypted_Preferences.xml",
+                "Call_History_004",
+            ]
         else:
             answer = (
                 f"ForensiX AI Copilot Summary for query '{query_text}': "
@@ -195,7 +225,7 @@ class AiGatewayService:
             model_used=model_name,
             referenced_artifacts=artifacts,
             confidence_score=0.95,
-            timestamp=datetime.now(timezone.utc).isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
         )
 
     def list_audit_logs(self, case_id: str | None = None) -> list[AiAuditLogRecord]:
@@ -215,7 +245,7 @@ class AiGatewayService:
         response_sha256: str,
     ) -> None:
         audit_id = str(uuid4())
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(UTC).isoformat()
         sig_data = f"{audit_id}:{case_id}:{operator_id}:{input_sha256}:{response_sha256}:{ts}"
         sig = hashlib.sha256(sig_data.encode("utf-8")).hexdigest()
 

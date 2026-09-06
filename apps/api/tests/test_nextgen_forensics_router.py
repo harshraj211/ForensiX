@@ -1,7 +1,7 @@
 """Unit tests for Next-Gen Non-Rooted Forensic Suite API router."""
 
 from pathlib import Path
-import pytest
+
 from fastapi.testclient import TestClient
 
 from forensix_api.main import create_app
@@ -42,7 +42,9 @@ def _create_authenticated_client(tmp_path: Path):
 def test_android15_private_space_scan(tmp_path: Path):
     client, case_id = _create_authenticated_client(tmp_path)
     payload = {"serial": "emulator-5554", "case_id": case_id, "operator_id": "nextgen_examiner"}
-    resp = client.post(f"/api/v1/cases/{case_id}/nextgen/android15-private-space-scan", json=payload)
+    resp = client.post(
+        f"/api/v1/cases/{case_id}/nextgen/android15-private-space-scan", json=payload
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["case_id"] == case_id

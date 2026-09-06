@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 
 from forensix_api.dependencies import get_adb_client, require_device_operator
@@ -42,7 +42,9 @@ class BaseDeepRequest(BaseModel):
 
 
 class AiVisionOcrRequest(BaseDeepRequest):
-    target_app: str = Field(default="com.whatsapp", description="Target app for vision OCR recording")
+    target_app: str = Field(
+        default="com.whatsapp", description="Target app for vision OCR recording"
+    )
 
 
 class KeystoreVaultDecryptResponse(BaseModel):
@@ -210,7 +212,9 @@ async def correlate_identity_personas(
 ) -> IdentityPersonaCorrelateResponse:
     adapter = HardwareAdbAdapter(adb_client)
     correlator = IdentityPersonaCorrelator(adb=adapter)
-    res = await correlator.correlate_identities(request.serial, request.case_id, request.operator_id)
+    res = await correlator.correlate_identities(
+        request.serial, request.case_id, request.operator_id
+    )
     return IdentityPersonaCorrelateResponse(
         extraction_id=res.extraction_id,
         serial=res.serial,

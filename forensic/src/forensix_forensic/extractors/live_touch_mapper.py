@@ -4,10 +4,10 @@ Streams 60fps MP4 video via scrcpy over ADB while logging raw touch event coordi
 exporting timestamped video evidence with visual gesture overlays for court testimony.
 """
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import hashlib
 import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
@@ -47,7 +47,7 @@ class LiveTouchMapper:
 
         try:
             video_file = f"evidence/recordings/session_{session_id[:8]}.mp4"
-            sample_bytes = f"SCRCPY_LIVE_RECORDING_{session_id}_{duration_sec}S".encode("utf-8")
+            sample_bytes = f"SCRCPY_LIVE_RECORDING_{session_id}_{duration_sec}S".encode()
             seal_hash = hashlib.sha256(sample_bytes).hexdigest()
 
             return LiveTouchRecordResult(
@@ -55,7 +55,7 @@ class LiveTouchMapper:
                 serial=serial,
                 case_id=case_id,
                 operator_id=operator_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 video_output_path=video_file,
                 duration_seconds=float(duration_sec),
                 fps=60,
@@ -69,7 +69,7 @@ class LiveTouchMapper:
                 serial=serial,
                 case_id=case_id,
                 operator_id=operator_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
+                timestamp=datetime.now(UTC).isoformat(),
                 video_output_path="",
                 duration_seconds=0.0,
                 fps=0,

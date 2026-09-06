@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Brain,
   Cpu,
   FileCheck,
   FileText,
   Key,
-  Lock,
   MessageSquare,
   Search,
   ShieldCheck,
@@ -30,7 +29,6 @@ interface AiIntelligenceCenterProps {
 export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ caseId }) => {
   const [activeTab, setActiveTab] = useState<"media" | "copilot" | "audit">("media");
   const [status, setStatus] = useState<AiGatewayStatus | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState<boolean>(true);
 
   // Media scan state
   const [mediaItems, setMediaItems] = useState<AiMediaScanItem[]>([]);
@@ -46,28 +44,27 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
   const [auditLogs, setAuditLogs] = useState<AiAuditLogItem[]>([]);
   const [loadingAudit, setLoadingAudit] = useState<boolean>(false);
 
-  useEffect(() => {
-    fetchStatus();
-  }, [caseId]);
-
-  const fetchStatus = async () => {
-    setLoadingStatus(true);
+  const fetchStatus = useCallback(async () => {
     try {
       const res = await getAiGatewayStatus(caseId);
       setStatus(res);
     } catch {
       // Graceful fallback
-    } finally {
-      setLoadingStatus(false);
     }
-  };
+  }, [caseId]);
+
+  useEffect(() => {
+    // This effect synchronizes the remote gateway status after the case changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchStatus();
+  }, [fetchStatus]);
 
   const handleScanMedia = async () => {
     setScanningMedia(true);
     try {
       const res = await scanMediaAiIntelligence(caseId);
       setMediaItems(res.items);
-      fetchStatus();
+      void fetchStatus();
     } catch (err) {
       console.error("Failed to scan media intelligence", err);
     } finally {
@@ -83,7 +80,7 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
     try {
       const res = await queryAiCopilot(caseId, textToSubmit);
       setCopilotAnswer(res);
-      fetchStatus();
+      void fetchStatus();
     } catch (err) {
       console.error("Copilot query failed", err);
     } finally {
@@ -91,7 +88,7 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
     }
   };
 
-  const handleLoadAuditLogs = async () => {
+  const handleLoadAuditLogs = useCallback(async () => {
     setLoadingAudit(true);
     try {
       const res = await getAiAuditLogs(caseId);
@@ -101,13 +98,15 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
     } finally {
       setLoadingAudit(false);
     }
-  };
+  }, [caseId]);
 
   useEffect(() => {
     if (activeTab === "audit") {
-      handleLoadAuditLogs();
+      // Audit data is loaded when the tab becomes visible.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void handleLoadAuditLogs();
     }
-  }, [activeTab]);
+  }, [activeTab, handleLoadAuditLogs]);
 
   const filteredMediaItems =
     mediaCategoryFilter === "ALL"
@@ -164,7 +163,7 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
       {/* Navigation Tabs */}
       <div className="flex space-x-2 border-b border-slate-200 dark:border-slate-800 pb-1">
         <button
-          onClick={() => setActiveTab("media")}
+          onClick={() => { setActiveTab("media"); }}
           className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
             activeTab === "media"
               ? "bg-indigo-600 text-white shadow-sm"
@@ -181,7 +180,7 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
         </button>
 
         <button
-          onClick={() => setActiveTab("copilot")}
+          onClick={() => { setActiveTab("copilot"); }}
           className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
             activeTab === "copilot"
               ? "bg-indigo-600 text-white shadow-sm"
@@ -193,7 +192,7 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
         </button>
 
         <button
-          onClick={() => setActiveTab("audit")}
+          onClick={() => { setActiveTab("audit"); }}
           className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
             activeTab === "audit"
               ? "bg-indigo-600 text-white shadow-sm"
@@ -218,7 +217,7 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
               </p>
             </div>
             <button
-              onClick={handleScanMedia}
+              onClick={() => { void handleScanMedia(); }}
               disabled={scanningMedia}
               className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-2 transition-all shadow disabled:opacity-50"
             >
@@ -248,7 +247,7 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
               ].map((chip) => (
                 <button
                   key={chip.value}
-                  onClick={() => setMediaCategoryFilter(chip.value)}
+                  onClick={() => { setMediaCategoryFilter(chip.value); }}
                   className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
                     mediaCategoryFilter === chip.value
                       ? "bg-indigo-600 text-white"
@@ -347,7 +346,7 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
                   key={idx}
                   onClick={() => {
                     setQueryText(suggestion);
-                    handleCopilotQuery(suggestion);
+                    void handleCopilotQuery(suggestion);
                   }}
                   className="px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition-colors text-left text-xs"
                 >
@@ -361,12 +360,12 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
               <input
                 type="text"
                 value={queryText}
-                onChange={(e) => setQueryText(e.target.value)}
+                onChange={(e) => { setQueryText(e.target.value); }}
                 placeholder="Ask any natural language question about case artifacts, suspect actions, or timeline..."
                 className="flex-1 px-4 py-2.5 rounded-lg bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <button
-                onClick={() => handleCopilotQuery()}
+                onClick={() => { void handleCopilotQuery(); }}
                 disabled={copilotLoading || !queryText.trim()}
                 className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center space-x-2 transition-all disabled:opacity-50"
               >
@@ -437,7 +436,7 @@ export const AiIntelligenceCenter: React.FC<AiIntelligenceCenterProps> = ({ case
               </p>
             </div>
             <button
-              onClick={handleLoadAuditLogs}
+              onClick={() => { void handleLoadAuditLogs(); }}
               disabled={loadingAudit}
               className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 transition-colors"
             >

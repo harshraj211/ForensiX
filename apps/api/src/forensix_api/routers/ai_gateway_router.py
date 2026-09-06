@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from forensix_api.dependencies import get_authenticated_session, get_settings
+from forensix_forensic.extractors.ai_media_intelligence import AiMediaIntelligenceExtractor
 from forensix_server.ai import get_ai_gateway_service
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.config import Settings
-from forensix_forensic.extractors.ai_media_intelligence import AiMediaIntelligenceExtractor
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/ai-gateway", tags=["ai-gateway"])
 

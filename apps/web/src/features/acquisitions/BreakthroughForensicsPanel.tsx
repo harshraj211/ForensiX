@@ -3,9 +3,7 @@ import {
   Activity,
   Cloud,
   Cpu,
-  Database,
   Disc,
-  FileCheck,
   HardDrive,
   Video,
   Zap,
@@ -143,7 +141,7 @@ export const BreakthroughForensicsPanel: React.FC<BreakthroughForensicsPanelProp
           </div>
 
           <button
-            onClick={handleCloudReplay}
+            onClick={() => { void handleCloudReplay(); }}
             disabled={cloudLoading}
             className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-1 transition-all disabled:opacity-50"
           >
@@ -178,7 +176,7 @@ export const BreakthroughForensicsPanel: React.FC<BreakthroughForensicsPanelProp
           </div>
 
           <button
-            onClick={handleRecordLiveTouch}
+            onClick={() => { void handleRecordLiveTouch(); }}
             disabled={touchLoading}
             className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-1 transition-all disabled:opacity-50"
           >
@@ -213,7 +211,7 @@ export const BreakthroughForensicsPanel: React.FC<BreakthroughForensicsPanelProp
           </div>
 
           <button
-            onClick={handleScanAnomalies}
+            onClick={() => { void handleScanAnomalies(); }}
             disabled={anomalyLoading}
             className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-1 transition-all disabled:opacity-50"
           >
@@ -248,7 +246,7 @@ export const BreakthroughForensicsPanel: React.FC<BreakthroughForensicsPanelProp
           </div>
 
           <button
-            onClick={handleMountImage}
+            onClick={() => { void handleMountImage(); }}
             disabled={mountLoading}
             className="w-full py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-1 transition-all disabled:opacity-50"
           >

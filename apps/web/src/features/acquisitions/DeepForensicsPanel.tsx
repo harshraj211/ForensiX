@@ -2,21 +2,13 @@ import React, { useState } from "react";
 import {
   Brain,
   CheckCircle2,
-  Cpu,
-  Database,
-  FileCheck,
-  Flame,
-  Globe,
   HardDrive,
   KeyRound,
-  Layers,
   Loader2,
   Lock,
   MapPin,
-  ShieldCheck,
   Sparkles,
   Users,
-  Video,
 } from "lucide-react";
 import {
   decryptKeystoreVaults,
@@ -140,7 +132,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
         <div className="mt-6 flex flex-wrap gap-2 border-t border-purple-800/60 pt-4">
           <button
             type="button"
-            onClick={() => setActiveTab("keystore")}
+            onClick={() => { setActiveTab("keystore"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
               activeTab === "keystore" ? "bg-purple-500 text-slate-950 shadow" : "bg-slate-900/90 text-purple-200 hover:bg-slate-800"
             }`}
@@ -149,7 +141,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("disk")}
+            onClick={() => { setActiveTab("disk"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
               activeTab === "disk" ? "bg-purple-500 text-slate-950 shadow" : "bg-slate-900/90 text-purple-200 hover:bg-slate-800"
             }`}
@@ -158,7 +150,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("personas")}
+            onClick={() => { setActiveTab("personas"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
               activeTab === "personas" ? "bg-purple-500 text-slate-950 shadow" : "bg-slate-900/90 text-purple-200 hover:bg-slate-800"
             }`}
@@ -167,7 +159,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("fbe")}
+            onClick={() => { setActiveTab("fbe"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
               activeTab === "fbe" ? "bg-purple-500 text-slate-950 shadow" : "bg-slate-900/90 text-purple-200 hover:bg-slate-800"
             }`}
@@ -176,7 +168,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab("vision")}
+            onClick={() => { setActiveTab("vision"); }}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-bold transition-all ${
               activeTab === "vision" ? "bg-purple-500 text-slate-950 shadow" : "bg-slate-900/90 text-purple-200 hover:bg-slate-800"
             }`}
@@ -204,7 +196,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
             </div>
             <button
               type="button"
-              onClick={handleRunKeystore}
+              onClick={() => { void handleRunKeystore(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-purple-700 px-4 py-2 text-xs font-bold text-white shadow hover:bg-purple-800 disabled:opacity-50"
             >
@@ -249,7 +241,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
             </div>
             <button
               type="button"
-              onClick={handleRunRawDisk}
+              onClick={() => { void handleRunRawDisk(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-purple-700 px-4 py-2 text-xs font-bold text-white shadow hover:bg-purple-800 disabled:opacity-50"
             >
@@ -296,7 +288,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
             </div>
             <button
               type="button"
-              onClick={handleRunPersonas}
+              onClick={() => { void handleRunPersonas(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-purple-700 px-4 py-2 text-xs font-bold text-white shadow hover:bg-purple-800 disabled:opacity-50"
             >
@@ -346,7 +338,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
             </div>
             <button
               type="button"
-              onClick={handleRunFbe}
+              onClick={() => { void handleRunFbe(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-purple-700 px-4 py-2 text-xs font-bold text-white shadow hover:bg-purple-800 disabled:opacity-50"
             >
@@ -397,13 +389,13 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
             <input
               type="text"
               value={targetApp}
-              onChange={(e) => setTargetApp(e.target.value)}
+              onChange={(e) => { setTargetApp(e.target.value); }}
               placeholder="e.g. com.whatsapp"
               className="w-64 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono text-slate-800 shadow-sm"
             />
             <button
               type="button"
-              onClick={handleRunVision}
+              onClick={() => { void handleRunVision(); }}
               disabled={loading}
               className="inline-flex items-center gap-2 rounded-xl bg-purple-700 px-4 py-2 text-xs font-bold text-white shadow hover:bg-purple-800 disabled:opacity-50"
             >

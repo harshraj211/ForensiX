@@ -1,6 +1,7 @@
 """Unit tests for Centralized AI Gateway & Multimodal Suite API router."""
 
 from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from forensix_api.main import create_app

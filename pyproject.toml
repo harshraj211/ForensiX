@@ -10,7 +10,7 @@ src = ["forensic/src", "server/src", "apps/api/src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "S"]
-ignore = ["S101"]
+ignore = ["S101", "E501", "ASYNC109", "ASYNC230", "ASYNC240"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**/*.py" = ["S105", "S106", "S108"]

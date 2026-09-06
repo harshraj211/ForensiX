@@ -7,7 +7,6 @@ import {
   MemoryStick,
   ShieldCheck,
   Smartphone,
-  Sparkles,
   Unlock,
   Zap,
 } from "lucide-react";
@@ -130,7 +129,7 @@ export const NextGenForensicsPanel: React.FC<NextGenForensicsPanelProps> = ({
           </div>
 
           <button
-            onClick={handleScanPrivateSpace}
+            onClick={() => { void handleScanPrivateSpace(); }}
             disabled={psLoading}
             className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-2 transition-all disabled:opacity-50"
           >
@@ -166,14 +165,14 @@ export const NextGenForensicsPanel: React.FC<NextGenForensicsPanelProps> = ({
 
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => handleDecryptCrypt16_17("crypt16")}
+              onClick={() => { void handleDecryptCrypt16_17("crypt16"); }}
               disabled={cryptLoading}
               className="py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-1 transition-all disabled:opacity-50"
             >
               <span>Crypt16 Decrypt</span>
             </button>
             <button
-              onClick={() => handleDecryptCrypt16_17("crypt17")}
+              onClick={() => { void handleDecryptCrypt16_17("crypt17"); }}
               disabled={cryptLoading}
               className="py-2 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-1 transition-all disabled:opacity-50"
             >
@@ -202,7 +201,7 @@ export const NextGenForensicsPanel: React.FC<NextGenForensicsPanelProps> = ({
           </div>
 
           <button
-            onClick={handleScanRamKeys}
+            onClick={() => { void handleScanRamKeys(); }}
             disabled={ramLoading}
             className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center space-x-2 transition-all disabled:opacity-50"
           >
