@@ -16,5 +16,10 @@ export default defineConfig({
     globals: true,
     setupFiles: "./src/test/setup.ts",
     testTimeout: 20_000,
+    // A single worker avoids a Vitest worker-pool stall on Windows workspaces
+    // synchronized by OneDrive, while keeping test behavior deterministic.
+    pool: "threads",
+    maxWorkers: 1,
+    fileParallelism: false,
   },
 });
