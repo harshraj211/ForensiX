@@ -95,10 +95,18 @@ def test_timeline_anomaly_scan(tmp_path: Path):
 
 def test_physical_image_mount(tmp_path: Path):
     client, case_id = _create_authenticated_client(tmp_path)
-    payload = {"serial": "emulator-5554", "case_id": case_id, "image_path": "data/userdata.img"}
+    image_path = tmp_path / "userdata.img"
+    image_bytes = bytearray(8192)
+    image_bytes[1024 + 0x38 : 1024 + 0x3A] = b"\x53\xef"
+    image_bytes[1024 + 0x18 : 1024 + 0x1C] = (2).to_bytes(4, "little")
+    image_bytes[1024 : 1024 + 4] = (42).to_bytes(4, "little")
+    image_path.write_bytes(image_bytes)
+    payload = {"serial": "emulator-5554", "case_id": case_id, "image_path": str(image_path)}
     resp = client.post(f"/api/v1/cases/{case_id}/breakthrough/physical-image-mount", json=payload)
     assert resp.status_code == 200
     data = resp.json()
     assert data["case_id"] == case_id
-    assert len(data["carved_inodes"]) == 2
-    assert data["filesystem_type"].startswith("EXT4")
+    assert data["success"] is True
+    assert data["carved_inodes"] == []
+    assert data["filesystem_type"] == "EXT4"
+    assert data["block_size_bytes"] == 4096
