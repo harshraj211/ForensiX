@@ -288,7 +288,7 @@ class _Fat32Scanner:
             raise ValueError("FAT entry is truncated")
         return int.from_bytes(value, "little") & 0x0FFFFFFF
 
-    def chain(self, start: int):
+    def chain(self, start: int) -> Iterator[int]:
         seen: set[int] = set()
         cluster = start
         while 2 <= cluster < self.volume.cluster_count + 2:

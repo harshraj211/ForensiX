@@ -211,8 +211,10 @@ class EvidenceExaminationService:
                 and acquisition.get("backup_inspection", {}).get("backup_kind")
                 == "samsung_smart_switch_archive"
             ):
-                parser = SmartSwitchArchiveParser()
-                if parser_ids is not None and set(parser_ids) != {parser.metadata.parser_id}:
+                smart_switch_parser = SmartSwitchArchiveParser()
+                if parser_ids is not None and set(parser_ids) != {
+                    smart_switch_parser.metadata.parser_id
+                }:
                     raise EvidenceTwinError(
                         "Select the Smart Switch archive parser for this source."
                     )
@@ -222,7 +224,7 @@ class EvidenceExaminationService:
                         principal,
                         inspection.id,
                         context,
-                        parser,
+                        smart_switch_parser,
                         path,
                     )
                 ]
@@ -232,8 +234,10 @@ class EvidenceExaminationService:
                 == "legacy_android_backup"
                 and not acquisition.get("backup_inspection", {}).get("encrypted")
             ):
-                parser = LegacyAndroidBackupParser()
-                if parser_ids is not None and set(parser_ids) != {parser.metadata.parser_id}:
+                legacy_backup_parser = LegacyAndroidBackupParser()
+                if parser_ids is not None and set(parser_ids) != {
+                    legacy_backup_parser.metadata.parser_id
+                }:
                     raise EvidenceTwinError(
                         "Select the legacy Android Backup parser for this source."
                     )
@@ -243,7 +247,7 @@ class EvidenceExaminationService:
                         principal,
                         inspection.id,
                         context,
-                        parser,
+                        legacy_backup_parser,
                         path,
                     )
                 ]
@@ -253,8 +257,10 @@ class EvidenceExaminationService:
                 == "memory_card_image"
                 and acquisition.get("backup_inspection", {}).get("filesystem_type") == "fat32"
             ):
-                parser = MemoryCardImageParser()
-                if parser_ids is not None and set(parser_ids) != {parser.metadata.parser_id}:
+                memory_card_parser = MemoryCardImageParser()
+                if parser_ids is not None and set(parser_ids) != {
+                    memory_card_parser.metadata.parser_id
+                }:
                     raise EvidenceTwinError("Select the FAT32 memory-card parser for this source.")
                 return [
                     self._execute_document_parser(
@@ -262,7 +268,7 @@ class EvidenceExaminationService:
                         principal,
                         inspection.id,
                         context,
-                        parser,
+                        memory_card_parser,
                         path,
                     )
                 ]

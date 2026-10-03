@@ -385,7 +385,7 @@ def _seal_staged_backup(
         result = inspect_backup_import(backup_path, source_name=source_name)
     except (InvalidBackupImport, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    inspection = {
+    inspection: dict[str, object] = {
         "backup_kind": result.backup_kind,
         "format_version": result.format_version,
         "compression": result.compression,
@@ -430,11 +430,20 @@ def _seal_staged_backup(
             parser_error = runs[0].run.error_message
     return BackupImportResponse(
         evidence_source=source_response(record),
+        backup_kind=result.backup_kind,
+        format_version=result.format_version,
+        compression=result.compression,
+        encrypted=result.encrypted,
+        member_count=result.member_count,
+        member_bytes=result.member_bytes,
+        package_hints=list(result.package_hints),
+        warnings=list(result.warnings),
+        filesystem_type=result.filesystem_type,
+        filesystem_block_size=result.filesystem_block_size,
         parser_run_id=parser_run_id,
         parsed_artifact_count=parsed_artifact_count,
         parser_status=parser_status,
         parser_error=parser_error,
-        **{key: value for key, value in inspection.items() if key != "source_assembly"},
     )
 
 

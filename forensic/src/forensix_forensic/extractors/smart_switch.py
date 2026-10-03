@@ -453,6 +453,7 @@ def _row_artifact(row: dict[str, Any], locator: str, *, hint: str = "") -> Parse
     time = _timestamp(value("date", "timestamp", "time", "created_at", "start_time", "date_sent"))
     attachment = value("attachment", "attachment_path", "media_path", "file_name")
     classification = f"{hint}/{locator}".casefold()
+    metadata: dict[str, object]
     if body and (address or "message" in classification):
         kind, category, title, summary = (
             "smart_switch_message",
@@ -485,7 +486,11 @@ def _row_artifact(row: dict[str, Any], locator: str, *, hint: str = "") -> Parse
             name,
             ", ".join(x for x in (phone, email) if x),
         )
-        metadata = {"name": name, "phone_numbers": phone_numbers, "emails": emails}
+        metadata = {
+            "name": name,
+            "phone_numbers": phone_numbers,
+            "emails": emails,
+        }
     elif "setting" in classification and value("key", "setting_name"):
         key = value("key", "setting_name")
         raw = value("value", "setting_value")

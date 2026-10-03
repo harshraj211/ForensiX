@@ -14,6 +14,7 @@ import tempfile
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID
 from zipfile import BadZipFile, ZipFile
 
@@ -128,21 +129,33 @@ def import_agent_bundle(
         if any(
             not isinstance(item, dict)
             for name in expected_files - {"device_metadata.json"}
-            for item in parsed[name]
+            for item in cast(list[object], parsed[name])
         ):
             raise InvalidAgentBundle("Expected object records in collection files")
         if not isinstance(parsed["device_metadata.json"], dict):
             raise InvalidAgentBundle("Expected device metadata object")
         try:
-            contacts = contacts_from_json(parsed["contacts.json"])
-            sms = sms_from_json(parsed["sms.json"])
-            calls = call_logs_from_json(parsed["call_logs.json"])
-            apps = installed_apps_from_json(parsed["installed_apps.json"])
-            metadata = device_metadata_from_json(parsed["device_metadata.json"])
-            artifacts = app_artifacts_from_json(parsed["app_artifacts.json"])
-            wifi_states = wifi_states_from_json(parsed.get("wifi_state.json"))
-            bluetooth_devices = bluetooth_devices_from_json(parsed.get("bluetooth_devices.json"))
-            sim_subscriptions = sim_subscriptions_from_json(parsed.get("sim_metadata.json"))
+            contacts = contacts_from_json(cast(list[dict[str, Any]], parsed["contacts.json"]))
+            sms = sms_from_json(cast(list[dict[str, Any]], parsed["sms.json"]))
+            calls = call_logs_from_json(cast(list[dict[str, Any]], parsed["call_logs.json"]))
+            apps = installed_apps_from_json(
+                cast(list[dict[str, Any]], parsed["installed_apps.json"])
+            )
+            metadata = device_metadata_from_json(
+                cast(dict[str, Any], parsed["device_metadata.json"])
+            )
+            artifacts = app_artifacts_from_json(
+                cast(list[dict[str, Any]], parsed["app_artifacts.json"])
+            )
+            wifi_states = wifi_states_from_json(
+                cast(list[dict[str, Any]] | None, parsed.get("wifi_state.json"))
+            )
+            bluetooth_devices = bluetooth_devices_from_json(
+                cast(list[dict[str, Any]] | None, parsed.get("bluetooth_devices.json"))
+            )
+            sim_subscriptions = sim_subscriptions_from_json(
+                cast(list[dict[str, Any]] | None, parsed.get("sim_metadata.json"))
+            )
         except (AttributeError, TypeError, ValueError) as exc:
             raise InvalidAgentBundle("Collection records are malformed") from exc
         destination = output_dir / collection_id

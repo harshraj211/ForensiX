@@ -86,7 +86,7 @@ class WhatsAppCloudDownloader:
             ),
         )
 
-        try:
+        try:  # type: ignore[unreachable]
             has_aiohttp = True
             try:
                 import aiohttp  # type: ignore
