@@ -35,6 +35,8 @@ from .system import (
     AndroidWifiProfilesParser,
     AppUsageStatsParser,
     ChromeHistoryParser,
+    ChromiumBookmarksParser,
+    ChromiumDownloadsParser,
     EdgeHistoryParser,
     FirefoxHistoryParser,
     GoogleMapsSearchParser,
@@ -71,6 +73,8 @@ def android_parser_registry() -> ApplicationAdapterRegistry:
     registry.register(AndroidCalendarEventParser())
     registry.register(AndroidDownloadsParser())
     registry.register(ChromeHistoryParser())
+    registry.register(ChromiumBookmarksParser())
+    registry.register(ChromiumDownloadsParser())
     registry.register(FirefoxHistoryParser())
     registry.register(SamsungBrowserHistoryParser())
     registry.register(EdgeHistoryParser())

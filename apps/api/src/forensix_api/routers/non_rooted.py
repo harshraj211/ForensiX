@@ -182,7 +182,7 @@ async def mine_dumpsys_telemetry(
     "/vendor-backup",
     response_model=VendorBackupResponse,
     status_code=status.HTTP_200_OK,
-    summary="Emulate OEM vendor backup RPC protocols (Samsung Smart Switch, Huawei HiSuite)",
+    summary="Assess OEM vendor backup availability and direct exports to sealed import",
 )
 async def extract_vendor_backup(
     case_id: str,

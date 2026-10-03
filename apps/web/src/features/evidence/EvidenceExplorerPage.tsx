@@ -458,7 +458,7 @@ function ArtifactDetailContent({ caseId, artifact }: { caseId: string; artifact:
         )}
       </section>
       )}
-      {artifact.category === "image" && (
+      {["image", "video", "audio"].includes(artifact.category) && (
         <MediaAnalysisPanel caseId={caseId} artifactId={artifact.id} />
       )}
       {limitations.length > 0 && (

@@ -30,16 +30,18 @@ from forensix_server.db import (
     ArtifactRecord,
     Database,
     MediaAnalysisRecord,
+    MediaVisualEmbeddingRecord,
 )
 from forensix_server.evidence import TimelineService
 
 logger = logging.getLogger(__name__)
 
-MEDIA_WORKER_VERSION = "1.0.0"
+MEDIA_WORKER_VERSION = "1.3.0"
 MEDIA_ANALYSIS_TIMEOUT_SECONDS = 12
 MAX_SOURCE_BYTES = 25 * 1024 * 1024
 MAX_WORKER_OUTPUT_BYTES = 64 * 1024
-ANALYZABLE_CATEGORIES = frozenset({"image"})
+MEDIA_CATEGORIES = frozenset({"image", "video", "audio"})
+WORKER_ANALYZABLE_CATEGORIES = frozenset({"image"})
 CREATE_NO_WINDOW = cast(int, getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
@@ -55,6 +57,21 @@ class MediaAnalysisUnsupportedError(MediaAnalysisError):
 class SimilarMedia:
     analysis: MediaAnalysisRecord
     distance: int
+
+
+@dataclass(frozen=True, slots=True)
+class VisualSimilarMedia:
+    analysis: MediaAnalysisRecord
+    distance: float
+    embedding_model: str
+
+
+@dataclass(frozen=True, slots=True)
+class MediaBackfillResult:
+    analyzed: int
+    unsupported: int
+    failed: int
+    skipped_existing: int
 
 
 class MediaAnalysisService:
@@ -142,45 +159,148 @@ class MediaAnalysisService:
         matches.sort(key=lambda item: (item.distance, item.analysis.id))
         return base, matches[:limit]
 
-    def backfill_unprocessed(self, database: Database) -> int:
-        """Automatically process pending unanalyzed image artifacts."""
-        with database.session() as session:
-            unprocessed = session.execute(
-                select(ArtifactRecord.id, ArtifactRecord.case_id)
-                .outerjoin(
-                    MediaAnalysisRecord,
-                    MediaAnalysisRecord.artifact_id == ArtifactRecord.id,
+    def find_visual_similar(
+        self,
+        session: Session,
+        principal: Principal,
+        case_id: str,
+        artifact_id: str,
+        *,
+        max_distance: float = 0.35,
+        limit: int = 25,
+    ) -> tuple[MediaAnalysisRecord, list[VisualSimilarMedia]]:
+        self._require_analyze(session, principal, case_id)
+        base = session.scalar(
+            select(MediaAnalysisRecord).where(
+                MediaAnalysisRecord.artifact_id == artifact_id,
+                MediaAnalysisRecord.case_id == case_id,
+            )
+        )
+        if base is None:
+            raise MediaAnalysisError("This artifact has not been analyzed yet.")
+        base_embedding = session.scalar(
+            select(MediaVisualEmbeddingRecord).where(
+                MediaVisualEmbeddingRecord.media_analysis_id == base.id,
+                MediaVisualEmbeddingRecord.case_id == case_id,
+            )
+        )
+        if base_embedding is None:
+            raise MediaAnalysisError("This analysis has no visual embedding to compare.")
+        base_vector = _json_float_array(base_embedding.embedding_json)
+        if not base_vector:
+            raise MediaAnalysisError("This analysis has an empty visual embedding.")
+        rows = session.execute(
+            select(MediaVisualEmbeddingRecord, MediaAnalysisRecord)
+            .join(
+                MediaAnalysisRecord,
+                MediaAnalysisRecord.id == MediaVisualEmbeddingRecord.media_analysis_id,
+            )
+            .where(
+                MediaVisualEmbeddingRecord.case_id == case_id,
+                MediaVisualEmbeddingRecord.media_analysis_id != base.id,
+                MediaVisualEmbeddingRecord.embedding_model == base_embedding.embedding_model,
+            )
+        )
+        matches: list[VisualSimilarMedia] = []
+        for embedding, analysis in rows:
+            distance = _cosine_distance(base_vector, _json_float_array(embedding.embedding_json))
+            if distance is not None and distance <= max_distance:
+                matches.append(
+                    VisualSimilarMedia(
+                        analysis=analysis,
+                        distance=distance,
+                        embedding_model=embedding.embedding_model,
+                    )
                 )
-                .where(
-                    ArtifactRecord.category == "image",
-                    ArtifactRecord.status == "active",
-                    MediaAnalysisRecord.id.is_(None),
-                )
-            ).all()
+        matches.sort(key=lambda item: (item.distance, item.analysis.id))
+        return base, matches[:limit]
 
-        if not unprocessed:
-            return 0
-
-        system_principal = Principal(
+    def backfill_unprocessed(
+        self,
+        database: Database,
+        principal: Principal | None = None,
+        *,
+        case_id: str | None = None,
+        limit: int = 100,
+    ) -> MediaBackfillResult:
+        """Process pending media artifacts through the isolated media-analysis path."""
+        actor = principal or Principal(
             user_id="system-worker",
             username="system",
             display_name="ForensiX Automation",
             roles=frozenset({RoleName.ADMINISTRATOR}),
             permissions=frozenset(Permission),
         )
+        if limit < 1 or limit > 500:
+            raise MediaAnalysisError("Media-analysis batch limit must be between 1 and 500.")
+        with database.session() as session:
+            if case_id is not None:
+                self._require_analyze(session, actor, case_id)
+            conditions = [
+                ArtifactRecord.category.in_(MEDIA_CATEGORIES),
+                ArtifactRecord.status == "active",
+                MediaAnalysisRecord.id.is_(None),
+            ]
+            if case_id is not None:
+                conditions.append(ArtifactRecord.case_id == case_id)
+            existing_conditions = [
+                ArtifactRecord.category.in_(MEDIA_CATEGORIES),
+                ArtifactRecord.status == "active",
+            ]
+            if case_id is not None:
+                existing_conditions.append(ArtifactRecord.case_id == case_id)
+            skipped_existing = int(
+                session.scalar(
+                    select(func.count(ArtifactRecord.id))
+                    .join(
+                        MediaAnalysisRecord,
+                        MediaAnalysisRecord.artifact_id == ArtifactRecord.id,
+                    )
+                    .where(*existing_conditions)
+                )
+                or 0
+            )
+            unprocessed = session.execute(
+                select(ArtifactRecord.id, ArtifactRecord.case_id)
+                .outerjoin(
+                    MediaAnalysisRecord,
+                    MediaAnalysisRecord.artifact_id == ArtifactRecord.id,
+                )
+                .where(*conditions)
+                .order_by(ArtifactRecord.collected_at.desc(), ArtifactRecord.id.desc())
+                .limit(limit)
+            ).all()
 
-        processed = 0
+        if not unprocessed:
+            return MediaBackfillResult(
+                analyzed=0, unsupported=0, failed=0, skipped_existing=skipped_existing
+            )
+
+        analyzed = 0
+        unsupported = 0
+        failed = 0
         for artifact_id, case_id in unprocessed:
             try:
-                self.analyze(database, system_principal, case_id, artifact_id)
-                processed += 1
+                record = self.analyze(database, actor, case_id, artifact_id)
+                if record.status == "analyzed":
+                    analyzed += 1
+                elif record.status == "unsupported":
+                    unsupported += 1
+                else:
+                    failed += 1
             except Exception as exc:
+                failed += 1
                 logger.warning(
                     "Automatic media analysis failed for artifact %s: %s",
                     artifact_id,
                     exc,
                 )
-        return processed
+        return MediaBackfillResult(
+            analyzed=analyzed,
+            unsupported=unsupported,
+            failed=failed,
+            skipped_existing=skipped_existing,
+        )
 
     def analyze(
         self,
@@ -196,9 +316,9 @@ class MediaAnalysisService:
             )
             if existing is not None:
                 return existing
-            if artifact.category not in ANALYZABLE_CATEGORIES:
+            if artifact.category not in MEDIA_CATEGORIES:
                 raise MediaAnalysisUnsupportedError(
-                    "Only image artifacts can be analyzed by the bundled media worker."
+                    "Only image, video, and audio artifacts can enter media analysis."
                 )
             evidence = session.get(AcquiredEvidenceFileRecord, artifact.evidence_file_id)
             if evidence is None or evidence.case_id != case_id or evidence.status != "completed":
@@ -206,6 +326,8 @@ class MediaAnalysisService:
             evidence_key = evidence.storage_key
             evidence_file_id = artifact.evidence_file_id
             expected_source_hash = artifact.primary_sha256
+            artifact_category = artifact.category
+            artifact_mime = artifact.detected_mime
 
         store = EvidenceStore(database.data_dir / "evidence")
         store.resolve(evidence_key, require_file=True)
@@ -236,6 +358,26 @@ class MediaAnalysisService:
             )
 
         source_path = store.resolve(evidence_key, require_file=True)
+        if artifact_category not in WORKER_ANALYZABLE_CATEGORIES:
+            payload = _speech_payload_for_source(source_path, artifact_category, artifact_mime)
+            completed = payload.get("ocr_status") in {"completed", "empty"}
+            return self._persist(
+                database,
+                principal,
+                case_id,
+                artifact_id,
+                evidence_file_id,
+                status="analyzed" if completed else "unsupported",
+                payload=payload,
+                error_code=None if completed else "MEDIA_MODEL_NOT_CONFIGURED",
+                error_message=None
+                if completed
+                else (
+                    f"{artifact_category.title()} analysis is model-ready but no local "
+                    "speech transcription model/runtime is configured."
+                ),
+            )
+
         result = self._run_worker(source_path, database.data_dir)
         status = cast(str, result.get("status"))
         if status != "analyzed":
@@ -319,9 +461,42 @@ class MediaAnalysisService:
             session.add(record)
             session.flush()
             if record.status == "analyzed":
+                self._persist_visual_embedding(session, record, detections)
                 TimelineService().materialize_media_capture(session, artifact, record)
             self._audit(session, record, principal.user_id)
             return record
+
+    @staticmethod
+    def _persist_visual_embedding(
+        session: Session, record: MediaAnalysisRecord, detections: list[Any]
+    ) -> None:
+        payload = _image_embedding_payload(detections)
+        if payload is None:
+            return
+        vector = payload["embedding"]
+        model = payload["embedding_model"]
+        embedding_json = _canonical_json(vector)
+        material = "|".join(
+            (
+                record.case_id,
+                record.artifact_id,
+                record.id,
+                model,
+                embedding_json,
+                record.analysis_hash,
+            )
+        )
+        session.add(
+            MediaVisualEmbeddingRecord(
+                case_id=record.case_id,
+                artifact_id=record.artifact_id,
+                media_analysis_id=record.id,
+                embedding_model=model,
+                embedding_json=embedding_json,
+                dimension_count=len(vector),
+                embedding_hash=hashlib.sha256(material.encode("utf-8")).hexdigest(),
+            )
+        )
 
     @staticmethod
     def _run_worker(source: Path, working_directory: Path) -> dict[str, Any]:
@@ -418,6 +593,48 @@ def _hamming_distance(left: str | None, right: str | None) -> int | None:
         return None
 
 
+def _image_embedding_payload(detections: list[Any]) -> dict[str, Any] | None:
+    for detection in detections:
+        if not isinstance(detection, dict) or detection.get("label") != "image_embedding":
+            continue
+        details = detection.get("details")
+        if not isinstance(details, dict):
+            continue
+        raw_embedding = details.get("embedding")
+        if not isinstance(raw_embedding, list):
+            continue
+        embedding = [
+            round(float(value), 6) for value in raw_embedding if isinstance(value, (int, float))
+        ]
+        if not embedding:
+            continue
+        model = str(details.get("embedding_model") or detection.get("basis") or "unknown")[:255]
+        return {"embedding": embedding, "embedding_model": model}
+    return None
+
+
+def _json_float_array(value: str) -> list[float]:
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+        return []
+    return [float(item) for item in parsed if isinstance(item, (int, float))]
+
+
+def _cosine_distance(left: list[float], right: list[float]) -> float | None:
+    if not left or not right:
+        return None
+    width = max(len(left), len(right))
+    lpad = left + [0.0] * (width - len(left))
+    rpad = right + [0.0] * (width - len(right))
+    left_norm = sum(value * value for value in lpad) ** 0.5
+    right_norm = sum(value * value for value in rpad) ** 0.5
+    if left_norm == 0.0 or right_norm == 0.0:
+        return None
+    similarity = sum(a * b for a, b in zip(lpad, rpad, strict=True)) / (left_norm * right_norm)
+    distance: float = round(1.0 - max(-1.0, min(1.0, similarity)), 6)
+    return distance
+
+
 def _canonical_json(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), sort_keys=True)
 
@@ -428,6 +645,33 @@ def _maybe_int(value: Any) -> int | None:
 
 def _maybe_float(value: Any) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
+
+
+def _speech_payload_for_source(
+    source_path: Path, media_kind: str, detected_mime: str | None
+) -> dict[str, Any]:
+    try:
+        from forensix_forensic.media_ml_adapters import transcribe_media
+
+        payload = transcribe_media(source_path, media_kind, detected_mime)
+        payload.setdefault("worker_version", MEDIA_WORKER_VERSION)
+        return payload
+    except Exception:
+        return {
+            "media_kind": media_kind,
+            "detected_mime": detected_mime,
+            "ocr_status": "not_attempted",
+            "detector_maturity": "model_ready",
+            "worker_version": MEDIA_WORKER_VERSION,
+            "detections": [
+                {
+                    "label": "speech_transcription_adapter_unavailable",
+                    "confidence": 1.0,
+                    "basis": "adapter_import_failed",
+                    "status": "unavailable",
+                }
+            ],
+        }
 
 
 def _bounded(value: Any, limit: int) -> str | None:

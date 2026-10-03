@@ -986,6 +986,32 @@ class EvidenceSourceResponse(BaseModel):
     created_at: datetime
 
 
+class AgentBundleImportResponse(BaseModel):
+    evidence_source: EvidenceSourceResponse
+    collection_id: str
+    collection_complete: bool
+    source_statuses: dict[str, str]
+    record_counts: dict[str, int]
+
+
+class BackupImportResponse(BaseModel):
+    evidence_source: EvidenceSourceResponse
+    backup_kind: str
+    format_version: str | None
+    compression: str | None
+    encrypted: bool
+    member_count: int | None
+    member_bytes: int | None
+    package_hints: list[str]
+    warnings: list[str]
+    filesystem_type: str | None = None
+    filesystem_block_size: int | None = None
+    parser_run_id: str | None = None
+    parsed_artifact_count: int | None = None
+    parser_status: str | None = None
+    parser_error: str | None = None
+
+
 class EvidenceWorkingCopyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -1183,6 +1209,12 @@ class EvidenceParserRunResponse(BaseModel):
     completed_at: datetime
 
 
+class CloudExportImportResponse(BaseModel):
+    evidence_source: EvidenceSourceResponse
+    parser_run: EvidenceParserRunResponse | None
+    summary: dict[str, Any]
+
+
 class EvidenceSourceArtifactResponse(BaseModel):
     id: str
     parser_run_id: str
@@ -1246,6 +1278,19 @@ class ApplicationArtifactSupportResponse(BaseModel):
     native_parser_id: str | None
     acquisition_requirements: list[str]
     limitations: list[str]
+
+
+class CloudServiceCapabilityResponse(BaseModel):
+    service_id: str
+    display_name: str
+    category: str
+    depth: Literal["deep_target", "connector_planned", "import_only"]
+    auth_methods: list[str]
+    artifact_types: list[str]
+    blocker_class: Literal[
+        "oauth", "user_export", "api_cost", "vendor_policy", "encryption", "not_started"
+    ]
+    implementation_note: str
 
 
 class EvidenceToolOutputResponse(BaseModel):
@@ -1572,7 +1617,7 @@ class CustodyCheckpointSignatureResponse(BaseModel):
 class ReportOutputResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    format: Literal["pdf", "json", "csv"]
+    format: Literal["pdf", "json", "csv", "html"]
     media_type: str
     filename: str
     size_bytes: int
@@ -1644,6 +1689,8 @@ class MediaDetectionLabel(BaseModel):
     confidence: float
     basis: str
     status: str | None = None
+    region: dict[str, float] | None = None
+    details: dict[str, Any] | None = None
 
 
 class MediaAnalysisResponse(BaseModel):
@@ -1682,6 +1729,13 @@ class MediaAnalysisListResponse(BaseModel):
     limit: int
 
 
+class MediaAnalysisBackfillResponse(BaseModel):
+    analyzed: int
+    unsupported: int
+    failed: int
+    skipped_existing: int
+
+
 class SimilarMediaItem(BaseModel):
     distance: int
     analysis: MediaAnalysisResponse
@@ -1691,6 +1745,58 @@ class SimilarMediaResponse(BaseModel):
     base: MediaAnalysisResponse
     matches: list[SimilarMediaItem]
     max_distance: int
+
+
+class VisualSimilarMediaItem(BaseModel):
+    distance: float
+    embedding_model: str
+    analysis: MediaAnalysisResponse
+
+
+class VisualSimilarMediaResponse(BaseModel):
+    base: MediaAnalysisResponse
+    matches: list[VisualSimilarMediaItem]
+    max_distance: float
+
+
+class MediaFaceEmbeddingResponse(BaseModel):
+    id: str
+    case_id: str
+    artifact_id: str
+    media_analysis_id: str
+    face_index: int
+    embedding_model: str
+    embedding: list[float]
+    region: dict[str, float]
+    cluster_key: str | None
+    embedding_hash: str
+    created_at: datetime
+
+
+class MediaFaceClusterResponse(BaseModel):
+    id: str
+    case_id: str
+    cluster_key: str
+    label: str
+    member_count: int
+    centroid: list[float]
+    member_ids: list[dict[str, Any]]
+    algorithm: str
+    cluster_hash: str
+    created_by: str
+    created_at: datetime
+    members: list[MediaFaceEmbeddingResponse]
+
+
+class MediaFaceClusterListResponse(BaseModel):
+    clusters: list[MediaFaceClusterResponse]
+    total_clusters: int
+    total_embeddings: int
+
+
+class MediaFaceClusterRunResponse(BaseModel):
+    embeddings: int
+    clusters: int
 
 
 class AcquisitionVectorEvaluationResponse(BaseModel):

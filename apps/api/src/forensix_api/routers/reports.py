@@ -96,7 +96,7 @@ def get_report(
 def download_report(
     case_id: str,
     report_id: str,
-    output_format: Literal["pdf", "json", "csv"],
+    output_format: Literal["pdf", "json", "csv", "html"],
     authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
     database: Annotated[Database, Depends(get_database)],
 ) -> FileResponse:

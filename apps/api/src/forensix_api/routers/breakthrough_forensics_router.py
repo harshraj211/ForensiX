@@ -145,7 +145,7 @@ async def mount_physical_image(
     authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
     _operator_permission: Annotated[None, Depends(require_device_operator)] = None,
 ) -> dict[str, Any]:
-    """Parses raw EXT4/F2FS block images to carve deleted inodes."""
+    """Read supplied EXT4/F2FS image metadata without mounting or modifying it."""
     mounter = PhysicalImageMounter()
     res = await mounter.mount_and_carve_image(
         case_id=case_id,

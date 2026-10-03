@@ -14,12 +14,25 @@ import argparse
 import json
 import sys
 import warnings
+from collections.abc import Callable
+from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PIL import ExifTags, Image, UnidentifiedImageError
 
-WORKER_VERSION = "1.0.0"
+
+def _load_image_model_adapter() -> Callable[[Image.Image], list[dict[str, Any]]]:
+    try:
+        module = import_module("forensix_forensic.media_ml_adapters")
+    except ModuleNotFoundError:  # pragma: no cover - used by isolated script execution
+        module = import_module("media_ml_adapters")
+    return cast(Callable[[Image.Image], list[dict[str, Any]]], module.image_model_detections)
+
+
+image_model_detections = _load_image_model_adapter()
+
+WORKER_VERSION = "1.1.0"
 MAX_SOURCE_BYTES = 25 * 1024 * 1024
 MAX_IMAGE_PIXELS = 40_000_000
 HEADER_BYTES = 64
@@ -2339,14 +2352,7 @@ def classify(
                 }
             )
 
-    labels.append(
-        {
-            "label": "sensitive_content_scan",
-            "confidence": 0.0,
-            "basis": "no_trained_model_bundled",
-            "status": "unavailable",
-        }
-    )
+    labels.extend(image_model_detections(image))
     return labels
 
 
@@ -2418,7 +2424,7 @@ def analyze(source: Path) -> dict[str, Any]:
         "ocr_text": ocr["ocr_text"],
         "sensitive_findings": sensitive_findings,
         "detections": detections,
-        "detector_maturity": "heuristic",
+        "detector_maturity": "heuristic_plus_optional_ml",
         "worker_version": WORKER_VERSION,
     }
 

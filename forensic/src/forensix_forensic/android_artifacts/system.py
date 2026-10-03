@@ -205,6 +205,96 @@ class ChromeHistoryParser:
         )
 
 
+class ChromiumBookmarksParser:
+    """Parse Chromium-family bookmark records from a profile database."""
+
+    metadata = ParserMetadata(
+        parser_id="android.chromium.bookmarks",
+        name="Chromium bookmarks",
+        version="1.0.0",
+        artifact_categories=("browser",),
+        required_tables=frozenset({"bookmarks"}),
+        access_level="filesystem",
+        maturity="experimental",
+        source_path_hints=("com.android.chrome", "com.microsoft.emmx", "com.brave.browser", "bookmarks"),
+    )
+
+    def can_parse(self, tables: frozenset[str]) -> bool:
+        return "bookmarks" in tables
+
+    def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
+        rows = _query(
+            reader,
+            "bookmarks",
+            {"id"},
+            ("url", "title", "date_added", "date_last_used", "parent", "is_folder", "type"),
+            "id",
+        )
+        return [self._artifact(row, context) for row in rows if text(row.get("url"))]
+
+    @staticmethod
+    def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+        identifier = integer(row.get("id"))
+        url = text(row.get("url"))
+        return ParsedArtifact(
+            category="application",
+            subtype="browser_bookmark",
+            title=text(row.get("title")) or url or "Browser bookmark",
+            summary=url or "URL unavailable",
+            event_time=_chrome_timestamp(row.get("date_added")),
+            source_locator=f"{context.input_locator}#bookmarks:{identifier}",
+            status="active",
+            confidence="high",
+            metadata=compact_metadata({**row, "application": "chromium"}),
+        )
+
+
+class ChromiumDownloadsParser:
+    """Parse Chromium-family download records from a History profile database."""
+
+    metadata = ParserMetadata(
+        parser_id="android.chromium.downloads",
+        name="Chromium downloads",
+        version="1.0.0",
+        artifact_categories=("browser", "download"),
+        required_tables=frozenset({"downloads"}),
+        access_level="filesystem",
+        maturity="experimental",
+        source_path_hints=("com.android.chrome", "com.microsoft.emmx", "com.brave.browser", "history"),
+    )
+
+    def can_parse(self, tables: frozenset[str]) -> bool:
+        return "downloads" in tables
+
+    def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
+        rows = _query(
+            reader,
+            "downloads",
+            {"id"},
+            ("guid", "current_path", "target_path", "start_time", "end_time", "tab_url", "tab_referrer_url", "total_bytes", "state", "danger_type", "opened", "mime_type", "original_mime_type"),
+            "id",
+        )
+        return [self._artifact(row, context) for row in rows]
+
+    @staticmethod
+    def _artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+        identifier = integer(row.get("id"))
+        path = text(row.get("target_path")) or text(row.get("current_path"))
+        url = text(row.get("tab_url"))
+        state = integer(row.get("state"))
+        return ParsedArtifact(
+            category="file",
+            subtype="browser_download",
+            title=path.rsplit("/", 1)[-1] if path else (url or "Browser download"),
+            summary=url or path or "Download source unavailable",
+            event_time=_chrome_timestamp(row.get("end_time")) or _chrome_timestamp(row.get("start_time")),
+            source_locator=f"{context.input_locator}#downloads:{identifier}",
+            status="active" if state in {None, 0, 1} else "partial",
+            confidence="high",
+            metadata=compact_metadata({**row, "application": "chromium"}),
+        )
+
+
 class AndroidNotificationParser:
     metadata = ParserMetadata(
         parser_id="android.notifications",

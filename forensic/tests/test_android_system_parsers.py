@@ -9,6 +9,8 @@ from forensix_forensic.android_artifacts import (
     AndroidNotesParser,
     AndroidNotificationParser,
     ChromeHistoryParser,
+    ChromiumBookmarksParser,
+    ChromiumDownloadsParser,
     android_parser_registry,
 )
 from forensix_forensic.evidence_io import ParserContext, SafeSQLiteReader
@@ -88,6 +90,43 @@ def test_chrome_history_converts_webkit_timestamp(tmp_path: Path) -> None:
     assert visit.title == "Known page"
     assert visit.summary == "https://example.test/"
     assert visit.event_time == datetime(2024, 1, 1, tzinfo=UTC)
+
+
+def test_chromium_bookmarks_and_downloads_are_normalized(tmp_path: Path) -> None:
+    path = tmp_path / "History"
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        """
+        CREATE TABLE bookmarks (
+            id INTEGER PRIMARY KEY, url TEXT, title TEXT, date_added INTEGER,
+            date_last_used INTEGER, parent INTEGER, is_folder INTEGER, type INTEGER
+        );
+        INSERT INTO bookmarks VALUES (
+            2, 'https://bookmark.example/', 'Known bookmark', 13348540800000000,
+            NULL, 1, 0, 1
+        );
+        CREATE TABLE downloads (
+            id INTEGER PRIMARY KEY, guid TEXT, current_path TEXT, target_path TEXT,
+            start_time INTEGER, end_time INTEGER, tab_url TEXT, total_bytes INTEGER,
+            state INTEGER, danger_type INTEGER, opened INTEGER, mime_type TEXT
+        );
+        INSERT INTO downloads VALUES (
+            3, 'guid', '/sdcard/Download/a.pdf', '/sdcard/Download/a.pdf',
+            13348540800000000, 13348540810000000, 'https://example.test/a.pdf',
+            1234, 1, 0, 1, 'application/pdf'
+        );
+        """
+    )
+    connection.commit()
+    connection.close()
+    with SafeSQLiteReader(path) as reader:
+        context = _context("data/data/com.android.chrome/app_chrome/Default/History")
+        bookmark = ChromiumBookmarksParser().parse(reader, context)[0]
+        download = ChromiumDownloadsParser().parse(reader, context)[0]
+    assert bookmark.subtype == "browser_bookmark"
+    assert bookmark.event_time == datetime(2024, 1, 1, tzinfo=UTC)
+    assert download.subtype == "browser_download"
+    assert download.title == "a.pdf"
 
 
 def test_oem_notification_notes_and_location_interchange(tmp_path: Path) -> None:

@@ -1881,7 +1881,9 @@ class ReportOutputRecord(Base):
 
     __tablename__ = "report_outputs"
     __table_args__ = (
-        CheckConstraint("format IN ('pdf', 'json', 'csv')", name="ck_report_outputs_format"),
+        CheckConstraint(
+            "format IN ('pdf', 'json', 'csv', 'html')", name="ck_report_outputs_format"
+        ),
         CheckConstraint("size_bytes >= 1", name="ck_report_outputs_size"),
         UniqueConstraint("report_id", "format", name="uq_report_outputs_report_format"),
         UniqueConstraint("storage_key", name="uq_report_outputs_storage_key"),
@@ -2195,5 +2197,99 @@ class MediaAnalysisRecord(Base):
     analysis_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     worker_version: Mapped[str] = mapped_column(String(32), nullable=False)
     analyzed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class MediaVisualEmbeddingRecord(Base):
+    """One gallery-level image embedding for semantic visual similarity search."""
+
+    __tablename__ = "media_visual_embeddings"
+    __table_args__ = (
+        CheckConstraint("dimension_count >= 1", name="ck_media_visual_embeddings_dimensions"),
+        UniqueConstraint("media_analysis_id", name="uq_media_visual_embeddings_analysis"),
+        UniqueConstraint("embedding_hash", name="uq_media_visual_embeddings_hash"),
+        Index("ix_media_visual_embeddings_case_model", "case_id", "embedding_model"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    artifact_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    media_analysis_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("media_analyses.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    embedding_model: Mapped[str] = mapped_column(String(255), nullable=False)
+    embedding_json: Mapped[str] = mapped_column(Text, nullable=False)
+    dimension_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class MediaFaceEmbeddingRecord(Base):
+    """One detected face region converted into a case-local grouping vector."""
+
+    __tablename__ = "media_face_embeddings"
+    __table_args__ = (
+        CheckConstraint("face_index >= 0", name="ck_media_face_embeddings_index"),
+        UniqueConstraint(
+            "media_analysis_id", "face_index", name="uq_media_face_embedding_analysis_index"
+        ),
+        UniqueConstraint("embedding_hash", name="uq_media_face_embeddings_hash"),
+        Index("ix_media_face_embeddings_case_cluster", "case_id", "cluster_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    artifact_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("artifacts.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    media_analysis_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("media_analyses.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    face_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(64), nullable=False)
+    embedding_json: Mapped[str] = mapped_column(Text, nullable=False)
+    region_json: Mapped[str] = mapped_column(Text, nullable=False)
+    cluster_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    embedding_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, index=True
+    )
+
+
+class MediaFaceClusterRecord(Base):
+    """Case-level person grouping produced from face embedding records."""
+
+    __tablename__ = "media_face_clusters"
+    __table_args__ = (
+        CheckConstraint("member_count >= 1", name="ck_media_face_clusters_member_count"),
+        UniqueConstraint("case_id", "cluster_key", name="uq_media_face_clusters_case_key"),
+        UniqueConstraint("cluster_hash", name="uq_media_face_clusters_hash"),
+        Index("ix_media_face_clusters_case_count", "case_id", "member_count"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    case_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cases.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    cluster_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    member_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    centroid_json: Mapped[str] = mapped_column(Text, nullable=False)
+    member_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
+    algorithm: Mapped[str] = mapped_column(String(64), nullable=False)
+    cluster_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, index=True
     )

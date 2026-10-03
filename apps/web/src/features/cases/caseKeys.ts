@@ -24,6 +24,7 @@ export const caseKeys = {
   timeline: (caseId: string) => ["cases", caseId, "timeline"] as const,
   correlations: (caseId: string) => ["cases", caseId, "correlations"] as const,
   mediaMap: (caseId: string) => ["cases", caseId, "media-map"] as const,
+  mediaFaceClusters: (caseId: string) => ["cases", caseId, "media-face-clusters"] as const,
   artifactSearch: (caseId: string, filters: Record<string, string>) =>
     ["cases", caseId, "artifact-search", filters] as const,
 };

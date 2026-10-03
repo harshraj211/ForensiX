@@ -28,6 +28,10 @@ services:
       # FORENSIX_ALEAAP_PROGRAM_PATH: /opt/aleapp/aleapp.py
       # FORENSIX_ALEAAP_EXPECTED_SHA256: ""
       # FORENSIX_ALEAAP_PYTHON_EXECUTABLE: /usr/bin/python3
+      # Local visual-similarity model supplied by the examiner.
+      FORENSIX_IMAGE_EMBEDDING_ONNX_MODEL: /opt/forensix/models/vision/forensix_clip_image_encoder.onnx
+      FORENSIX_IMAGE_EMBEDDING_INPUT_SIZE: "224"
+      FORENSIX_IMAGE_EMBEDDING_PREPROCESS: clip_openai
       # Optional AI narrative (sends case data to Groq; enable with authorization).
       # FORENSIX_GROQ_API_KEY: ""
     volumes:
@@ -36,6 +40,8 @@ services:
       # Share host ADB authorization so the container can reuse host-approved
       # devices (see README "Physical-device note").
       - ~/.android:/home/forensix/.android:ro
+      # The local ./models directory is ignored by Git and mounted read-only.
+      - ./models:/opt/forensix/models:ro
     restart: unless-stopped
 
 volumes:

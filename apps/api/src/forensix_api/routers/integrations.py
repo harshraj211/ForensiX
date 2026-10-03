@@ -9,12 +9,14 @@ from forensix_api.schemas import (
     AdbDiagnosticResponse,
     AleappDiagnosticResponse,
     ApplicationArtifactSupportResponse,
+    CloudServiceCapabilityResponse,
     PhotoRecDiagnosticResponse,
     PhysicalAcquisitionDiagnosticResponse,
     ScrcpyDiagnosticResponse,
 )
 from forensix_forensic.adb import diagnose_adb
 from forensix_forensic.android_artifacts import application_artifact_support
+from forensix_forensic.extractors.cloud import cloud_service_catalog
 from forensix_server.auth import AuthenticatedSession
 from forensix_server.config import Settings
 from forensix_server.evidence_twin import AleappEvidenceService
@@ -96,4 +98,24 @@ def application_artifact_support_matrix(
     return [
         ApplicationArtifactSupportResponse.model_validate(item, from_attributes=True)
         for item in application_artifact_support()
+    ]
+
+
+@router.get("/cloud-services", response_model=list[CloudServiceCapabilityResponse])
+def cloud_service_support_matrix(
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+) -> list[CloudServiceCapabilityResponse]:
+    del authenticated
+    return [
+        CloudServiceCapabilityResponse(
+            service_id=item.service_id,
+            display_name=item.display_name,
+            category=item.category,
+            depth=item.depth,
+            auth_methods=list(item.auth_methods),
+            artifact_types=list(item.artifact_types),
+            blocker_class=item.blocker_class,
+            implementation_note=item.implementation_note,
+        )
+        for item in cloud_service_catalog()
     ]

@@ -20,7 +20,7 @@ def test_evidence_twin_known_answer_pipeline_is_sealed_and_privacy_preserving(
     assert verify_evidence_twin_validation(sealed)
     assert sealed.report.fixture_sha256 == sealed.report.evidence_source_sha256
     assert sealed.report.evidence_source_sha256 == sealed.report.working_copy_sha256
-    assert set(sealed.report.report_output_sha256) == {"csv", "json", "pdf"}
+    assert set(sealed.report.report_output_sha256) == {"csv", "html", "json", "pdf"}
     checks = {check.check_id: check for check in sealed.report.checks}
     assert set(checks) == {
         "custody_audit_chains",

@@ -1,6 +1,12 @@
 from datetime import UTC, datetime
 
-from forensix_server.reporting.renderers import neutralize_csv, render_csv, render_json, render_pdf
+from forensix_server.reporting.renderers import (
+    neutralize_csv,
+    render_csv,
+    render_html,
+    render_json,
+    render_pdf,
+)
 from forensix_server.reporting.service import _apply_redaction
 from forensix_server.reporting.snapshot import (
     CaseSnapshot,
@@ -56,6 +62,8 @@ def test_report_renderers_emit_stable_outputs() -> None:
     assert render_csv(snapshot).startswith(
         b"record_origin,artifact_id,evidence_reference_id,storage_key,manifest_storage_key"
     )
+    assert render_html(snapshot).startswith(b"<!doctype html>")
+    assert b"ForensiX Portable Report" in render_html(snapshot)
 
 
 def test_csv_formula_prefixes_are_neutralized() -> None:

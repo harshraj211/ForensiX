@@ -25,7 +25,11 @@ logs/
 tmp/
 validation-results/
 build/
+.gradle/
+local.properties
 release/
+release-*/
+repomix-output.txt
 
 # Optional local scrcpy runtime. Install with scripts/install-scrcpy.ps1.
 tools/scrcpy/
@@ -35,6 +39,9 @@ tools/testdisk/
 
 # Optional local APK cache for downgrade extractions
 tools/apks/
+
+# Locally supplied ML weights and training proof bundles.
+models/
 
 
 # Local configuration

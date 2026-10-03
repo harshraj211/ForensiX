@@ -5,11 +5,12 @@ import contextlib
 import json
 import re
 import shutil
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from sqlalchemy import func, or_, select, text
@@ -27,12 +28,18 @@ from forensix_forensic.evidence_io import (
     ExtractedArchiveMember,
     ParsedArtifact,
     ParserContext,
+    ParserMetadata,
     ParserRegistry,
     ParserRegistryError,
     SafeArchiveExtractor,
     SafeSQLiteError,
     SafeSQLiteReader,
 )
+from forensix_forensic.extractors.agent_apk import import_agent_bundle
+from forensix_forensic.extractors.agent_apk.agent_result import AgentExtractionResult
+from forensix_forensic.extractors.legacy_android_backup import LegacyAndroidBackupParser
+from forensix_forensic.extractors.memory_card import MemoryCardImageParser
+from forensix_forensic.extractors.smart_switch import SmartSwitchArchiveParser
 from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import Permission, Principal
 from forensix_server.cases import CaseAccessDeniedError, CaseService
@@ -91,6 +98,44 @@ _INSERT_SOURCE_ARTIFACT_SEARCH = (
 type VersionedParser = EvidenceParser | DocumentEvidenceParser
 
 
+AGENT_BUNDLE_PARSER_ID = "android.agent_bundle.v1"
+
+
+class AndroidAgentBundleParser:
+    """Normalize user-exported Android agent bundles into first-class artifacts."""
+
+    metadata = ParserMetadata(
+        parser_id=AGENT_BUNDLE_PARSER_ID,
+        name="ForensiX Android Agent Bundle",
+        version="1.0.0",
+        artifact_categories=("contact", "communication", "application", "system", "file"),
+        required_tables=frozenset(),
+        access_level="logical",
+        maturity="validated",
+        source_path_hints=(".fxz",),
+        supported_artifact_types=(
+            "agent_contact",
+            "agent_sms",
+            "agent_call_log",
+            "agent_installed_app",
+            "agent_device_metadata",
+            "agent_app_artifact",
+        ),
+        description="Parses validated ForensiX no-ADB Android agent export bundles.",
+        input_formats=("fxz", "zip"),
+    )
+
+    def __init__(self, output_dir: Path) -> None:
+        self._output_dir = output_dir
+
+    def can_parse(self, source_locator: str) -> bool:
+        return source_locator.casefold().endswith(".fxz")
+
+    def parse(self, path: Path, context: ParserContext) -> list[ParsedArtifact]:
+        result = import_agent_bundle(path, case_id=context.case_id, output_dir=self._output_dir)
+        return _agent_bundle_artifacts(result)
+
+
 class EvidenceExaminationService:
     """Runs only built-in registered parsers and appends immutable normalized output."""
 
@@ -134,6 +179,73 @@ class EvidenceExaminationService:
             input_locator="working_copy",
             input_sha256=working_copy.expected_source_sha256,
         )
+        if source.manifest_storage_key:
+            manifest = store.resolve(source.manifest_storage_key, require_file=True).read_bytes()
+            if sha256(manifest).hexdigest() != source.manifest_sha256:
+                raise EvidenceTwinIntegrityError("The evidence manifest hash does not match.")
+            acquisition = json.loads(manifest).get("acquisition_metadata", {})
+            if acquisition.get("operation") == "cloud_export_import":
+                from forensix_forensic.extractors.cloud.exports import CloudExportParser
+                cloud_parser = CloudExportParser(
+                    acquisition["provider"], source_timezone=acquisition["source_timezone"],
+                    date_order=acquisition["date_order"],
+                )
+                if parser_ids is not None and set(parser_ids) != {cloud_parser.metadata.parser_id}:
+                    raise EvidenceTwinError("Select the provider export parser for this cloud source.")
+                return [self._execute_document_parser(
+                    database, principal, inspection.id, context, cloud_parser, path,
+                )]
+            if (
+                acquisition.get("operation") == "android_backup_import"
+                and acquisition.get("backup_inspection", {}).get("backup_kind")
+                == "samsung_smart_switch_archive"
+            ):
+                parser = SmartSwitchArchiveParser()
+                if parser_ids is not None and set(parser_ids) != {parser.metadata.parser_id}:
+                    raise EvidenceTwinError("Select the Smart Switch archive parser for this source.")
+                return [self._execute_document_parser(
+                    database, principal, inspection.id, context, parser, path,
+                )]
+            if (
+                acquisition.get("operation") == "android_backup_import"
+                and acquisition.get("backup_inspection", {}).get("backup_kind")
+                == "legacy_android_backup"
+                and not acquisition.get("backup_inspection", {}).get("encrypted")
+            ):
+                parser = LegacyAndroidBackupParser()
+                if parser_ids is not None and set(parser_ids) != {parser.metadata.parser_id}:
+                    raise EvidenceTwinError("Select the legacy Android Backup parser for this source.")
+                return [self._execute_document_parser(
+                    database, principal, inspection.id, context, parser, path,
+                )]
+            if (
+                acquisition.get("operation") == "android_backup_import"
+                and acquisition.get("backup_inspection", {}).get("backup_kind")
+                == "memory_card_image"
+                and acquisition.get("backup_inspection", {}).get("filesystem_type") == "fat32"
+            ):
+                parser = MemoryCardImageParser()
+                if parser_ids is not None and set(parser_ids) != {parser.metadata.parser_id}:
+                    raise EvidenceTwinError("Select the FAT32 memory-card parser for this source.")
+                return [self._execute_document_parser(
+                    database, principal, inspection.id, context, parser, path,
+                )]
+        if _is_agent_bundle_source(source.source_name):
+            if parser_ids is not None and set(parser_ids) != {AGENT_BUNDLE_PARSER_ID}:
+                raise EvidenceTwinError(
+                    f"Parser '{AGENT_BUNDLE_PARSER_ID}' is the only parser compatible "
+                    "with ForensiX Android agent bundles."
+                )
+            return [
+                self._execute_agent_bundle_parser(
+                    database,
+                    principal,
+                    inspection.id,
+                    context,
+                    path,
+                    job_id=job_id,
+                )
+            ]
         active_registry = registry or android_parser_registry()
         active_document_registry = document_registry or android_document_parser_registry()
         if inspection.detected_type in {"zip", "tar"}:
@@ -212,6 +324,47 @@ class EvidenceExaminationService:
                         parser.metadata.parser_id,
                     )
             return results
+
+    def _execute_agent_bundle_parser(
+        self,
+        database: Database,
+        principal: Principal,
+        inspection_id: str,
+        context: ParserContext,
+        path: Path,
+        *,
+        job_id: str | None = None,
+    ) -> ParserExecutionResult:
+        workspace_parent = database.data_dir / "work"
+        workspace_parent.mkdir(parents=True, exist_ok=True)
+        workspace = Path(tempfile.mkdtemp(prefix="agent-bundle-parse-", dir=workspace_parent))
+        parser = AndroidAgentBundleParser(workspace)
+        existing = self._existing_result(
+            database, context.working_copy_id, context.input_locator, parser
+        )
+        if existing is not None:
+            shutil.rmtree(workspace, ignore_errors=True)
+            return existing
+        started_at = datetime.now(UTC)
+        try:
+            parsed = parser.parse(path, context)
+            if job_id:
+                self._report_job_progress(
+                    database,
+                    job_id,
+                    90,
+                    "Parsed ForensiX Android agent bundle",
+                    parser.metadata.parser_id,
+                )
+            return self._persist_success(
+                database, principal, inspection_id, context, parser, parsed, started_at
+            )
+        except Exception as error:
+            return self._persist_failure(
+                database, principal, inspection_id, context, parser, error, started_at
+            )
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
 
     def _run_archive_parsers(
         self,
@@ -1123,6 +1276,277 @@ class EvidenceExaminationService:
                 "access_level": parser.metadata.access_level,
             },
         }
+
+
+def _agent_bundle_artifacts(result: AgentExtractionResult) -> list[ParsedArtifact]:
+    artifacts: list[ParsedArtifact] = []
+    if result.device_metadata is not None:
+        metadata = {
+            "source": result.device_metadata.source,
+            "availability_map": result.device_metadata.availability_map,
+            **result.device_metadata.data,
+        }
+        artifacts.append(
+            ParsedArtifact(
+                category="system",
+                subtype="agent_device_metadata",
+                title="Android device metadata",
+                summary=f"Agent metadata from {result.device_metadata.source}.",
+                event_time=_ms_to_datetime(result.device_metadata.collected_at_ms),
+                source_locator="device_metadata.json",
+                status="active",
+                confidence="high",
+                metadata=metadata,
+            )
+        )
+    for index, contact in enumerate(result.contacts, start=1):
+        label = contact.name or next(iter(contact.phone_numbers), "Unnamed contact")
+        artifacts.append(
+            ParsedArtifact(
+                category="contact",
+                subtype="agent_contact",
+                title=label,
+                summary=_join_present((contact.name, *contact.phone_numbers, *contact.emails)),
+                event_time=None,
+                source_locator=f"contacts.json:{index}",
+                status="active",
+                confidence="high",
+                metadata={
+                    "name": contact.name,
+                    "phone_numbers": list(contact.phone_numbers),
+                    "emails": list(contact.emails),
+                    "account_type": contact.account_type,
+                },
+            )
+        )
+    for index, sms in enumerate(result.sms_messages, start=1):
+        direction = _sms_type(sms.type)
+        title = f"SMS {direction} {sms.address}".strip()
+        artifacts.append(
+            ParsedArtifact(
+                category="communication",
+                subtype="agent_sms",
+                title=title,
+                summary=sms.body[:500] or f"SMS {direction}",
+                event_time=_ms_to_datetime(sms.date_ms),
+                source_locator=f"sms.json:{index}",
+                status="active",
+                confidence="high",
+                metadata={
+                    "address": sms.address,
+                    "body": sms.body,
+                    "direction": direction,
+                    "thread_id": sms.thread_id,
+                    "type": sms.type,
+                },
+                content=sms.body,
+            )
+        )
+    for index, call in enumerate(result.call_logs, start=1):
+        call_type = _call_type(call.type)
+        title = f"Call {call_type} {call.name or call.number}".strip()
+        artifacts.append(
+            ParsedArtifact(
+                category="communication",
+                subtype="agent_call_log",
+                title=title,
+                summary=f"{call_type.title()} call, {call.duration_seconds} second(s).",
+                event_time=_ms_to_datetime(call.date_ms),
+                source_locator=f"call_logs.json:{index}",
+                status="active",
+                confidence="high",
+                metadata={
+                    "number": call.number,
+                    "name": call.name,
+                    "call_type": call_type,
+                    "duration_seconds": call.duration_seconds,
+                    "type": call.type,
+                },
+            )
+        )
+    for index, app in enumerate(result.installed_apps, start=1):
+        title = app.app_label or app.package_name
+        artifacts.append(
+            ParsedArtifact(
+                category="application",
+                subtype="agent_installed_app",
+                title=title,
+                summary=f"{app.package_name} {app.version_name}".strip(),
+                event_time=_ms_to_datetime(app.install_time_ms),
+                source_locator=f"installed_apps.json:{index}",
+                status="active" if app.is_enabled else "partial",
+                confidence="high",
+                metadata={
+                    "package_name": app.package_name,
+                    "app_name": app.app_label,
+                    "version_name": app.version_name,
+                    "version_code": app.version_code,
+                    "uid": app.uid,
+                    "target_sdk": app.target_sdk,
+                    "min_sdk": app.min_sdk,
+                    "last_update_time_ms": app.last_update_time_ms,
+                    "is_system": app.is_system,
+                    "is_enabled": app.is_enabled,
+                    "source_dir": app.source_dir,
+                    "installer_package": app.installer_package,
+                    "is_debuggable": app.is_debuggable,
+                    "allow_backup": app.allow_backup,
+                    "requested_permissions": list(app.requested_permissions),
+                    "granted_permissions": list(app.granted_permissions),
+                    "surfaces": app.surfaces,
+                },
+            )
+        )
+    for index, item in enumerate(result.app_artifacts, start=1):
+        relative_path = item.relative_path or item.absolute_path or "unnamed artifact"
+        artifacts.append(
+            ParsedArtifact(
+                category="file",
+                subtype="agent_app_artifact",
+                title=Path(relative_path).name or relative_path,
+                summary=f"{item.package_name}: {relative_path}",
+                event_time=_ms_to_datetime(item.last_modified_ms),
+                source_locator=f"app_artifacts.json:{index}",
+                status=_agent_access_status(item.accessibility_status),
+                confidence="high",
+                metadata={
+                    "package_name": item.package_name,
+                    "artifact_category": item.artifact_category,
+                    "relative_path": item.relative_path,
+                    "absolute_path": item.absolute_path,
+                    "size_bytes": item.size_bytes,
+                    "mime_type": item.mime_type,
+                    "sha256": item.sha256_hash,
+                    "accessibility_status": item.accessibility_status,
+                    "file_name": Path(relative_path).name,
+                },
+            )
+        )
+    for index, wifi in enumerate(result.wifi_states, start=1):
+        label = wifi.ssid or wifi.bssid or "Wi-Fi state"
+        artifacts.append(
+            ParsedArtifact(
+                category="system",
+                subtype="agent_wifi_state",
+                title=label,
+                summary=("Connected" if wifi.connected else "Not connected")
+                + f"; signal {wifi.rssi_dbm} dBm.",
+                event_time=None,
+                source_locator=f"wifi_state.json:{index}",
+                status="active",
+                confidence="high",
+                metadata={
+                    "wifi_enabled": wifi.wifi_enabled,
+                    "ssid": wifi.ssid,
+                    "bssid": wifi.bssid,
+                    "rssi_dbm": wifi.rssi_dbm,
+                    "link_speed_mbps": wifi.link_speed_mbps,
+                    "frequency_mhz": wifi.frequency_mhz,
+                    "network_id": wifi.network_id,
+                    "connected": wifi.connected,
+                },
+            )
+        )
+    for index, device in enumerate(result.bluetooth_devices, start=1):
+        label = device.name or device.address or "Paired Bluetooth device"
+        artifacts.append(
+            ParsedArtifact(
+                category="system",
+                subtype="agent_bluetooth_device",
+                title=label,
+                summary=f"Paired Bluetooth device {device.address or 'with no reported address'}.",
+                event_time=None,
+                source_locator=f"bluetooth_devices.json:{index}",
+                status="active",
+                confidence="high",
+                metadata={
+                    "name": device.name,
+                    "address": device.address,
+                    "bond_state": device.bond_state,
+                    "device_type": device.device_type,
+                    "bluetooth_class": device.bluetooth_class,
+                },
+            )
+        )
+    for index, subscription in enumerate(result.sim_subscriptions, start=1):
+        label = subscription.display_name or subscription.carrier_name or f"SIM slot {subscription.slot_index}"
+        artifacts.append(
+            ParsedArtifact(
+                category="system",
+                subtype="agent_sim_subscription",
+                title=label,
+                summary=f"Subscription {subscription.subscription_id} in SIM slot {subscription.slot_index}.",
+                event_time=None,
+                source_locator=f"sim_metadata.json:{index}",
+                status="active",
+                confidence="high",
+                metadata={
+                    "subscription_id": subscription.subscription_id,
+                    "slot_index": subscription.slot_index,
+                    "carrier_name": subscription.carrier_name,
+                    "display_name": subscription.display_name,
+                    "mcc": subscription.mcc,
+                    "mnc": subscription.mnc,
+                    "country_iso": subscription.country_iso,
+                    "iccid": subscription.iccid,
+                    "carrier_id": subscription.carrier_id,
+                },
+            )
+        )
+    return artifacts
+
+
+def _ms_to_datetime(value: int) -> datetime | None:
+    if value <= 0:
+        return None
+    return datetime.fromtimestamp(value / 1000, UTC)
+
+
+def _sms_type(value: int) -> str:
+    return {
+        1: "inbox",
+        2: "sent",
+        3: "draft",
+        4: "outbox",
+        5: "failed",
+        6: "queued",
+    }.get(value, f"type_{value}")
+
+
+def _call_type(value: int) -> str:
+    return {
+        1: "incoming",
+        2: "outgoing",
+        3: "missed",
+        4: "voicemail",
+        5: "rejected",
+        6: "blocked",
+        7: "answered_externally",
+    }.get(value, f"type_{value}")
+
+
+def _agent_access_status(
+    value: str,
+) -> Literal["active", "deleted", "recovered", "partial", "corrupted", "unverified"]:
+    normalized = value.casefold()
+    if normalized in {"available", "ok", "readable"}:
+        return "active"
+    if normalized == "deleted":
+        return "deleted"
+    if normalized == "recovered":
+        return "recovered"
+    if normalized in {"permission_denied", "visibility_limited", "storage_limited"}:
+        return "partial"
+    return "unverified"
+
+
+def _join_present(values: tuple[str, ...]) -> str:
+    joined = ", ".join(item for item in values if item)
+    return joined or "Agent contact record"
+
+
+def _is_agent_bundle_source(source_name: str) -> bool:
+    return source_name.casefold().endswith(".fxz")
 
 
 def _json_safe(value: Any) -> Any:

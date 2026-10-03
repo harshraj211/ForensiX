@@ -64,9 +64,10 @@ def test_vendor_backup_endpoint(tmp_path: Path) -> None:
     resp = client.post(f"/api/v1/cases/{case_id}/non-rooted/vendor-backup", json=payload)
     assert resp.status_code == 200
     data = resp.json()
-    assert data["success"] is True
+    assert data["success"] is False
     assert data["vendor_type"] == "samsung_smartswitch"
-    assert len(data["extracted_items"]) > 0
+    assert data["extracted_items"] == []
+    assert "import" in data["error_message"].casefold()
 
 
 def test_accessibility_scrape_endpoint(tmp_path: Path) -> None:

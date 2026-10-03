@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Activity,
   Archive,
@@ -73,7 +74,7 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
       });
       setVendorResult(res);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to extract OEM vendor backup.");
+      setError(err instanceof Error ? err.message : "Failed to assess OEM vendor backup availability.");
     } finally {
       setLoading(false);
     }
@@ -257,9 +258,9 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
           <div className="flex items-start justify-between">
             <div>
-              <h3 className="text-base font-bold text-slate-900">OEM Vendor Backup Emulation</h3>
+              <h3 className="text-base font-bold text-slate-900">OEM backup availability</h3>
               <p className="text-xs text-slate-500">
-                Emulate Samsung Smart Switch or Huawei HiSuite RPC calls to pull OEM backups overriding allowBackup=false.
+                Check the configured live transport. Import an existing Smart Switch PC backup folder in Evidence Twin.
               </p>
             </div>
           </div>
@@ -270,9 +271,9 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
               onChange={(e) => { setVendorType(e.target.value); }}
               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
             >
-              <option value="samsung_smartswitch">Samsung Smart Switch RPC</option>
-              <option value="huawei_hisuite">Huawei HiSuite Protocol</option>
-              <option value="xiaomi_miconnect">Xiaomi Mi Backup Protocol</option>
+              <option value="samsung_smartswitch">Samsung Smart Switch</option>
+              <option value="huawei_hisuite">Huawei HiSuite</option>
+              <option value="xiaomi_miconnect">Xiaomi Mi Backup</option>
             </select>
 
             <button
@@ -282,16 +283,20 @@ export function NonRootedSuitePanel({ caseId, serial }: NonRootedSuitePanelProps
               className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-cyan-800 disabled:opacity-50"
             >
               {loading ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
-              Extract Vendor Backup
+              Check availability
             </button>
+            <Link to={`/cases/${caseId}/evidence-twin`} className="text-xs font-semibold text-cyan-700 underline">
+              Import saved backup
+            </Link>
           </div>
 
           {vendorResult && (
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-xs space-y-3">
-              <div className="flex items-center justify-between text-emerald-900 font-bold">
-                <span className="flex items-center gap-1.5"><CheckCircle2 size={16} /> Vendor Backup Pulled</span>
+            <div className={`mt-4 rounded-xl border p-4 text-xs space-y-3 ${vendorResult.success ? "border-emerald-200 bg-emerald-50/60" : "border-amber-200 bg-amber-50/60"}`}>
+              <div className="flex items-center justify-between font-bold text-slate-900">
+                <span>{vendorResult.success ? "Vendor backup acquired" : "Live vendor backup unavailable"}</span>
                 <span>{(vendorResult.total_size_bytes / 1048576).toFixed(2)} MB</span>
               </div>
+              {vendorResult.error_message && <p>{vendorResult.error_message}</p>}
               <ul className="divide-y divide-emerald-200/60 font-mono text-[11px]">
                 {vendorResult.extracted_items.map((item, idx) => (
                   <li key={idx} className="py-1.5 flex justify-between">

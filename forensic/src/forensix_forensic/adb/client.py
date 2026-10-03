@@ -120,6 +120,8 @@ class AdbClient(Protocol):
 
     async def install_package(self, serial: str, apk_path: str) -> bool: ...
 
+    async def install_package_no_downgrade(self, serial: str, apk_path: str) -> bool: ...
+
     async def install_packages(self, serial: str, apk_paths: tuple[str, ...]) -> bool: ...
 
     async def list_package_apks(self, serial: str, package_name: str) -> tuple[str, ...]: ...
@@ -465,6 +467,13 @@ class SystemAdbClient:
         result = await self._run(AdbCommandPolicy.install_package(serial, apk_path))
         combined = " ".join((result.stdout, result.stderr)).lower()
         return result.exit_code == 0 or "success" in combined
+
+    async def install_package_no_downgrade(self, serial: str, apk_path: str) -> bool:
+        """Install an APK through ADB without the downgrade flag."""
+        result = await self._run(
+            AdbCommandPolicy.install_package_no_downgrade(serial, apk_path)
+        )
+        return result.exit_code == 0
 
     async def install_packages(self, serial: str, apk_paths: tuple[str, ...]) -> bool:
         """Install a base APK and all split APKs atomically."""

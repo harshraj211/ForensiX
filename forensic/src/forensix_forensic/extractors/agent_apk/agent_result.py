@@ -89,6 +89,46 @@ class AgentDeviceMetadata:
 
 
 @dataclass(frozen=True, slots=True)
+class AgentWifiState:
+    """Current Wi-Fi connection state exposed to the user-exported Agent."""
+
+    wifi_enabled: bool
+    ssid: str | None
+    bssid: str | None
+    rssi_dbm: int
+    link_speed_mbps: int
+    frequency_mhz: int | None
+    network_id: int
+    connected: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AgentBluetoothDevice:
+    """A paired Bluetooth device exposed to the user-exported Agent."""
+
+    name: str | None
+    address: str
+    bond_state: int
+    device_type: int
+    bluetooth_class: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class AgentSimSubscription:
+    """A subscription record exposed by Android's SubscriptionManager."""
+
+    subscription_id: int
+    slot_index: int
+    carrier_name: str | None
+    display_name: str | None
+    mcc: str
+    mnc: str
+    country_iso: str
+    iccid: str | None
+    carrier_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class AgentExtractionResult:
     """Container for data extracted via the ForensiX agent APK."""
 
@@ -109,6 +149,9 @@ class AgentExtractionResult:
     error_message: str | None
     device_metadata: AgentDeviceMetadata | None = None
     app_artifacts: tuple[AgentAppArtifact, ...] = ()
+    wifi_states: tuple[AgentWifiState, ...] = ()
+    bluetooth_devices: tuple[AgentBluetoothDevice, ...] = ()
+    sim_subscriptions: tuple[AgentSimSubscription, ...] = ()
 
 
 def contacts_from_json(data: list[dict[str, Any]]) -> tuple[AgentContact, ...]:
@@ -237,3 +280,73 @@ def device_metadata_from_json(data: dict[str, Any] | None) -> AgentDeviceMetadat
         data=dict(data_payload),
         availability_map={str(k): str(v) for k, v in availability.items()},
     )
+
+
+def wifi_states_from_json(data: list[dict[str, Any]] | None) -> tuple[AgentWifiState, ...]:
+    """Parse public Wi-Fi state records from a v2 Agent bundle."""
+    if not isinstance(data, list):
+        return ()
+    return tuple(
+        AgentWifiState(
+            wifi_enabled=bool(item.get("wifi_enabled", False)),
+            ssid=_optional_string(item.get("ssid")),
+            bssid=_optional_string(item.get("bssid")),
+            rssi_dbm=int(item.get("rssi_dbm", 0)),
+            link_speed_mbps=int(item.get("link_speed_mbps", 0)),
+            frequency_mhz=_optional_int(item.get("frequency_mhz")),
+            network_id=int(item.get("network_id", -1)),
+            connected=bool(item.get("connected", False)),
+        )
+        for item in data
+        if isinstance(item, dict)
+    )
+
+
+def bluetooth_devices_from_json(
+    data: list[dict[str, Any]] | None,
+) -> tuple[AgentBluetoothDevice, ...]:
+    """Parse paired Bluetooth device records from a v2 Agent bundle."""
+    if not isinstance(data, list):
+        return ()
+    return tuple(
+        AgentBluetoothDevice(
+            name=_optional_string(item.get("name")),
+            address=str(item.get("address", "")),
+            bond_state=int(item.get("bond_state", 0)),
+            device_type=int(item.get("device_type", 0)),
+            bluetooth_class=_optional_int(item.get("bluetooth_class")),
+        )
+        for item in data
+        if isinstance(item, dict)
+    )
+
+
+def sim_subscriptions_from_json(
+    data: list[dict[str, Any]] | None,
+) -> tuple[AgentSimSubscription, ...]:
+    """Parse active subscription records from a v2 Agent bundle."""
+    if not isinstance(data, list):
+        return ()
+    return tuple(
+        AgentSimSubscription(
+            subscription_id=int(item.get("subscription_id", -1)),
+            slot_index=int(item.get("slot_index", -1)),
+            carrier_name=_optional_string(item.get("carrier_name")),
+            display_name=_optional_string(item.get("display_name")),
+            mcc=str(item.get("mcc", "")),
+            mnc=str(item.get("mnc", "")),
+            country_iso=str(item.get("country_iso", "")),
+            iccid=_optional_string(item.get("iccid")),
+            carrier_id=_optional_int(item.get("carrier_id")),
+        )
+        for item in data
+        if isinstance(item, dict)
+    )
+
+
+def _optional_string(value: Any) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _optional_int(value: Any) -> int | None:
+    return int(value) if value is not None else None

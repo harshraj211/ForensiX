@@ -257,7 +257,7 @@ def run_evidence_twin_validation(workspace: Path) -> SealedEvidenceTwinValidatio
         )
         report_valid = (
             outputs_valid
-            and set(report_output_sha256) == {"csv", "json", "pdf"}
+            and set(report_output_sha256) == {"csv", "html", "json", "pdf"}
             and len(report_payload["imported_artifacts"]) == 4
             and len(report_payload["timeline"]) == 3
             and report_payload["evidence_sources"][0]["sha256"] == source.sha256

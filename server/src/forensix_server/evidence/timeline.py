@@ -20,7 +20,7 @@ from forensix_server.db import (
     TimelineEventRecord,
 )
 
-TIMELINE_BUILDER_VERSION = "1.1.0"
+TIMELINE_BUILDER_VERSION = "1.2.0"
 MEDIA_CAPTURE_TIMESTAMP_TYPE = "media_exif_captured_at"
 
 
@@ -98,6 +98,9 @@ class TimelineService:
         event_time = _aware_utc(artifact.event_time)
         category = _source_category(artifact.category)
         summary = f"{artifact.title}: {artifact.summary}"
+        metadata = json.loads(artifact.metadata_json)
+        timezone_basis = str(metadata.get("timezone_basis") or "UTC normalized by the versioned artifact parser")[:255]
+        original_time = str(metadata.get("original_time") or event_time.isoformat())[:255]
         payload = {
             "builder_version": TIMELINE_BUILDER_VERSION,
             "case_id": artifact.case_id,
@@ -108,7 +111,8 @@ class TimelineService:
             "source_artifact_id": artifact.id,
             "summary": summary,
             "timestamp_type": "parsed_artifact_event_time",
-            "timezone_basis": "UTC normalized by the versioned artifact parser",
+            "timezone_basis": timezone_basis,
+            "original_time": original_time,
         }
         record = EvidenceSourceTimelineEventRecord(
             case_id=artifact.case_id,
@@ -117,8 +121,8 @@ class TimelineService:
             category=category,
             timestamp_type="parsed_artifact_event_time",
             event_time=event_time,
-            original_time=event_time.isoformat(),
-            timezone_basis="UTC normalized by the versioned artifact parser",
+            original_time=original_time,
+            timezone_basis=timezone_basis,
             precision="second",
             confidence=artifact.confidence,
             summary=summary[:1000],

@@ -25,10 +25,10 @@ class TestCloudExtractors:
             device_id="device_001",
         )
         res = asyncio.run(downloader.download(token, "CASE-001", "examiner"))
-        assert res.success is True
+        assert res.success is False
         assert res.account_email == "test@gmail.com"
-        assert len(res.backup_files) == 1
-        assert res.aggregate_sha256 != ""
+        assert res.backup_files == ()
+        assert "unavailable" in (res.error_message or "").casefold()
 
     def test_whatsapp_cloud_downloader(self, tmp_path: Path) -> None:
         downloader = WhatsAppCloudDownloader(tmp_path / "whatsapp")
@@ -38,10 +38,10 @@ class TestCloudExtractors:
             account_email="test@gmail.com",
         )
         res = asyncio.run(downloader.download(token, "CASE-001", "examiner"))
-        assert res.success is True
+        assert res.success is False
         assert res.jid == "15551234567@s.whatsapp.net"
-        assert res.backup_file is not None
-        assert res.metadata_file is not None
+        assert res.backup_file is None
+        assert "unavailable" in (res.error_message or "").casefold()
 
     def test_cloud_backup_router(self, tmp_path: Path) -> None:
         router = CloudBackupRouter(tmp_path / "cloud_router")
@@ -58,6 +58,6 @@ class TestCloudExtractors:
         )
         bundle = CloudTokenBundle(google_token=g_token, whatsapp_token=w_token)
         res = asyncio.run(router.download_all(bundle, "CASE-001", "examiner"))
-        assert res.success is True
+        assert res.success is False
         assert res.google_result is not None
         assert res.whatsapp_result is not None

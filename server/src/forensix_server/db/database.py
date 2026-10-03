@@ -129,6 +129,10 @@ def _legacy_revision(
     parser_run_columns: set[str],
 ) -> str:
     """Identify the newest schema marker created before migration tracking was enabled."""
+    if "media_visual_embeddings" in tables:
+        return "0045_media_visual_embeddings"
+    if "media_face_clusters" in tables:
+        return "0044_media_face_clusters"
     if "evidence_sources" in tables:
         if "physical_block_probes" in tables:
             if "key_evidence" in tables:

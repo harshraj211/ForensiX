@@ -2,24 +2,32 @@
 
 from .agent_collector import AgentCollector, CollectorConfig
 from .agent_installer import AgentInstaller, AgentInstallerConfig, InstallResult
+from .bundle_import import InvalidAgentBundle, import_agent_bundle
 from .agent_result import (
     AgentAppArtifact,
+    AgentBluetoothDevice,
     AgentCallLog,
     AgentContact,
     AgentDeviceMetadata,
     AgentExtractionResult,
     AgentInstalledApp,
     AgentSms,
+    AgentSimSubscription,
+    AgentWifiState,
     app_artifacts_from_json,
+    bluetooth_devices_from_json,
     call_logs_from_json,
     contacts_from_json,
     device_metadata_from_json,
     installed_apps_from_json,
     sms_from_json,
+    sim_subscriptions_from_json,
+    wifi_states_from_json,
 )
 
 __all__ = [
     "AgentAppArtifact",
+    "AgentBluetoothDevice",
     "AgentCallLog",
     "AgentCollector",
     "AgentContact",
@@ -29,12 +37,19 @@ __all__ = [
     "AgentInstaller",
     "AgentInstallerConfig",
     "AgentSms",
+    "AgentSimSubscription",
+    "AgentWifiState",
     "CollectorConfig",
     "InstallResult",
+    "InvalidAgentBundle",
     "app_artifacts_from_json",
+    "bluetooth_devices_from_json",
     "call_logs_from_json",
     "contacts_from_json",
     "device_metadata_from_json",
     "installed_apps_from_json",
+    "import_agent_bundle",
     "sms_from_json",
+    "sim_subscriptions_from_json",
+    "wifi_states_from_json",
 ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from xml.etree import ElementTree
 
 from forensix_forensic.extractors.agent_apk import (
     AgentCollector,
@@ -25,6 +26,11 @@ class FakeAdbClient:
     def __init__(self) -> None:
         self.commands: list[str] = []
         self.pulled: list[tuple[str, str]] = []
+        self.installed_apks: list[str] = []
+
+    async def install_package_no_downgrade(self, serial: str, apk_path: str) -> bool:
+        self.installed_apks.append(apk_path)
+        return True
 
     async def shell(self, serial: str, cmd: str) -> str:
         self.commands.append(cmd)
@@ -87,6 +93,29 @@ class FakeAdbClient:
 
 
 class TestAgentApk:
+    def test_agent_service_is_not_exported(self) -> None:
+        agent_root = Path(__file__).resolve().parents[2] / "agent_apk/forensix_agent"
+        manifest = agent_root / "AndroidManifest.xml"
+        build_script = (agent_root / "app/build.gradle").read_text(encoding="utf-8")
+        assert "manifest.srcFile '../AndroidManifest.xml'" in build_script
+        root = ElementTree.parse(manifest).getroot()
+        android = "{http://schemas.android.com/apk/res/android}"
+        service = root.find("application/service")
+        assert service is not None
+        assert service.get(f"{android}name") == ".AgentService"
+        assert service.get(f"{android}exported") == "false"
+
+    def test_agent_launch_opens_ui_for_user_approval(self, tmp_path: Path) -> None:
+        fake_adb = FakeAdbClient()
+        installer = AgentInstaller(
+            fake_adb, AgentInstallerConfig(apk_path=tmp_path / "agent.apk")
+        )  # type: ignore[arg-type]
+        assert asyncio.run(installer.start_extraction("serial123", "CASE-001"))
+        assert fake_adb.commands == [
+            "rm -f /sdcard/forensix_out/DONE",
+            "am start -n com.forensix.agent/.MainActivity --ez legacy_adb true",
+        ]
+
     def test_json_deserializers(self) -> None:
         c_data = [
             {
@@ -251,6 +280,7 @@ class TestAgentApk:
         res = asyncio.run(installer.install("serial123"))
         assert res.installed is True
         assert res.apk_sha256 != ""
+        assert fake_adb.installed_apks == [str(apk_file)]
 
     def test_app_intelligence_and_surfaces(self) -> None:
         """Test A, B, C, F: Package metadata, version codes, UIDs, perms, and surfaces."""

@@ -342,6 +342,15 @@ def test_package_apk_policy_supports_safe_split_restore(tmp_path: Path) -> None:
     assert pulled.arguments[2] == "pull"
 
 
+def test_agent_install_policy_does_not_request_downgrade(tmp_path: Path) -> None:
+    command = AdbCommandPolicy.install_package_no_downgrade(
+        "FX-DEMO-001", str(tmp_path / "agent.apk")
+    )
+    assert command.arguments[2:4] == ("install", "-r")
+    assert "-d" not in command.arguments
+    assert "shell" not in command.arguments
+
+
 @pytest.mark.parametrize(
     "remote_path",
     ["/sdcard/fake.apk", "/data/app/../data/local/tmp/fake.apk", "/data/app/not-an-apk"],

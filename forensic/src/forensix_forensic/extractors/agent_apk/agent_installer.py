@@ -56,8 +56,12 @@ class AgentInstaller:
 
             sha = hashlib.sha256(self._cfg.apk_path.read_bytes()).hexdigest()
 
-            # Install APK via ADB
-            await self._adb.shell(serial, f"pm install -r {self._cfg.apk_path}")
+            # Use ADB's host-side install command; do not request a downgrade.
+            installed = await self._adb.install_package_no_downgrade(
+                serial, str(self._cfg.apk_path)
+            )
+            if not installed:
+                raise RuntimeError("Android package manager rejected the agent APK")
 
             # Grant permissions
             permissions = [
@@ -98,17 +102,17 @@ class AgentInstaller:
             )
 
     async def start_extraction(self, serial: str, case_id: str) -> bool:
-        """Trigger the foreground extraction service via AM broadcast/start."""
-        self._log("start_service", {"serial": serial, "case_id": case_id})
+        """Open the agent UI; the device user must approve and start collection."""
+        self._log("open_agent", {"serial": serial, "case_id": case_id})
         try:
-            cmd = (
-                f"am start-foreground-service -n {self._cfg.package_name}/.AgentService "
-                f"--es case_id {case_id}"
+            await self._adb.shell(
+                serial, f"rm -f {self._cfg.output_staging_dir_on_device}/DONE"
             )
+            cmd = f"am start -n {self._cfg.package_name}/.MainActivity --ez legacy_adb true"
             await self._adb.shell(serial, cmd)
             return True
         except Exception as exc:  # noqa: BLE001
-            self._log("start_service_failed", {"error": str(exc)})
+            self._log("open_agent_failed", {"error": str(exc)})
             return False
 
     async def uninstall(self, serial: str) -> bool:

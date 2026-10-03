@@ -38,4 +38,5 @@ FORMAT_BY_SUFFIX = {
     ".raw": EvidenceContainerFormat.RAW,
     ".tar": EvidenceContainerFormat.TAR,
     ".zip": EvidenceContainerFormat.ZIP,
+    ".fxz": EvidenceContainerFormat.ZIP,
 }

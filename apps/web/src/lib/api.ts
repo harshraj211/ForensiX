@@ -411,7 +411,7 @@ export interface AuditLogEntry {
 }
 
 export interface ReportOutput {
-  format: "pdf" | "json" | "csv";
+  format: "pdf" | "json" | "csv" | "html";
   media_type: string;
   filename: string;
   size_bytes: number;
@@ -471,6 +471,14 @@ export interface EvidenceSource {
   error_message: string | null;
   sealed_at: string | null;
   created_at: string;
+}
+
+export interface AgentBundleImport {
+  evidence_source: EvidenceSource;
+  collection_id: string;
+  collection_complete: boolean;
+  source_statuses: Record<string, string>;
+  record_counts: Record<string, number>;
 }
 
 export interface EvidenceWorkingCopy {
@@ -677,6 +685,17 @@ export interface AleappDiagnostic {
   program_path: string;
   observed_sha256: string | null;
   message: string;
+}
+
+export interface CloudServiceCapability {
+  service_id: string;
+  display_name: string;
+  category: string;
+  depth: "deep_target" | "connector_planned" | "import_only";
+  auth_methods: string[];
+  artifact_types: string[];
+  blocker_class: "oauth" | "user_export" | "api_cost" | "vendor_policy" | "encryption" | "not_started";
+  implementation_note: string;
 }
 
 export interface ApplicationArtifactSupport {
@@ -1257,6 +1276,8 @@ export interface MediaDetectionLabel {
   confidence: number;
   basis: string;
   status?: string | null;
+  region?: Record<string, number> | null;
+  details?: Record<string, unknown> | null;
 }
 
 export interface MediaAnalysis {
@@ -1295,6 +1316,13 @@ export interface MediaAnalysisList {
   limit: number;
 }
 
+export interface MediaAnalysisBackfill {
+  analyzed: number;
+  unsupported: number;
+  failed: number;
+  skipped_existing: number;
+}
+
 export interface SimilarMediaItem {
   distance: number;
   analysis: MediaAnalysis;
@@ -1304,6 +1332,76 @@ export interface SimilarMediaResult {
   base: MediaAnalysis;
   matches: SimilarMediaItem[];
   max_distance: number;
+}
+
+export interface BackupImport {
+  evidence_source: EvidenceSource;
+  backup_kind: string;
+  format_version: string | null;
+  compression: string | null;
+  encrypted: boolean;
+  member_count: number | null;
+  member_bytes: number | null;
+  package_hints: string[];
+  warnings: string[];
+  filesystem_type: string | null;
+  filesystem_block_size: number | null;
+  parser_run_id: string | null;
+  parsed_artifact_count: number | null;
+  parser_status: string | null;
+  parser_error: string | null;
+}
+
+export interface VisualSimilarMediaItem {
+  distance: number;
+  embedding_model: string;
+  analysis: MediaAnalysis;
+}
+
+export interface VisualSimilarMediaResult {
+  base: MediaAnalysis;
+  matches: VisualSimilarMediaItem[];
+  max_distance: number;
+}
+
+export interface MediaFaceEmbedding {
+  id: string;
+  case_id: string;
+  artifact_id: string;
+  media_analysis_id: string;
+  face_index: number;
+  embedding_model: string;
+  embedding: number[];
+  region: Record<string, number>;
+  cluster_key: string | null;
+  embedding_hash: string;
+  created_at: string;
+}
+
+export interface MediaFaceCluster {
+  id: string;
+  case_id: string;
+  cluster_key: string;
+  label: string;
+  member_count: number;
+  centroid: number[];
+  member_ids: Record<string, unknown>[];
+  algorithm: string;
+  cluster_hash: string;
+  created_by: string;
+  created_at: string;
+  members: MediaFaceEmbedding[];
+}
+
+export interface MediaFaceClusterList {
+  clusters: MediaFaceCluster[];
+  total_clusters: number;
+  total_embeddings: number;
+}
+
+export interface MediaFaceClusterRun {
+  embeddings: number;
+  clusters: number;
 }
 
 export interface EvidenceVerification {
@@ -2754,6 +2852,27 @@ export function importEvidenceSource(
   });
 }
 
+export function importAndroidAgentBundle(
+  caseId: string,
+  source: File,
+): Promise<AgentBundleImport> {
+  const body = new FormData();
+  body.set("source", source);
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/import/agent-bundle`, {
+    method: "POST",
+    body,
+  });
+}
+
+export function getAndroidAgentBundleSummary(
+  caseId: string,
+  sourceId: string,
+): Promise<AgentBundleImport> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/agent-bundle-summary`,
+  );
+}
+
 export function verifyEvidenceSource(
   caseId: string,
   sourceId: string,
@@ -2879,6 +2998,10 @@ export function runExternalRecovery(
 
 export function getPhotoRecDiagnostic(): Promise<PhotoRecDiagnostic> {
   return apiRequest("/api/v1/integrations/photorec");
+}
+
+export function getCloudServiceCatalog(): Promise<CloudServiceCapability[]> {
+  return apiRequest("/api/v1/integrations/cloud-services");
 }
 
 export function runNativeEvidenceParsers(
@@ -3007,6 +3130,13 @@ export function analyzeMedia(caseId: string, artifactId: string): Promise<MediaA
   );
 }
 
+export function analyzePendingMedia(caseId: string, limit = 100): Promise<MediaAnalysisBackfill> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/media/analyses/backfill?limit=${String(limit)}`,
+    { method: "POST" },
+  );
+}
+
 export function findSimilarMedia(
   caseId: string,
   artifactId: string,
@@ -3014,6 +3144,81 @@ export function findSimilarMedia(
 ): Promise<SimilarMediaResult> {
   return apiRequest(
     `/api/v1/cases/${encodeURIComponent(caseId)}/media/artifacts/${encodeURIComponent(artifactId)}/similar?max_distance=${String(maxDistance)}`,
+  );
+}
+
+export type CloudExportProvider = "google" | "whatsapp" | "microsoft" | "telegram" | "icloud";
+export interface CloudExportImport {
+  evidence_source: EvidenceSource;
+  parser_run: EvidenceParserRun | null;
+  summary: {
+    provider?: CloudExportProvider;
+    parsed_count?: number;
+    member_count?: number;
+    record_counts?: Record<string, number>;
+    warnings?: string[];
+    unsupported_count?: number;
+    malformed_count?: number;
+    preserved_file_count?: number;
+    undated_count?: number;
+    source_timezone?: string;
+    date_order?: string;
+    limitations?: string[];
+  };
+}
+
+export function importCloudExport(caseId: string, source: File, provider: CloudExportProvider, sourceTimezone: string, dateOrder: "DMY" | "MDY"): Promise<CloudExportImport> {
+  const form = new FormData();
+  form.set("source", source);
+  form.set("provider", provider);
+  form.set("source_timezone", sourceTimezone);
+  form.set("date_order", dateOrder);
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/import/cloud-export`, { method: "POST", body: form });
+}
+
+export function getCloudExportSummary(caseId: string, sourceId: string): Promise<CloudExportImport> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(sourceId)}/cloud-export-summary`);
+}
+
+export function importAndroidDeviceBackup(caseId: string, source: File): Promise<BackupImport> {
+  const body = new FormData();
+  body.set("source", source);
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/import/device-backup`,
+    { method: "POST", body },
+  );
+}
+
+export function importSmartSwitchFolder(caseId: string, files: File[]): Promise<BackupImport> {
+  const body = new FormData();
+  for (const file of files) {
+    body.append("files", file, file.name);
+    body.append("relative_paths", file.webkitRelativePath || file.name);
+  }
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/import/smart-switch-folder`,
+    { method: "POST", body },
+  );
+}
+
+export function findVisualSimilarMedia(
+  caseId: string,
+  artifactId: string,
+  maxDistance = 0.35,
+): Promise<VisualSimilarMediaResult> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/media/artifacts/${encodeURIComponent(artifactId)}/visual-similar?max_distance=${String(maxDistance)}`,
+  );
+}
+
+export function getMediaFaceClusters(caseId: string): Promise<MediaFaceClusterList> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/media/faces/clusters`);
+}
+
+export function rebuildMediaFaceClusters(caseId: string): Promise<MediaFaceClusterRun> {
+  return apiRequest(
+    `/api/v1/cases/${encodeURIComponent(caseId)}/media/faces/clusters/rebuild`,
+    { method: "POST" },
   );
 }
 

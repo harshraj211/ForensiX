@@ -49,7 +49,7 @@ from forensix_server.db import (
     TimelineEventRecord,
 )
 
-from .renderers import render_csv, render_json, render_pdf
+from .renderers import render_csv, render_html, render_json, render_pdf
 from .snapshot import (
     AcquisitionSnapshot,
     ArtifactSnapshot,
@@ -122,6 +122,7 @@ class ReportService:
                 "pdf": ("application/pdf", render_pdf(snapshot)),
                 "json": ("application/json", render_json(snapshot)),
                 "csv": ("text/csv; charset=utf-8", render_csv(snapshot)),
+                "html": ("text/html; charset=utf-8", render_html(snapshot)),
             }
             store = EvidenceStore(database.data_dir / "evidence")
             prefix = f"reports/{case_id}/{report_id}"

@@ -47,7 +47,7 @@ class WhatsAppBackupResult:
 
 
 class WhatsAppCloudDownloader:
-    """Downloads encrypted WhatsApp database archives from Google Drive AppData space."""
+    """Records unavailable WhatsApp backup download instead of fabricating a file."""
 
     def __init__(self, output_dir: Path) -> None:
         self._output_dir = output_dir
@@ -56,7 +56,7 @@ class WhatsAppCloudDownloader:
     async def download(
         self, token: WhatsAppCloudToken, case_id: str, operator_id: str
     ) -> WhatsAppBackupResult:
-        """Locate and download WhatsApp cloud backup from Google Drive."""
+        """Refuse unsupported live WhatsApp backup transport deterministically."""
         download_id = str(uuid4())
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
@@ -69,6 +69,21 @@ class WhatsAppCloudDownloader:
                 "case_id": case_id,
                 "operator_id": operator_id,
             },
+        )
+
+        # WhatsApp's encrypted backup data is not available through a public
+        # third-party Drive API.  Earlier scaffolding wrote a zero-filled database
+        # and JSON metadata, which must never be represented as evidence.
+        return self._error_result(
+            download_id=download_id,
+            jid=token.whatsapp_jid,
+            version=token.backup_version,
+            started_at=started_at,
+            t0=t0,
+            message=(
+                "Live WhatsApp cloud-backup download is unavailable through public provider APIs. "
+                "Import an exported chat or supplied local backup instead."
+            ),
         )
 
         try:

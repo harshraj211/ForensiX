@@ -3,13 +3,16 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  Cloud,
   CopyCheck,
   DatabaseBackup,
   Download,
   ExternalLink,
   FileUp,
   LoaderCircle,
+  PackageCheck,
   ShieldCheck,
+  Smartphone,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -18,17 +21,23 @@ import { CaseError } from "../cases/CasesPage";
 import { caseKeys } from "../cases/caseKeys";
 import { CaseSubnav } from "../../components/CaseSubnav";
 import { DownloadLink } from "../../components/DownloadLink";
-import { TakeoutImportPanel } from "../evidence/TakeoutImportPanel";
+import { CloudExportResult, TakeoutImportPanel } from "../evidence/TakeoutImportPanel";
 import {
   assessEvidenceRecoveryCandidates,
   carveEvidenceRecoveryCandidates,
   createEvidenceWorkingCopy,
   getAleappDiagnostic,
+  getAndroidAgentBundleSummary,
+  getCloudExportSummary,
   getApplicationArtifactSupport,
   getCase,
+  getCloudServiceCatalog,
   getEvidenceSourceContentUrl,
   getEvidenceWorkingCopyInspection,
   getPhotoRecDiagnostic,
+  importAndroidAgentBundle,
+  importAndroidDeviceBackup,
+  importSmartSwitchFolder,
   importEvidenceSource,
   inspectEvidenceWorkingCopy,
   listEvidenceParserRuns,
@@ -52,6 +61,7 @@ import {
   type RecoveryCarving,
   type AleappDiagnostic,
   type ApplicationArtifactSupport,
+  type CloudServiceCapability,
 } from "../../lib/api";
 
 const twinKeys = {
@@ -71,12 +81,16 @@ const twinKeys = {
   aleapp: ["integrations", "aleapp"] as const,
   photorec: ["integrations", "photorec"] as const,
   applicationArtifacts: ["integrations", "application-artifacts"] as const,
+  cloudServices: ["integrations", "cloud-services"] as const,
 };
 
 export function EvidenceTwinPage() {
   const { caseId = "" } = useParams();
   const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [agentBundleFile, setAgentBundleFile] = useState<File | null>(null);
+  const [backupFile, setBackupFile] = useState<File | null>(null);
+  const [smartSwitchFolderFiles, setSmartSwitchFolderFiles] = useState<File[]>([]);
   const [displayName, setDisplayName] = useState("");
   const caseQuery = useQuery({
     queryKey: caseKeys.detail(caseId),
@@ -100,6 +114,10 @@ export function EvidenceTwinPage() {
     queryKey: twinKeys.applicationArtifacts,
     queryFn: getApplicationArtifactSupport,
   });
+  const cloudServicesQuery = useQuery({
+    queryKey: twinKeys.cloudServices,
+    queryFn: getCloudServiceCatalog,
+  });
   const importSource = useMutation({
     mutationFn: () => {
       if (!selectedFile) throw new Error("Select an evidence source before importing.");
@@ -109,6 +127,38 @@ export function EvidenceTwinPage() {
       setSelectedFile(null);
       setDisplayName("");
       void queryClient.invalidateQueries({ queryKey: twinKeys.sources(caseId) });
+    },
+  });
+  const importAgentBundle = useMutation({
+    mutationFn: () => {
+      if (!agentBundleFile) throw new Error("Select a ForensiX Android agent .fxz bundle.");
+      return importAndroidAgentBundle(caseId, agentBundleFile);
+    },
+    onSuccess: () => {
+      setAgentBundleFile(null);
+      void queryClient.invalidateQueries({ queryKey: twinKeys.sources(caseId) });
+      void queryClient.invalidateQueries({ queryKey: caseKeys.timeline(caseId) });
+    },
+  });
+  const importBackup = useMutation({
+    mutationFn: () => {
+      if (!backupFile) throw new Error("Select a legacy Android or Smart Switch backup.");
+      return importAndroidDeviceBackup(caseId, backupFile);
+    },
+    onSuccess: () => {
+      setBackupFile(null);
+      void queryClient.invalidateQueries({ queryKey: twinKeys.sources(caseId) });
+    },
+  });
+  const importSmartSwitchPc = useMutation({
+    mutationFn: () => {
+      if (!smartSwitchFolderFiles.length) throw new Error("Select one Smart Switch PC backup folder.");
+      return importSmartSwitchFolder(caseId, smartSwitchFolderFiles);
+    },
+    onSuccess: () => {
+      setSmartSwitchFolderFiles([]);
+      void queryClient.invalidateQueries({ queryKey: twinKeys.sources(caseId) });
+      void queryClient.invalidateQueries({ queryKey: caseKeys.timeline(caseId) });
     },
   });
   const caseWritable = !new Set(["closed", "archived"]).has(caseQuery.data?.status ?? "closed");
@@ -158,7 +208,7 @@ export function EvidenceTwinPage() {
           <input
             id="twin-source"
             type="file"
-            accept=".raw,.img,.dd,.tar,.zip,.db,.sqlite,application/octet-stream,application/zip"
+            accept=".raw,.img,.dd,.tar,.zip,.fxz,.db,.sqlite,application/octet-stream,application/zip"
             disabled={!caseWritable || importSource.isPending}
             onChange={(event) => {
               setSelectedFile(event.target.files?.[0] ?? null);
@@ -234,7 +284,212 @@ export function EvidenceTwinPage() {
         </div>
       </section>
 
-      <TakeoutImportPanel caseId={caseId} />
+      <section className="mt-8 rounded-2xl border border-emerald-200/10 bg-emerald-200/[0.035] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Smartphone className="mt-1 text-emerald-200" size={22} aria-hidden="true" />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                No-ADB Android agent
+              </p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Import agent collection bundle</h2>
+              <p className="mt-2 max-w-3xl text-xs leading-5 text-emerald-100/70">
+                Upload a ForensiX `.fxz` bundle exported from the Android agent. The backend
+                validates the manifest, seals the original ZIP bytes, and the native parser
+                `android.agent_bundle.v1` indexes contacts, SMS, calls, installed apps, device
+                metadata, and accessible app artifacts.
+              </p>
+            </div>
+          </div>
+          {importAgentBundle.data && (
+            <span className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-wide ${
+              importAgentBundle.data.collection_complete
+                ? "border-emerald-200/20 text-emerald-100"
+                : "border-amber-200/20 text-amber-100"
+            }`}>
+              {importAgentBundle.data.collection_complete ? "complete" : "partial"} collection
+            </span>
+          )}
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div>
+            <label className="block text-sm font-medium text-slate-300" htmlFor="agent-bundle">
+              Agent `.fxz` bundle
+            </label>
+            <input
+              id="agent-bundle"
+              type="file"
+              accept=".fxz,application/zip"
+              disabled={!caseWritable || importAgentBundle.isPending}
+              onChange={(event) => {
+                setAgentBundleFile(event.target.files?.[0] ?? null);
+              }}
+              className="mt-2 block min-h-12 w-full rounded-lg border border-emerald-200/15 bg-black/20 p-3 text-xs text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-emerald-300 file:px-3 file:py-2 file:font-semibold file:text-slate-950 disabled:opacity-40"
+            />
+            {agentBundleFile && (
+              <p className="mt-3 text-xs text-emerald-100/65">
+                {agentBundleFile.name} · {formatBytes(agentBundleFile.size)} selected
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={!agentBundleFile || !caseWritable || importAgentBundle.isPending}
+            onClick={() => {
+              importAgentBundle.mutate();
+            }}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-300 px-4 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {importAgentBundle.isPending ? (
+              <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
+            ) : (
+              <PackageCheck size={16} aria-hidden="true" />
+            )}
+            {importAgentBundle.isPending ? "Validating bundle…" : "Import agent bundle"}
+          </button>
+        </div>
+        {importAgentBundle.data && (
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-white/8 bg-black/10 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-100/70">
+                Collection ID
+              </p>
+              <p className="mt-2 truncate font-mono text-xs text-slate-300">
+                {importAgentBundle.data.collection_id}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/8 bg-black/10 p-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-100/70">
+                Record counts
+              </p>
+              <p className="mt-2 text-xs text-slate-300">
+                {Object.entries(importAgentBundle.data.record_counts)
+                  .map(([key, value]) => `${key.replaceAll("_", " ")} ${String(value)}`)
+                  .join(" · ")}
+              </p>
+            </div>
+          </div>
+        )}
+        {importAgentBundle.isError && <div className="mt-4"><CaseError error={importAgentBundle.error} /></div>}
+      </section>
+
+      <section className="mt-8 rounded-2xl border border-violet-200/10 bg-violet-200/[0.025] p-6">
+        <div className="flex items-start gap-3">
+          <DatabaseBackup className="mt-1 text-violet-200" size={22} aria-hidden="true" />
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-200">
+              Device backup intake
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-white">Import Android backup, Smart Switch archive, or card image</h2>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">
+              Validate a legacy Android `.ab`, ZIP-compatible Samsung Smart Switch `.zip`/`.sbu`,
+              or supplied `.img`/`.dd`/`.raw` card image. The import seals the original bytes and indexes
+              readable FAT32 files, directories, and deleted-entry candidates from a verified working copy.
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div>
+            <label className="block text-sm font-medium text-slate-300" htmlFor="device-backup">
+              Backup container
+            </label>
+            <input
+              id="device-backup"
+              type="file"
+              accept=".ab,.zip,.sbu,.img,.dd,.raw,application/zip,application/octet-stream"
+              disabled={!caseWritable || importBackup.isPending}
+              onChange={(event) => { setBackupFile(event.target.files?.[0] ?? null); }}
+              className="mt-2 block min-h-12 w-full rounded-lg border border-violet-200/15 bg-black/20 p-3 text-xs text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-violet-300 file:px-3 file:py-2 file:font-semibold file:text-slate-950 disabled:opacity-40"
+            />
+            {backupFile && <p className="mt-3 text-xs text-violet-100/65">{backupFile.name} · {formatBytes(backupFile.size)} selected</p>}
+          </div>
+          <button
+            type="button"
+            disabled={!backupFile || !caseWritable || importBackup.isPending}
+            onClick={() => { importBackup.mutate(); }}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-300 px-4 text-sm font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {importBackup.isPending ? <LoaderCircle className="animate-spin" size={16} aria-hidden="true" /> : <PackageCheck size={16} aria-hidden="true" />}
+            {importBackup.isPending ? "Inspecting and sealing…" : "Import backup"}
+          </button>
+        </div>
+        {importBackup.data && (
+          <div className="mt-5 rounded-xl border border-white/8 bg-black/10 p-4 text-xs text-slate-300">
+            <p>{importBackup.data.backup_kind.replaceAll("_", " ")} · {importBackup.data.encrypted ? "encrypted" : "not encrypted"} · {importBackup.data.compression ?? "unknown compression"}</p>
+            {importBackup.data.filesystem_type && <p className="mt-2">Filesystem: {importBackup.data.filesystem_type} {importBackup.data.filesystem_block_size ? `· ${importBackup.data.filesystem_block_size.toLocaleString()} byte blocks` : ""}</p>}
+            {importBackup.data.parser_status === "completed" && importBackup.data.parsed_artifact_count !== null && <p className="mt-2">{importBackup.data.parsed_artifact_count.toLocaleString()} source artifacts indexed for case search</p>}
+            {importBackup.data.parser_status === "failed" && <p className="mt-2 text-amber-200">Parser failed: {importBackup.data.parser_error ?? "See parser run for details"}</p>}
+            {importBackup.data.member_count !== null && <p className="mt-2">{importBackup.data.member_count.toLocaleString()} archive members · {importBackup.data.package_hints.join(", ") || "no package hints"}</p>}
+          </div>
+        )}
+        {importBackup.isError && <div className="mt-4"><CaseError error={importBackup.error} /></div>}
+        <div className="mt-6 border-t border-white/8 pt-5">
+          <label className="block text-sm font-medium text-slate-300" htmlFor="smart-switch-pc-folder">
+            Smart Switch PC backup folder
+          </label>
+          <p className="mt-1 text-xs text-slate-400">Select one saved backup folder. Files are packaged with their relative paths and hashes before examination.</p>
+          <div className="mt-3 flex flex-wrap items-end gap-4">
+            <input
+              id="smart-switch-pc-folder"
+              type="file"
+              multiple
+              ref={(element) => { element?.setAttribute("webkitdirectory", ""); }}
+              disabled={!caseWritable || importSmartSwitchPc.isPending}
+              onChange={(event) => { setSmartSwitchFolderFiles(Array.from(event.target.files ?? [])); }}
+              className="min-h-12 flex-1 rounded-lg border border-violet-200/15 bg-black/20 p-3 text-xs text-slate-300 file:mr-4 file:rounded file:border-0 file:bg-violet-300 file:px-3 file:py-2 file:font-semibold file:text-slate-950 disabled:opacity-40"
+            />
+            <button
+              type="button"
+              disabled={!smartSwitchFolderFiles.length || !caseWritable || importSmartSwitchPc.isPending}
+              onClick={() => { importSmartSwitchPc.mutate(); }}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-violet-300 px-4 text-sm font-semibold text-slate-950 disabled:opacity-40"
+            >
+              {importSmartSwitchPc.isPending ? "Importing folder…" : "Import PC folder"}
+            </button>
+          </div>
+          {smartSwitchFolderFiles.length > 0 && <p className="mt-2 text-xs text-violet-100/65">{smartSwitchFolderFiles.length.toLocaleString()} files selected</p>}
+          {importSmartSwitchPc.data && <p className="mt-3 text-xs text-slate-300">{importSmartSwitchPc.data.member_count?.toLocaleString() ?? "0"} files sealed · {importSmartSwitchPc.data.parsed_artifact_count?.toLocaleString() ?? "0"} artifacts · parser {importSmartSwitchPc.data.parser_status ?? "not run"}</p>}
+          {importSmartSwitchPc.isError && <div className="mt-4"><CaseError error={importSmartSwitchPc.error} /></div>}
+        </div>
+      </section>
+
+      <section className="mt-8 rounded-2xl border border-sky-200/10 bg-sky-200/[0.025] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Cloud className="mt-1 text-sky-200" size={22} aria-hidden="true" />
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">
+                Cloud acquisition roadmap
+              </p>
+              <h2 className="mt-2 text-xl font-semibold text-white">50-service coverage catalog</h2>
+              <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-400">
+                The first five services have offline export import flows. The rest are tracked as
+                planned connectors or import parsers with explicit auth and blocker classes.
+              </p>
+            </div>
+          </div>
+          {cloudServicesQuery.data && (
+            <span className="rounded-full border border-sky-200/20 px-3 py-1 text-[10px] uppercase tracking-wide text-sky-100">
+              {cloudServicesQuery.data.length} services
+            </span>
+          )}
+        </div>
+        {cloudServicesQuery.isPending && (
+          <p role="status" className="mt-5 text-xs text-slate-500">Loading cloud catalog…</p>
+        )}
+        {cloudServicesQuery.isError && (
+          <div className="mt-5"><CaseError error={cloudServicesQuery.error} /></div>
+        )}
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {cloudServicesQuery.data
+            ?.filter((service) => service.depth === "deep_target")
+            .map((service) => (
+              <CloudServiceCard key={service.service_id} service={service} />
+            ))}
+        </div>
+      </section>
+
+      <TakeoutImportPanel caseId={caseId} writable={caseWritable} />
 
       <section className="mt-8 rounded-2xl border border-white/8 bg-white/[0.02] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -290,11 +545,34 @@ export function EvidenceTwinPage() {
               source={source}
               aleapp={aleappQuery.data ?? null}
               photorec={photorecQuery.data ?? null}
+              isAgentBundle={source.source_name.toLowerCase().endsWith(".fxz")}
             />
           ))}
         </div>
       </section>
     </div>
+  );
+}
+
+function CloudServiceCard({ service }: { service: CloudServiceCapability }) {
+  return (
+    <article className="rounded-xl border border-sky-200/10 bg-black/10 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-sm font-semibold text-white">{service.display_name}</h3>
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-sky-100">
+          {service.blocker_class.replaceAll("_", " ")}
+        </span>
+      </div>
+      <p className="mt-3 text-[11px] leading-5 text-slate-400">
+        {service.artifact_types.slice(0, 4).join(" · ")}
+      </p>
+      <p className="mt-3 text-[11px] leading-5 text-slate-500">
+        {service.implementation_note}
+      </p>
+      <p className="mt-3 font-mono text-[9px] text-sky-200/60">
+        {service.auth_methods.join(" / ")}
+      </p>
+    </article>
   );
 }
 
@@ -323,11 +601,13 @@ function EvidenceSourceCard({
   source,
   aleapp,
   photorec,
+  isAgentBundle,
 }: {
   caseId: string;
   source: EvidenceSource;
   aleapp: AleappDiagnostic | null;
   photorec: PhotoRecDiagnostic | null;
+  isAgentBundle: boolean;
 }) {
   const queryClient = useQueryClient();
   const copiesQuery = useQuery({
@@ -354,6 +634,16 @@ function EvidenceSourceCard({
     queryKey: twinKeys.toolOutputs(caseId, source.id),
     queryFn: () => listEvidenceToolOutputs(caseId, source.id),
     enabled: source.status === "sealed",
+  });
+  const agentSummaryQuery = useQuery({
+    queryKey: ["evidence-twin", caseId, source.id, "agent-bundle-summary"] as const,
+    queryFn: () => getAndroidAgentBundleSummary(caseId, source.id),
+    enabled: source.status === "sealed" && isAgentBundle,
+  });
+  const cloudSummaryQuery = useQuery({
+    queryKey: ["evidence-twin", caseId, source.id, "cloud-export-summary"],
+    queryFn: () => getCloudExportSummary(caseId, source.id),
+    enabled: source.status === "sealed" && source.display_name.includes(" offline export: "),
   });
   const verify = useMutation({
     mutationFn: () => verifyEvidenceSource(caseId, source.id),
@@ -391,6 +681,8 @@ function EvidenceSourceCard({
         <HashClaim label="Chunk ledger SHA-256" value={source.chunks_sha256} />
         <HashClaim label="Manifest SHA-256" value={source.manifest_sha256} />
       </div>
+      {cloudSummaryQuery.data && <CloudExportResult result={cloudSummaryQuery.data} />}
+      {cloudSummaryQuery.isError && <div className="mt-4"><CaseError error={cloudSummaryQuery.error} /></div>}
       <div className="mt-5 flex flex-wrap items-center gap-3">
         {source.source_name.toLowerCase().endsWith(".png") && source.status === "sealed" && (
           <>
@@ -447,6 +739,42 @@ function EvidenceSourceCard({
       {source.limitations.map((limitation) => (
         <p key={limitation} className="mt-2 text-xs leading-5 text-amber-100/65">• {limitation}</p>
       ))}
+      {isAgentBundle && agentSummaryQuery.data && (
+        <div className="mt-5 rounded-xl border border-emerald-200/10 bg-emerald-200/[0.035] p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-100">
+                Android agent collection
+              </p>
+              <p className="mt-2 font-mono text-[10px] text-slate-400">
+                {agentSummaryQuery.data.collection_id}
+              </p>
+            </div>
+            <span className={`rounded-full border px-2 py-1 text-[10px] uppercase ${
+              agentSummaryQuery.data.collection_complete
+                ? "border-emerald-200/20 text-emerald-100"
+                : "border-amber-200/20 text-amber-100"
+            }`}>
+              {agentSummaryQuery.data.collection_complete ? "complete" : "partial"}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-5">
+            {Object.entries(agentSummaryQuery.data.record_counts).map(([key, value]) => (
+              <div key={key} className="rounded-lg border border-white/8 bg-black/10 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-slate-500">
+                  {key.replaceAll("_", " ")}
+                </p>
+                <p className="mt-1 text-lg font-semibold text-white">{String(value)}</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-slate-500">
+            Run the verified working-copy parser to place these records into artifact search,
+            timeline, custody, and reports.
+          </p>
+        </div>
+      )}
+      {agentSummaryQuery.isError && <div className="mt-4"><CaseError error={agentSummaryQuery.error} /></div>}
       {verify.isError && <div className="mt-4"><CaseError error={verify.error} /></div>}
       {createCopy.isError && <div className="mt-4"><CaseError error={createCopy.error} /></div>}
       {copiesQuery.data?.map((workingCopy) => (
@@ -455,6 +783,7 @@ function EvidenceSourceCard({
           caseId={caseId}
           sourceId={source.id}
           workingCopy={workingCopy}
+          isAgentBundle={isAgentBundle}
           artifacts={
             artifactsQuery.data?.filter(
               (artifact) => artifact.working_copy_id === workingCopy.id,
@@ -484,6 +813,7 @@ function WorkingCopyPanel({
   caseId,
   sourceId,
   workingCopy,
+  isAgentBundle,
   artifacts,
   parserRunCount,
   aleapp,
@@ -493,6 +823,7 @@ function WorkingCopyPanel({
   caseId: string;
   sourceId: string;
   workingCopy: EvidenceWorkingCopy;
+  isAgentBundle: boolean;
   artifacts: EvidenceSourceArtifact[];
   parserRunCount: number;
   aleapp: AleappDiagnostic | null;
@@ -525,7 +856,13 @@ function WorkingCopyPanel({
     },
   });
   const runParsers = useMutation({
-    mutationFn: () => runNativeEvidenceParsers(caseId, sourceId, workingCopy.id),
+    mutationFn: () =>
+      runNativeEvidenceParsers(
+        caseId,
+        sourceId,
+        workingCopy.id,
+        isAgentBundle ? ["android.agent_bundle.v1"] : undefined,
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: twinKeys.parserRuns(caseId, sourceId) });
       void queryClient.invalidateQueries({ queryKey: twinKeys.artifacts(caseId, sourceId) });
@@ -612,7 +949,7 @@ function WorkingCopyPanel({
           disabled={
             runParsers.isPending ||
             !inspection ||
-            !new Set(["sqlite", "zip", "tar"]).has(inspection.detected_type)
+            !(isAgentBundle || new Set(["sqlite", "zip", "tar"]).has(inspection.detected_type))
           }
           onClick={() => {
             runParsers.mutate();
@@ -621,7 +958,9 @@ function WorkingCopyPanel({
         >
           {runParsers.isPending
             ? "Parsing…"
-            : inspection && new Set(["zip", "tar"]).has(inspection.detected_type)
+            : isAgentBundle
+              ? "Index Android agent bundle"
+              : inspection && new Set(["zip", "tar"]).has(inspection.detected_type)
               ? "Safely extract and run Android parsers"
               : "Run compatible Android parsers"}
         </button>
@@ -710,7 +1049,7 @@ function WorkingCopyPanel({
       {artifacts.length > 0 && (
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           {artifacts.map((artifact) => (
-            <ParsedArtifactCard key={artifact.id} artifact={artifact} />
+            <ParsedArtifactCard key={artifact.id} artifact={artifact} caseId={caseId} />
           ))}
         </div>
       )}
@@ -909,7 +1248,10 @@ function RecoveryAssessmentPanel({ assessment }: { assessment: RecoveryAssessmen
   );
 }
 
-function ParsedArtifactCard({ artifact }: { artifact: EvidenceSourceArtifact }) {
+function ParsedArtifactCard({ artifact, caseId }: { artifact: EvidenceSourceArtifact; caseId: string }) {
+  const cardCandidate = artifact.subtype === "memory_card_deleted_candidate";
+  const extractable = cardCandidate && artifact.metadata.recovery_status === "contiguous_unallocated_candidate";
+  const readableCardFile = artifact.subtype === "memory_card_file" && artifact.metadata.hash_status === "complete";
   return (
     <article className="rounded-lg border border-white/8 bg-black/10 p-3">
       <div className="flex items-start justify-between gap-2">
@@ -922,6 +1264,38 @@ function ParsedArtifactCard({ artifact }: { artifact: EvidenceSourceArtifact }) 
         <span className="text-[10px] text-slate-600">{artifact.confidence}</span>
       </div>
       <p className="mt-3 text-xs leading-5 text-slate-400">{artifact.summary}</p>
+      {cardCandidate && (
+        <p className="mt-2 text-xs text-amber-100/80">
+          {extractable
+            ? "Deleted entry: contiguous bytes are unallocated and match the recorded SHA-256. Original file identity remains unproven."
+            : "Deleted entry found; file content is not safely extractable from this image."}
+        </p>
+      )}
+      {extractable && (
+        <a
+          className="mt-2 inline-block text-xs font-medium text-cyan-200 underline underline-offset-2"
+          href={`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(artifact.evidence_source_id)}/artifacts/${encodeURIComponent(artifact.id)}/candidate-content`}
+        >
+          Download verified candidate bytes
+        </a>
+      )}
+      {readableCardFile && (
+        <a
+          className="mt-2 inline-block text-xs font-medium text-cyan-200 underline underline-offset-2"
+          href={`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(artifact.evidence_source_id)}/artifacts/${encodeURIComponent(artifact.id)}/file-content`}
+        >
+          Download verified file bytes
+        </a>
+      )}
+      {typeof artifact.metadata.attachment_resolution === "string" && (
+        <p className="mt-2 text-xs text-sky-200">Attachment: {artifact.metadata.attachment_resolution}</p>
+      )}
+      {artifact.parser_id.startsWith("cloud.") && (
+        <details className="mt-2 text-xs text-slate-400">
+          <summary>Export fields and provenance</summary>
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-all">{JSON.stringify(artifact.metadata, null, 2)}</pre>
+        </details>
+      )}
       {artifact.event_time && (
         <p className="mt-2 text-[10px] text-slate-500">
           {new Date(artifact.event_time).toLocaleString()}

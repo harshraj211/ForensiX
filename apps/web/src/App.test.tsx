@@ -70,7 +70,6 @@ afterEach(() => {
   rememberCsrfToken(null);
   vi.unstubAllGlobals();
 });
-
 describe("local authentication", () => {
   it("shows one-time administrator bootstrap on a fresh workstation", async () => {
     mockResponse({ bootstrap_required: true });
@@ -1708,6 +1707,30 @@ describe("Evidence Twin workspace", () => {
           },
         ]));
       }
+      if (url === "/api/v1/integrations/cloud-services") {
+        return Promise.resolve(jsonResponse([
+          {
+            service_id: "google",
+            display_name: "Google Account",
+            category: "account",
+            depth: "deep_target",
+            auth_methods: ["OAuth", "Google Takeout import"],
+            artifact_types: ["Drive files", "Photos", "Gmail", "Maps Timeline"],
+            blocker_class: "oauth",
+            implementation_note: "Build official OAuth and Takeout import first.",
+          },
+          {
+            service_id: "whatsapp",
+            display_name: "WhatsApp Cloud Backup",
+            category: "messaging_backup",
+            depth: "deep_target",
+            auth_methods: ["Google Drive app data authorization"],
+            artifact_types: ["msgstore backups", "media manifest"],
+            blocker_class: "encryption",
+            implementation_note: "Download/discovery is separate from database decryption.",
+          },
+        ]));
+      }
       if (url.endsWith("/working-copies")) return Promise.resolve(jsonResponse([workingCopy]));
       if (url.endsWith("/inspection")) return Promise.resolve(jsonResponse(inspection));
       if (url.endsWith("/recovery-assessment")) {
@@ -1728,6 +1751,15 @@ describe("Evidence Twin workspace", () => {
       "accept",
       expect.stringContaining(".raw"),
     );
+    expect(screen.getByLabelText("Evidence image or extraction")).toHaveAttribute(
+      "accept",
+      expect.stringContaining(".fxz"),
+    );
+    expect(screen.getByRole("heading", { name: "Import agent collection bundle" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/Agent .* bundle/i)).toHaveAttribute(
+      "accept",
+      expect.stringContaining(".fxz"),
+    );
     expect(await screen.findByRole("heading", { name: "Controlled Android image" })).toBeInTheDocument();
     expect(screen.getByText(`Master SHA-256`)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Verify sealed master" })).toBeEnabled();
@@ -1745,7 +1777,10 @@ describe("Evidence Twin workspace", () => {
     expect(screen.getByText(/observed 3 candidate region/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run pinned ALEAPP" })).toBeDisabled();
     expect(screen.getByText(/ALEAPP is optional and not configured/i)).toBeInTheDocument();
-    expect(await screen.findByText("WhatsApp")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "WhatsApp" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "50-service coverage catalog" })).toBeInTheDocument();
+    expect(screen.getByText("Google Account")).toBeInTheDocument();
+    expect(screen.getByText("WhatsApp Cloud Backup")).toBeInTheDocument();
     expect(screen.getByText("No native content parser")).toBeInTheDocument();
     expect(screen.getByText(/do not decrypt Signal/i)).toBeInTheDocument();
     expect(screen.getByText(/not claimed to have been acquired by ForensiX/i)).toBeInTheDocument();
@@ -1867,6 +1902,160 @@ describe("evidence explorer", () => {
       "/api/v1/cases/case-1/artifacts/artifact-1/content",
     );
     expect(screen.getByText(`SHA-256`)).toBeInTheDocument();
+  });
+
+
+  it("shows media detection regions and speech transcript segments", async () => {
+    const collectedAt = "2026-07-16T10:00:00Z";
+    const artifact = {
+      id: "artifact-1",
+      evidence_file_id: "file-1",
+      case_id: "case-1",
+      device_id: "device-1",
+      job_id: "job-1",
+      category: "video",
+      subtype: "media",
+      title: "clip.mp4",
+      summary: "Video acquired from shared media storage.",
+      source_relative_path: "DCIM/clip.mp4",
+      source_path_hash: "d".repeat(64),
+      extension: "mp4",
+      detected_mime: "video/mp4",
+      size_bytes: 2048,
+      status: "active",
+      primary_sha256: "e".repeat(64),
+      parser_id: "generic_file_metadata",
+      parser_version: "1.0.0",
+      timestamp_confidence: "high",
+      collected_at: collectedAt,
+      provenance: { evidence_file_id: "file-1", device_id: "device-1" },
+      metadata: { content_parsed: false, limitations: [] },
+      schema_version: "1.0.0",
+      created_at: collectedAt,
+    };
+    const analysis = {
+      id: "analysis-1",
+      artifact_id: "artifact-1",
+      case_id: "case-1",
+      media_kind: "video",
+      status: "analyzed",
+      detected_mime: "video/mp4",
+      width: null,
+      height: null,
+      perceptual_hash: null,
+      captured_at_raw: null,
+      camera_make: null,
+      camera_model: null,
+      gps_present: false,
+      gps_latitude: null,
+      gps_longitude: null,
+      exif: {},
+      ocr_status: "completed",
+      ocr_engine: "whisper",
+      ocr_text: "hello forensic audio",
+      detections: [
+        {
+          label: "speech_transcription_completed",
+          confidence: 0.85,
+          basis: "openai_whisper:tiny.pt",
+          status: "completed",
+          details: {
+            language: "en",
+            segments: [{ start: 0, end: 1.25, text: "hello forensic audio" }],
+          },
+        },
+        {
+          label: "face_region",
+          confidence: 0.78,
+          basis: "opencv_haar_frontalface_default",
+          status: "completed",
+          region: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+          details: { index: 0 },
+        },
+        {
+          label: "object_dog",
+          confidence: 0.9,
+          basis: "model.onnx",
+          status: "completed",
+          details: { class_index: 1 },
+        },
+      ],
+      detector_maturity: "local_ml",
+      error_code: null,
+      error_message: null,
+      analysis_hash: "a".repeat(64),
+      worker_version: "1.3.0",
+      analyzed_at: collectedAt,
+    };
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url === "/api/v1/cases/case-1") {
+        return Promise.resolve(
+          jsonResponse({
+            id: "case-1",
+            case_number: "FX-2026-MEDIA",
+            title: "Media case",
+            description: null,
+            legal_authority: null,
+            status: "active",
+            created_by: "user-1",
+            created_at: collectedAt,
+            updated_at: collectedAt,
+            closed_at: null,
+            version: 1,
+          }),
+        );
+      }
+      if (url.startsWith("/api/v1/cases/case-1/artifacts?")) {
+        return Promise.resolve(jsonResponse({ items: [artifact], total: 1, offset: 0, limit: 100, category_facets: { video: 1 } }));
+      }
+      if (url === "/api/v1/cases/case-1/artifacts/artifact-1") return Promise.resolve(jsonResponse(artifact));
+      if (url === "/api/v1/cases/case-1/artifacts/artifact-1/annotations") return Promise.resolve(jsonResponse({ bookmark: null, tags: [], notes: [] }));
+      if (url === "/api/v1/cases/case-1/artifacts/artifact-1/preview") {
+        return Promise.resolve(jsonResponse({
+          id: null,
+          artifact_id: "artifact-1",
+          status: "not_generated",
+          detected_mime: null,
+          extension_mismatch: false,
+          output_mime: null,
+          output_size_bytes: null,
+          output_sha256: null,
+          width: null,
+          height: null,
+          worker_version: null,
+          limits: {},
+          error_code: null,
+          error_message: null,
+          created_at: null,
+        }));
+      }
+      if (url === "/api/v1/cases/case-1/media/artifacts/artifact-1") return Promise.resolve(jsonResponse(analysis));
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp("/cases/case-1/evidence");
+
+    expect(await screen.findByRole("heading", { name: "Evidence explorer" })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: /DCIM/i }));
+    const clipRows = await screen.findAllByText("clip.mp4");
+    const firstClip = clipRows[0];
+    expect(firstClip).toBeDefined();
+    if (!firstClip) throw new Error("clip row was not rendered");
+    await userEvent.click(firstClip);
+    expect(await screen.findByText(/Speech transcript/)).toBeInTheDocument();
+    expect(screen.getAllByText("hello forensic audio").length).toBeGreaterThan(0);
+    expect(screen.getByText("0.00s–1.25s")).toBeInTheDocument();
+    expect(screen.getByText("Face Region")).toBeInTheDocument();
+    expect(screen.getByText(/region x=0\.100 y=0\.200 w=0\.300 h=0\.400/)).toBeInTheDocument();
+    expect(screen.getByText("Dog")).toBeInTheDocument();
+    expect(screen.getByText("Class index 1")).toBeInTheDocument();
   });
 
   it("shows explicit collection-time claims in the chronological timeline", async () => {
@@ -2254,3 +2443,4 @@ describe("investigation storyboard", () => {
     expect(screen.getByRole("button", { name: "Print review" })).toBeEnabled();
   });
 });
+

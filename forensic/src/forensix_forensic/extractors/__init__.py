@@ -12,6 +12,7 @@ from .agent_apk import (
     app_artifacts_from_json,
     device_metadata_from_json,
 )
+from .backup_import import BackupImportInspection, InvalidBackupImport, inspect_backup_import
 from .apk_downgrade import (
     APK_DOWNGRADE_PROFILES,
     ApkDowngradeExtractor,
@@ -124,6 +125,7 @@ __all__ = [
     "AgentInstaller",
     "AgentInstallerConfig",
     "AgentSms",
+    "BackupImportInspection",
     "app_artifacts_from_json",
     "device_metadata_from_json",
     "CloudBackupRouter",
@@ -134,10 +136,12 @@ __all__ = [
     "GoogleBackupToken",
     "GoogleTakeoutDownloader",
     "InstallResult",
+    "InvalidBackupImport",
     "WhatsAppBackupResult",
     "WhatsAppCloudDownloader",
     "WhatsAppCloudToken",
     "CVE202431317Extractor",
     "CVE202431317Result",
     "get_apk_downgrade_profile",
+    "inspect_backup_import",
 ]

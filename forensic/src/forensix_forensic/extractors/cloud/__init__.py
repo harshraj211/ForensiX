@@ -1,5 +1,6 @@
 """ForensiX cloud backup extractors sub-package."""
 
+from .catalog import CloudServiceCapability, cloud_service_catalog
 from .cloud_router import CloudBackupRouter, CloudBackupRouterResult, CloudTokenBundle
 from .google_takeout import GoogleBackupResult, GoogleBackupToken, GoogleTakeoutDownloader
 from .whatsapp_cloud import WhatsAppBackupResult, WhatsAppCloudDownloader, WhatsAppCloudToken
@@ -7,6 +8,7 @@ from .whatsapp_cloud import WhatsAppBackupResult, WhatsAppCloudDownloader, Whats
 __all__ = [
     "CloudBackupRouter",
     "CloudBackupRouterResult",
+    "CloudServiceCapability",
     "CloudTokenBundle",
     "GoogleBackupResult",
     "GoogleBackupToken",
@@ -14,4 +16,5 @@ __all__ = [
     "WhatsAppBackupResult",
     "WhatsAppCloudDownloader",
     "WhatsAppCloudToken",
+    "cloud_service_catalog",
 ]

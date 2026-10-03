@@ -409,6 +409,17 @@ class AdbCommandPolicy:
         )
 
     @staticmethod
+    def install_package_no_downgrade(serial: str, apk_path: str) -> ApprovedAdbCommand:
+        """Install an agent release without requesting Android's downgrade override."""
+        _validate_serial(serial)
+        _validate_apk_path(apk_path)
+        return ApprovedAdbCommand(
+            AdbOperation.INSTALL_PACKAGE,
+            ("-s", serial, "install", "-r", apk_path),
+            ADB_INSTALL_TIMEOUT_SECONDS,
+        )
+
+    @staticmethod
     def install_packages(serial: str, apk_paths: tuple[str, ...]) -> ApprovedAdbCommand:
         """Restore a base APK and its split APKs in one package-manager transaction."""
         _validate_serial(serial)

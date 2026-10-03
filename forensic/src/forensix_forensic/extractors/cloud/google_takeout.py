@@ -44,7 +44,7 @@ class GoogleBackupResult:
 
 
 class GoogleTakeoutDownloader:
-    """Downloads Android GMS backup archives from Google Cloud API using extracted device tokens."""
+    """Records the unavailable Android Backup transport without fabricating output."""
 
     def __init__(self, output_dir: Path, *, chunk_size: int = 1024 * 1024) -> None:
         self._output_dir = output_dir
@@ -54,7 +54,7 @@ class GoogleTakeoutDownloader:
     async def download(
         self, token: GoogleBackupToken, case_id: str, operator_id: str
     ) -> GoogleBackupResult:
-        """Download available Android cloud backups for the given account token."""
+        """Refuse unsupported live Android Backup transport deterministically."""
         download_id = str(uuid4())
         started_at = datetime.now(UTC).isoformat()
         t0 = asyncio.get_event_loop().time()
@@ -67,6 +67,21 @@ class GoogleTakeoutDownloader:
                 "case_id": case_id,
                 "operator_id": operator_id,
             },
+        )
+
+        # Google does not expose a public Android Backup transport for a third-party
+        # client.  Earlier scaffolding wrote zero-filled files here, which created
+        # false evidence.  The supported product route is a user-exported Takeout
+        # or a supplied backup container through the sealed import pipeline.
+        return self._error_result(
+            download_id=download_id,
+            account_email=token.account_email,
+            started_at=started_at,
+            t0=t0,
+            message=(
+                "Live Google Android Backup download is unavailable: there is no public "
+                "third-party Backup Transport API. Import a user-exported Takeout or backup."
+            ),
         )
 
         try:

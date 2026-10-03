@@ -63,6 +63,64 @@ class EvidenceTwinStorageError(EvidenceTwinError):
 class EvidenceTwinService:
     """Creates sealed masters and separate hash-verified examination copies."""
 
+    def seal_cloud_export_stream(
+        self, database: Database, principal: Principal, case_id: str, stream: BinaryIO,
+        *, source_name: str, declared_size_bytes: int, provider: str,
+        source_timezone: str, date_order: str,
+    ) -> EvidenceSourceRecord:
+        return self._seal_stream(
+            database, principal, case_id, stream, source_name=source_name,
+            display_name=f"{provider.title()} offline export: {source_name}",
+            declared_size_bytes=declared_size_bytes, chunk_size_bytes=DEFAULT_EVIDENCE_CHUNK_SIZE,
+            source_type=EvidenceSourceType.IMPORTED_FILE, acquisition_level=AcquisitionLevel.LOGICAL,
+            device_id=None,
+            limitations=("Offline user-supplied export; account identity and completeness are unverified.",
+                         "This import does not access a live cloud account or decrypt encrypted backups."),
+            manifest_metadata={"operation": "cloud_export_import", "provider": provider,
+                               "source_timezone": source_timezone, "date_order": date_order},
+        )
+
+    def seal_agent_bundle_stream(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        stream: BinaryIO,
+        *,
+        source_name: str,
+        declared_size_bytes: int,
+        collection_id: str,
+        complete: bool,
+        source_statuses: dict[str, str],
+        record_counts: dict[str, int],
+    ) -> EvidenceSourceRecord:
+        """Seal a validated user-exported agent bundle as logical evidence."""
+        return self._seal_stream(
+            database,
+            principal,
+            case_id,
+            stream,
+            source_name=source_name,
+            display_name=f"Android agent collection {collection_id}",
+            declared_size_bytes=declared_size_bytes,
+            chunk_size_bytes=DEFAULT_EVIDENCE_CHUNK_SIZE,
+            source_type=EvidenceSourceType.IMPORTED_FILE,
+            acquisition_level=AcquisitionLevel.LOGICAL,
+            device_id=None,
+            limitations=(
+                "User-exported logical collection; not a full filesystem acquisition.",
+                "Bundle hashes verify consistency, not device or agent identity.",
+                *(() if complete else ("One or more collection sources were incomplete.",)),
+            ),
+            manifest_metadata={
+                "operation": "android_agent_user_export",
+                "collection_id": collection_id,
+                "collection_complete": complete,
+                "source_statuses": source_statuses,
+                "record_counts": record_counts,
+            },
+        )
+
     def import_stream(
         self,
         database: Database,
@@ -92,6 +150,38 @@ class EvidenceTwinService:
                 "Source acquisition method and device-side effects require examiner review.",
             ),
             manifest_metadata=None,
+        )
+
+    def seal_backup_import_stream(
+        self,
+        database: Database,
+        principal: Principal,
+        case_id: str,
+        stream: BinaryIO,
+        *,
+        source_name: str,
+        declared_size_bytes: int,
+        inspection: dict[str, Any],
+    ) -> EvidenceSourceRecord:
+        """Seal an inspected user-supplied Android backup without altering its bytes."""
+        return self._seal_stream(
+            database,
+            principal,
+            case_id,
+            stream,
+            source_name=source_name,
+            display_name=f"Android backup import: {source_name}",
+            declared_size_bytes=declared_size_bytes,
+            chunk_size_bytes=DEFAULT_EVIDENCE_CHUNK_SIZE,
+            source_type=EvidenceSourceType.IMPORTED_FILE,
+            acquisition_level=AcquisitionLevel.FILESYSTEM,
+            device_id=None,
+            limitations=(
+                "User-supplied backup import; ForensiX did not acquire the source from a device.",
+                "Container inspection does not decrypt, restore, or validate application payload semantics.",
+                *tuple(str(item) for item in inspection.get("warnings", [])),
+            ),
+            manifest_metadata={"operation": "android_backup_import", "backup_inspection": inspection},
         )
 
     def seal_rooted_stream(
@@ -737,6 +827,10 @@ class EvidenceTwinService:
             "verified_at": now.isoformat(),
             "verified_by": principal.user_id,
             "working_copy_id": working_copy.id if working_copy else None,
+            # A frozen clock can produce identical verification observations for
+            # distinct imports. Bind this event's generated record ID into the
+            # canonical value before storing its unique hash.
+            "verification_id": str(uuid4()),
         }
         record = EvidenceSourceVerificationRecord(
             evidence_source_id=source.id,

@@ -11,9 +11,22 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $pythonPath = Join-Path $projectRoot ".venv\Scripts\python.exe"
+$imageEmbeddingModel = Join-Path $projectRoot "models\vision\forensix_clip_image_encoder.onnx"
+$expectedImageEmbeddingModelSha256 = "5934fe73bce8d16a78ed10bacefe15bda2ca77a2c5609cf043ff09469d876153"
 
 if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
     throw "Python environment is missing. Run the README setup commands first."
+}
+
+if (Test-Path -LiteralPath $imageEmbeddingModel -PathType Leaf) {
+    $imageEmbeddingModel = (Resolve-Path -LiteralPath $imageEmbeddingModel).Path
+    $imageEmbeddingModelSha256 = (Get-FileHash -LiteralPath $imageEmbeddingModel -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($imageEmbeddingModelSha256 -ne $expectedImageEmbeddingModelSha256) {
+        throw "The local image-embedding model hash does not match the recorded ForensiX model artifact."
+    }
+    $env:FORENSIX_IMAGE_EMBEDDING_ONNX_MODEL = $imageEmbeddingModel
+    $env:FORENSIX_IMAGE_EMBEDDING_INPUT_SIZE = "224"
+    $env:FORENSIX_IMAGE_EMBEDDING_PREPROCESS = "clip_openai"
 }
 
 if (-not $AdbPath) {
@@ -157,6 +170,12 @@ if ($photoRecReady) {
     Write-Host "External recovery: ready for verified raw ext4/F2FS Evidence Twin copies only"
 } else {
     Write-Warning "PhotoRec was not found. Run .\scripts\install-testdisk.ps1 to enable experimental image recovery."
+}
+if (Test-Path -LiteralPath $imageEmbeddingModel -PathType Leaf) {
+    Write-Host "Visual similarity encoder: $imageEmbeddingModel"
+    Write-Host "Visual similarity model SHA-256: $imageEmbeddingModelSha256"
+} else {
+    Write-Warning "Visual similarity encoder is not installed. Place the verified ONNX model in models\vision to enable gallery matching."
 }
 Write-Host "Runtime logs: $logDirectory"
 
