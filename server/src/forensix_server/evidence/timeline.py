@@ -99,7 +99,9 @@ class TimelineService:
         category = _source_category(artifact.category)
         summary = f"{artifact.title}: {artifact.summary}"
         metadata = json.loads(artifact.metadata_json)
-        timezone_basis = str(metadata.get("timezone_basis") or "UTC normalized by the versioned artifact parser")[:255]
+        timezone_basis = str(
+            metadata.get("timezone_basis") or "UTC normalized by the versioned artifact parser"
+        )[:255]
         original_time = str(metadata.get("original_time") or event_time.isoformat())[:255]
         payload = {
             "builder_version": TIMELINE_BUILDER_VERSION,

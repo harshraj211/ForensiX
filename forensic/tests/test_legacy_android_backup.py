@@ -13,7 +13,9 @@ from forensix_forensic.extractors.legacy_android_backup import LegacyAndroidBack
 def test_legacy_ab_indexes_tar_members_and_android_sqlite(tmp_path: Path) -> None:
     database = tmp_path / "mmssms.db"
     connection = sqlite3.connect(database)
-    connection.execute("CREATE TABLE sms (_id INTEGER, date INTEGER, type INTEGER, address TEXT, body TEXT)")
+    connection.execute(
+        "CREATE TABLE sms (_id INTEGER, date INTEGER, type INTEGER, address TEXT, body TEXT)"
+    )
     connection.execute("INSERT INTO sms VALUES (1, 1704067200000, 1, '+15550001', 'Backup SMS')")
     connection.commit()
     connection.close()
@@ -26,13 +28,20 @@ def test_legacy_ab_indexes_tar_members_and_android_sqlite(tmp_path: Path) -> Non
     backup = tmp_path / "legacy.ab"
     backup.write_bytes(b"ANDROID BACKUP\n5\n1\nnone\n" + zlib.compress(tar_data.getvalue()))
     context = ParserContext(
-        case_id="CASE", evidence_source_id="SOURCE", working_copy_id="COPY",
-        source_sha256="0" * 64, source_label="legacy.ab",
+        case_id="CASE",
+        evidence_source_id="SOURCE",
+        working_copy_id="COPY",
+        source_sha256="0" * 64,
+        source_label="legacy.ab",
     )
 
     artifacts = LegacyAndroidBackupParser().parse(backup, context)
 
-    assert {item.subtype for item in artifacts} == {"android_backup_summary", "android_backup_file", "sms"}
+    assert {item.subtype for item in artifacts} == {
+        "android_backup_summary",
+        "android_backup_file",
+        "sms",
+    }
     sms = next(item for item in artifacts if item.subtype == "sms")
     assert sms.metadata["package_name"] == "com.android.providers.telephony"
     assert sms.source_locator.startswith("apps/com.android.providers.telephony/db/mmssms.db#")

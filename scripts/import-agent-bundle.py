@@ -17,9 +17,7 @@ def main() -> None:
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--output-dir", required=True, type=Path)
     args = parser.parse_args()
-    result = import_agent_bundle(
-        args.bundle, case_id=args.case_id, output_dir=args.output_dir
-    )
+    result = import_agent_bundle(args.bundle, case_id=args.case_id, output_dir=args.output_dir)
     print(f"Imported {result.extraction_id} into {result.output_dir}")
     print(f"Collection complete: {result.success}")
     print(

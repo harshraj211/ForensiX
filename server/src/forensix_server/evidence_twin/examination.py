@@ -186,15 +186,26 @@ class EvidenceExaminationService:
             acquisition = json.loads(manifest).get("acquisition_metadata", {})
             if acquisition.get("operation") == "cloud_export_import":
                 from forensix_forensic.extractors.cloud.exports import CloudExportParser
+
                 cloud_parser = CloudExportParser(
-                    acquisition["provider"], source_timezone=acquisition["source_timezone"],
+                    acquisition["provider"],
+                    source_timezone=acquisition["source_timezone"],
                     date_order=acquisition["date_order"],
                 )
                 if parser_ids is not None and set(parser_ids) != {cloud_parser.metadata.parser_id}:
-                    raise EvidenceTwinError("Select the provider export parser for this cloud source.")
-                return [self._execute_document_parser(
-                    database, principal, inspection.id, context, cloud_parser, path,
-                )]
+                    raise EvidenceTwinError(
+                        "Select the provider export parser for this cloud source."
+                    )
+                return [
+                    self._execute_document_parser(
+                        database,
+                        principal,
+                        inspection.id,
+                        context,
+                        cloud_parser,
+                        path,
+                    )
+                ]
             if (
                 acquisition.get("operation") == "android_backup_import"
                 and acquisition.get("backup_inspection", {}).get("backup_kind")
@@ -202,10 +213,19 @@ class EvidenceExaminationService:
             ):
                 parser = SmartSwitchArchiveParser()
                 if parser_ids is not None and set(parser_ids) != {parser.metadata.parser_id}:
-                    raise EvidenceTwinError("Select the Smart Switch archive parser for this source.")
-                return [self._execute_document_parser(
-                    database, principal, inspection.id, context, parser, path,
-                )]
+                    raise EvidenceTwinError(
+                        "Select the Smart Switch archive parser for this source."
+                    )
+                return [
+                    self._execute_document_parser(
+                        database,
+                        principal,
+                        inspection.id,
+                        context,
+                        parser,
+                        path,
+                    )
+                ]
             if (
                 acquisition.get("operation") == "android_backup_import"
                 and acquisition.get("backup_inspection", {}).get("backup_kind")
@@ -214,10 +234,19 @@ class EvidenceExaminationService:
             ):
                 parser = LegacyAndroidBackupParser()
                 if parser_ids is not None and set(parser_ids) != {parser.metadata.parser_id}:
-                    raise EvidenceTwinError("Select the legacy Android Backup parser for this source.")
-                return [self._execute_document_parser(
-                    database, principal, inspection.id, context, parser, path,
-                )]
+                    raise EvidenceTwinError(
+                        "Select the legacy Android Backup parser for this source."
+                    )
+                return [
+                    self._execute_document_parser(
+                        database,
+                        principal,
+                        inspection.id,
+                        context,
+                        parser,
+                        path,
+                    )
+                ]
             if (
                 acquisition.get("operation") == "android_backup_import"
                 and acquisition.get("backup_inspection", {}).get("backup_kind")
@@ -227,9 +256,16 @@ class EvidenceExaminationService:
                 parser = MemoryCardImageParser()
                 if parser_ids is not None and set(parser_ids) != {parser.metadata.parser_id}:
                     raise EvidenceTwinError("Select the FAT32 memory-card parser for this source.")
-                return [self._execute_document_parser(
-                    database, principal, inspection.id, context, parser, path,
-                )]
+                return [
+                    self._execute_document_parser(
+                        database,
+                        principal,
+                        inspection.id,
+                        context,
+                        parser,
+                        path,
+                    )
+                ]
         if _is_agent_bundle_source(source.source_name):
             if parser_ids is not None and set(parser_ids) != {AGENT_BUNDLE_PARSER_ID}:
                 raise EvidenceTwinError(
@@ -1469,7 +1505,11 @@ def _agent_bundle_artifacts(result: AgentExtractionResult) -> list[ParsedArtifac
             )
         )
     for index, subscription in enumerate(result.sim_subscriptions, start=1):
-        label = subscription.display_name or subscription.carrier_name or f"SIM slot {subscription.slot_index}"
+        label = (
+            subscription.display_name
+            or subscription.carrier_name
+            or f"SIM slot {subscription.slot_index}"
+        )
         artifacts.append(
             ParsedArtifact(
                 category="system",

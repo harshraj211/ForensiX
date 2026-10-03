@@ -16,7 +16,11 @@ from forensix_forensic.extractors.agent_apk.bundle_import import _FILES
 
 
 def _bundle(
-    path: Path, *, tamper: bool = False, extra: bool = False, denied: bool = False,
+    path: Path,
+    *,
+    tamper: bool = False,
+    extra: bool = False,
+    denied: bool = False,
     version: int = 1,
 ) -> str:
     collection_id = str(uuid4())

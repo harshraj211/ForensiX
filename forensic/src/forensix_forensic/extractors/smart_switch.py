@@ -45,11 +45,31 @@ _NATIVE_PARSERS = (
     "android.calendar.events",
     "android.downloads.provider",
 )
-_MEDIA_SUFFIXES = frozenset({
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".mp4", ".mov",
-    ".3gp", ".mp3", ".m4a", ".wav", ".pdf", ".opus", ".ogg",
-    ".bmp", ".tif", ".tiff", ".mkv", ".amr", ".aac",
-})
+_MEDIA_SUFFIXES = frozenset(
+    {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".heic",
+        ".mp4",
+        ".mov",
+        ".3gp",
+        ".mp3",
+        ".m4a",
+        ".wav",
+        ".pdf",
+        ".opus",
+        ".ogg",
+        ".bmp",
+        ".tif",
+        ".tiff",
+        ".mkv",
+        ".amr",
+        ".aac",
+    }
+)
 _SECRET_NAMES = ("password", "passwd", "token", "secret", "key", "credential")
 
 
@@ -64,8 +84,13 @@ class SmartSwitchArchiveParser:
         maturity="experimental",
         source_path_hints=(".sbu", ".zip"),
         supported_artifact_types=(
-            "smart_switch_contact", "smart_switch_message", "smart_switch_call",
-            "smart_switch_setting", "smart_switch_media", "smart_switch_member", "smart_switch_summary",
+            "smart_switch_contact",
+            "smart_switch_message",
+            "smart_switch_call",
+            "smart_switch_setting",
+            "smart_switch_media",
+            "smart_switch_member",
+            "smart_switch_summary",
         ),
         description="Normalizes readable Smart Switch members and records unsupported ones.",
         input_formats=("zip", "sbu"),
@@ -79,14 +104,17 @@ class SmartSwitchArchiveParser:
             raise ValueError("Smart Switch input must be a regular examination copy")
         with tempfile.TemporaryDirectory(prefix="smart-switch-") as temp:
             store = EvidenceStore(Path(temp))
-            members = SafeArchiveExtractor(ArchivePolicy(
-                max_members=MAX_ARCHIVE_MEMBERS,
-                max_member_bytes=512 * 1024 * 1024,
-                max_total_bytes=2 * 1024 * 1024 * 1024,
-                max_path_depth=20,
-            )).extract(path, store, "members")
+            members = SafeArchiveExtractor(
+                ArchivePolicy(
+                    max_members=MAX_ARCHIVE_MEMBERS,
+                    max_member_bytes=512 * 1024 * 1024,
+                    max_total_bytes=2 * 1024 * 1024 * 1024,
+                    max_path_depth=20,
+                )
+            ).extract(path, store, "members")
             media_names = Counter(
-                Path(member.original_name).name.casefold() for member in members
+                Path(member.original_name).name.casefold()
+                for member in members
                 if Path(member.original_name).suffix.casefold() in _MEDIA_SUFFIXES
             )
             media_by_name = {
@@ -113,53 +141,89 @@ class SmartSwitchArchiveParser:
                         signature = source.read(32)
                     if suffix in _MEDIA_SUFFIXES:
                         parsed = [_media_artifact(name, member.sha256, member.size_bytes)]
-                    elif signature.startswith(b"SQLite format 3\x00") or suffix in {".db", ".sqlite", ".sqlite3"}:
+                    elif signature.startswith(b"SQLite format 3\x00") or suffix in {
+                        ".db",
+                        ".sqlite",
+                        ".sqlite3",
+                    }:
                         parsed = _sqlite_artifacts(member_path, name, context)
                     elif suffix == ".spbm" and signature.startswith(b"BEGIN:VCARD"):
                         parsed = _vcard_artifacts(member_path.read_text(encoding="utf-8-sig"))
-                    elif suffix in {".csv", ".tsv", ".vcf", ".json", ".xml"} and member.size_bytes <= MAX_DOCUMENT_BYTES:
+                    elif (
+                        suffix in {".csv", ".tsv", ".vcf", ".json", ".xml"}
+                        and member.size_bytes <= MAX_DOCUMENT_BYTES
+                    ):
                         parsed = _document_artifacts(member_path, name)
                     else:
                         parsed = []
                     if suffix not in _MEDIA_SUFFIXES:
-                        artifacts.append(_member_artifact(name, member.sha256, member.size_bytes,
-                                                          recognized=bool(parsed), signature=signature))
+                        artifacts.append(
+                            _member_artifact(
+                                name,
+                                member.sha256,
+                                member.size_bytes,
+                                recognized=bool(parsed),
+                                signature=signature,
+                            )
+                        )
                     if not parsed:
                         unsupported.append(name)
                         continue
                     for artifact in parsed[: MAX_ARTIFACTS - len(artifacts)]:
-                        metadata = {**artifact.metadata, "archive_member": name,
-                                    "member_sha256": member.sha256,
-                                    "member_size_bytes": member.size_bytes}
+                        metadata = {
+                            **artifact.metadata,
+                            "archive_member": name,
+                            "member_sha256": member.sha256,
+                            "member_size_bytes": member.size_bytes,
+                        }
                         if artifact.subtype == "smart_switch_message":
                             attachment = str(metadata.get("attachment_reference") or "").casefold()
                             linked = media_by_name.get(Path(attachment).name)
                             if linked:
                                 metadata["linked_media_member"] = linked
-                        artifacts.append(replace(
-                            artifact,
-                            source_locator=f"{name}#{artifact.source_locator}",
-                            metadata=metadata,
-                        ))
-                except (UnicodeError, ValueError, SafeSQLiteError, csv.Error, ParseError,
-                        DefusedXmlException) as error:
+                        artifacts.append(
+                            replace(
+                                artifact,
+                                source_locator=f"{name}#{artifact.source_locator}",
+                                metadata=metadata,
+                            )
+                        )
+                except (
+                    UnicodeError,
+                    ValueError,
+                    SafeSQLiteError,
+                    csv.Error,
+                    ParseError,
+                    DefusedXmlException,
+                ) as error:
                     if suffix not in _MEDIA_SUFFIXES:
-                        artifacts.append(_member_artifact(name, member.sha256, member.size_bytes,
-                                                          recognized=False, signature=signature))
+                        artifacts.append(
+                            _member_artifact(
+                                name,
+                                member.sha256,
+                                member.size_bytes,
+                                recognized=False,
+                                signature=signature,
+                            )
+                        )
                     failures.append(f"{name}: {type(error).__name__}")
             counts = dict(Counter(item.subtype for item in artifacts))
             summary = ParsedArtifact(
-                category="system", subtype="smart_switch_summary",
+                category="system",
+                subtype="smart_switch_summary",
                 title="Smart Switch archive examination",
                 summary=f"{len(members)} members; {len(artifacts)} normalized records; "
-                        f"{len(unsupported)} unsupported; {len(failures)} issues",
-                event_time=None, source_locator="archive#summary",
+                f"{len(unsupported)} unsupported; {len(failures)} issues",
+                event_time=None,
+                source_locator="archive#summary",
                 status="partial" if unsupported or failures else "active",
                 confidence="high",
                 metadata={
-                    "member_count": len(members), "record_counts": counts,
+                    "member_count": len(members),
+                    "record_counts": counts,
                     "unsupported_count": len(unsupported),
-                    "unsupported_members": unsupported[:200], "issues": failures[:200],
+                    "unsupported_members": unsupported[:200],
+                    "issues": failures[:200],
                     "parser_scope": "ZIP-compatible Smart Switch export; readable supported schemas",
                 },
             )
@@ -168,25 +232,46 @@ class SmartSwitchArchiveParser:
 
 def _media_artifact(name: str, digest: str, size: int) -> ParsedArtifact:
     return ParsedArtifact(
-        category="file", subtype="smart_switch_media", title=Path(name).name,
-        summary=name, event_time=None, source_locator="file",
-        status="active", confidence="high",
-        metadata={"file_name": Path(name).name, "mime_type": mimetypes.guess_type(name)[0],
-                  "size_bytes": size, "sha256": digest},
+        category="file",
+        subtype="smart_switch_media",
+        title=Path(name).name,
+        summary=name,
+        event_time=None,
+        source_locator="file",
+        status="active",
+        confidence="high",
+        metadata={
+            "file_name": Path(name).name,
+            "mime_type": mimetypes.guess_type(name)[0],
+            "size_bytes": size,
+            "sha256": digest,
+        },
     )
 
 
-def _member_artifact(name: str, digest: str, size: int, *, recognized: bool,
-                     signature: bytes) -> ParsedArtifact:
+def _member_artifact(
+    name: str, digest: str, size: int, *, recognized: bool, signature: bytes
+) -> ParsedArtifact:
     return ParsedArtifact(
-        category="file", subtype="smart_switch_member", title=Path(name).name,
-        summary=name, event_time=None, source_locator=name,
-        status="active" if recognized else "partial", confidence="high",
-        metadata={"file_name": Path(name).name, "size_bytes": size, "sha256": digest,
-                  "archive_member": name, "member_sha256": digest, "member_size_bytes": size,
-                  "mime_type": mimetypes.guess_type(name)[0],
-                  "decoding_status": "parsed" if recognized else "unsupported_format",
-                  "signature_hex": signature[:16].hex()},
+        category="file",
+        subtype="smart_switch_member",
+        title=Path(name).name,
+        summary=name,
+        event_time=None,
+        source_locator=name,
+        status="active" if recognized else "partial",
+        confidence="high",
+        metadata={
+            "file_name": Path(name).name,
+            "size_bytes": size,
+            "sha256": digest,
+            "archive_member": name,
+            "member_sha256": digest,
+            "member_size_bytes": size,
+            "mime_type": mimetypes.guess_type(name)[0],
+            "decoding_status": "parsed" if recognized else "unsupported_format",
+            "signature_hex": signature[:16].hex(),
+        },
     )
 
 
@@ -242,21 +327,34 @@ def _vcard_artifacts(text: str) -> list[ParsedArtifact]:
             if separator:
                 fields.setdefault(key.split(";", 1)[0].upper(), []).append(value.strip())
         title = next(iter(fields.get("FN", [])), "") or next(iter(fields.get("N", [])), "")
-        result.append(ParsedArtifact(
-            category="contact", subtype="smart_switch_contact", title=title or f"Contact {index}",
-            summary=", ".join(fields.get("TEL", []) + fields.get("EMAIL", [])),
-            event_time=None, source_locator=f"vcard:{index}", status="active", confidence="high",
-            metadata={"name": title, "phone_numbers": fields.get("TEL", []),
-                      "emails": fields.get("EMAIL", [])},
-        ))
+        result.append(
+            ParsedArtifact(
+                category="contact",
+                subtype="smart_switch_contact",
+                title=title or f"Contact {index}",
+                summary=", ".join(fields.get("TEL", []) + fields.get("EMAIL", [])),
+                event_time=None,
+                source_locator=f"vcard:{index}",
+                status="active",
+                confidence="high",
+                metadata={
+                    "name": title,
+                    "phone_numbers": fields.get("TEL", []),
+                    "emails": fields.get("EMAIL", []),
+                },
+            )
+        )
     return result
 
 
 def _csv_artifacts(text: str, *, delimiter: str, hint: str) -> list[ParsedArtifact]:
     reader = csv.DictReader(text.splitlines(), delimiter=delimiter)
-    return [artifact for index, row in enumerate(reader, 2)
-            if index <= MAX_ARTIFACTS + 1
-            if (artifact := _row_artifact(row, f"row:{index}", hint=hint)) is not None]
+    return [
+        artifact
+        for index, row in enumerate(reader, 2)
+        if index <= MAX_ARTIFACTS + 1
+        if (artifact := _row_artifact(row, f"row:{index}", hint=hint)) is not None
+    ]
 
 
 def _json_artifacts(value: Any, *, hint: str) -> list[ParsedArtifact]:
@@ -267,12 +365,18 @@ def _json_artifacts(value: Any, *, hint: str) -> list[ParsedArtifact]:
         for key in ("contacts", "messages", "sms", "calls", "call_logs", "settings"):
             entries = value.get(key)
             if isinstance(entries, list):
-                rows.extend((f"{key}:{i}", item) for i, item in enumerate(entries, 1)
-                            if isinstance(item, dict))
+                rows.extend(
+                    (f"{key}:{i}", item)
+                    for i, item in enumerate(entries, 1)
+                    if isinstance(item, dict)
+                )
         if not rows:
             rows = [("item:1", value)]
-    return [artifact for locator, row in rows
-            if (artifact := _row_artifact(row, locator, hint=hint)) is not None]
+    return [
+        artifact
+        for locator, row in rows
+        if (artifact := _row_artifact(row, locator, hint=hint)) is not None
+    ]
 
 
 def _xml_artifacts(text: str, *, hint: str) -> list[ParsedArtifact]:
@@ -297,28 +401,50 @@ def _xml_artifacts(text: str, *, hint: str) -> list[ParsedArtifact]:
 
 def _row_artifact(row: dict[str, Any], locator: str, *, hint: str = "") -> ParsedArtifact | None:
     normalized = {
-        re.sub(r"[^\w]+", "_", str(key).strip().casefold()).strip("_").replace("e_mail", "email"): item
+        re.sub(r"[^\w]+", "_", str(key).strip().casefold())
+        .strip("_")
+        .replace("e_mail", "email"): item
         for key, item in row.items()
     }
+
     def value(*keys: str) -> str:
-        return next((str(normalized[key]).strip()[:20_000] for key in keys
-                     if normalized.get(key) is not None and str(normalized[key]).strip()), "")
+        return next(
+            (
+                str(normalized[key]).strip()[:20_000]
+                for key in keys
+                if normalized.get(key) is not None and str(normalized[key]).strip()
+            ),
+            "",
+        )
 
     name = value("name", "display_name", "full_name", "contact_name", "fn")
     if not name:
-        name = " ".join(part for part in (
-            value("first_name", "given_name"), value("middle_name"),
-            value("last_name", "family_name", "surname"),
-        ) if part)
-    phone_numbers = list(dict.fromkeys(
-        str(item).strip()[:20_000] for key, item in normalized.items()
-        if ("phone" in key or key in {"mobile", "cell", "telephone", "tel"})
-        and "type" not in key and item is not None and str(item).strip()
-    ))
-    emails = list(dict.fromkeys(
-        str(item).strip()[:20_000] for key, item in normalized.items()
-        if "email" in key and "type" not in key and item is not None and str(item).strip()
-    ))
+        name = " ".join(
+            part
+            for part in (
+                value("first_name", "given_name"),
+                value("middle_name"),
+                value("last_name", "family_name", "surname"),
+            )
+            if part
+        )
+    phone_numbers = list(
+        dict.fromkeys(
+            str(item).strip()[:20_000]
+            for key, item in normalized.items()
+            if ("phone" in key or key in {"mobile", "cell", "telephone", "tel"})
+            and "type" not in key
+            and item is not None
+            and str(item).strip()
+        )
+    )
+    emails = list(
+        dict.fromkeys(
+            str(item).strip()[:20_000]
+            for key, item in normalized.items()
+            if "email" in key and "type" not in key and item is not None and str(item).strip()
+        )
+    )
     phone = phone_numbers[0] if phone_numbers else ""
     email = emails[0] if emails else ""
     body = value("body", "message", "text", "content")
@@ -328,15 +454,37 @@ def _row_artifact(row: dict[str, Any], locator: str, *, hint: str = "") -> Parse
     attachment = value("attachment", "attachment_path", "media_path", "file_name")
     classification = f"{hint}/{locator}".casefold()
     if body and (address or "message" in classification):
-        kind, category, title, summary = "smart_switch_message", "communication", f"Message {address}", body
-        metadata = {"address": address, "body": body, "attachment_reference": attachment,
-                    "direction": value("type", "direction")}
+        kind, category, title, summary = (
+            "smart_switch_message",
+            "communication",
+            f"Message {address}",
+            body,
+        )
+        metadata = {
+            "address": address,
+            "body": body,
+            "attachment_reference": attachment,
+            "direction": value("type", "direction"),
+        }
     elif duration and address:
-        kind, category, title, summary = "smart_switch_call", "communication", f"Call {address}", f"Duration {duration}"
-        metadata = {"number": address, "duration_seconds": duration,
-                    "call_type": value("type", "direction")}
+        kind, category, title, summary = (
+            "smart_switch_call",
+            "communication",
+            f"Call {address}",
+            f"Duration {duration}",
+        )
+        metadata = {
+            "number": address,
+            "duration_seconds": duration,
+            "call_type": value("type", "direction"),
+        }
     elif name and (phone or email or "contact" in classification):
-        kind, category, title, summary = "smart_switch_contact", "contact", name, ", ".join(x for x in (phone, email) if x)
+        kind, category, title, summary = (
+            "smart_switch_contact",
+            "contact",
+            name,
+            ", ".join(x for x in (phone, email) if x),
+        )
         metadata = {"name": name, "phone_numbers": phone_numbers, "emails": emails}
     elif "setting" in classification and value("key", "setting_name"):
         key = value("key", "setting_name")
@@ -348,9 +496,16 @@ def _row_artifact(row: dict[str, Any], locator: str, *, hint: str = "") -> Parse
     else:
         return None
     return ParsedArtifact(
-        category=category, subtype=kind, title=title[:500], summary=summary[:2000],
-        event_time=time, source_locator=locator, status="active", confidence="medium",
-        metadata=metadata, content=body if kind == "smart_switch_message" else None,
+        category=category,
+        subtype=kind,
+        title=title[:500],
+        summary=summary[:2000],
+        event_time=time,
+        source_locator=locator,
+        status="active",
+        confidence="medium",
+        metadata=metadata,
+        content=body if kind == "smart_switch_message" else None,
     )
 
 

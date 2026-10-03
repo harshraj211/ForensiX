@@ -40,14 +40,17 @@ class Fat32Volume:
 
     @property
     def data_offset(self) -> int:
-        return self.offset + (
-            self.reserved_sectors + self.fat_count * self.sectors_per_fat
-        ) * self.bytes_per_sector
+        return (
+            self.offset
+            + (self.reserved_sectors + self.fat_count * self.sectors_per_fat)
+            * self.bytes_per_sector
+        )
 
     @property
     def cluster_count(self) -> int:
-        return (self.total_sectors - self.reserved_sectors -
-                self.fat_count * self.sectors_per_fat) // self.sectors_per_cluster
+        return (
+            self.total_sectors - self.reserved_sectors - self.fat_count * self.sectors_per_fat
+        ) // self.sectors_per_cluster
 
     def cluster_offset(self, cluster: int) -> int:
         return self.data_offset + (cluster - 2) * self.cluster_bytes
@@ -64,7 +67,7 @@ def probe_fat32(path: Path) -> Fat32Volume | None:
         candidates = [0]
         if len(first) == 512 and first[510:512] == b"\x55\xaa":
             for index in range(4):
-                entry = first[446 + 16 * index: 462 + 16 * index]
+                entry = first[446 + 16 * index : 462 + 16 * index]
                 if entry[4] in _FAT32_PARTITION_TYPES:
                     lba = int.from_bytes(entry[8:12], "little")
                     if lba:
@@ -88,9 +91,12 @@ def probe_fat32(path: Path) -> Fat32Volume | None:
             if not reserved or not 1 <= fats <= 4 or not fat_sectors or not total_sectors:
                 continue
             volume = Fat32Volume(offset, bps, spc, reserved, fats, fat_sectors, total_sectors, root)
-            if (volume.cluster_count < 1 or not 2 <= root < volume.cluster_count + 2 or
-                    offset + total_sectors * bps > size or
-                    (volume.cluster_count + 2) * 4 > fat_sectors * bps):
+            if (
+                volume.cluster_count < 1
+                or not 2 <= root < volume.cluster_count + 2
+                or offset + total_sectors * bps > size
+                or (volume.cluster_count + 2) * 4 > fat_sectors * bps
+            ):
                 continue
             return volume
     return None
@@ -107,7 +113,9 @@ class MemoryCardImageParser:
         maturity="experimental",
         source_path_hints=(".img", ".dd", ".raw"),
         supported_artifact_types=(
-            "memory_card_summary", "memory_card_file", "memory_card_directory",
+            "memory_card_summary",
+            "memory_card_file",
+            "memory_card_directory",
             "memory_card_deleted_candidate",
         ),
         description="Inventories FAT32 entries and hashes bounded readable content.",
@@ -128,20 +136,29 @@ class MemoryCardImageParser:
             scanner.walk(volume.root_cluster, "", depth=0)
         counts = {
             kind: sum(artifact.subtype == kind for artifact in artifacts)
-            for kind in ("memory_card_file", "memory_card_directory", "memory_card_deleted_candidate")
+            for kind in (
+                "memory_card_file",
+                "memory_card_directory",
+                "memory_card_deleted_candidate",
+            )
         }
         summary = ParsedArtifact(
-            category="system", subtype="memory_card_summary",
+            category="system",
+            subtype="memory_card_summary",
             title="FAT32 card-image examination",
             summary=f"{len(artifacts)} directory entries; {counts['memory_card_deleted_candidate']} deleted candidates",
-            event_time=None, source_locator="image#fat32-summary",
-            status="partial" if issues else "active", confidence="high",
+            event_time=None,
+            source_locator="image#fat32-summary",
+            status="partial" if issues else "active",
+            confidence="high",
             metadata={
-                "filesystem_type": "fat32", "partition_offset_bytes": volume.offset,
+                "filesystem_type": "fat32",
+                "partition_offset_bytes": volume.offset,
                 "bytes_per_sector": volume.bytes_per_sector,
                 "cluster_bytes": volume.cluster_bytes,
                 "cluster_count": volume.cluster_count,
-                "record_counts": counts, "issues": issues[:200],
+                "record_counts": counts,
+                "issues": issues[:200],
                 "source_sha256": context.source_sha256,
             },
         )
@@ -149,7 +166,11 @@ class MemoryCardImageParser:
 
 
 def verified_deleted_candidate(
-    image: Path, *, first_cluster: int, size_bytes: int, expected_sha256: str,
+    image: Path,
+    *,
+    first_cluster: int,
+    size_bytes: int,
+    expected_sha256: str,
 ) -> tuple[int, int]:
     """Revalidate a contiguous deleted candidate before its bytes are exported.
 
@@ -168,7 +189,9 @@ def verified_deleted_candidate(
         raise ValueError("The candidate extends past the cluster heap")
     with image.open("rb") as source:
         scanner = _Fat32Scanner(source, volume, [], [])
-        if any(scanner.fat(cluster) != 0 for cluster in range(first_cluster, first_cluster + needed)):
+        if any(
+            scanner.fat(cluster) != 0 for cluster in range(first_cluster, first_cluster + needed)
+        ):
             raise ValueError("The candidate clusters are no longer unallocated")
         digest = sha256()
         remaining = size_bytes
@@ -181,7 +204,10 @@ def verified_deleted_candidate(
 
 
 def iter_deleted_candidate(
-    image: Path, volume: Fat32Volume, first_cluster: int, size_bytes: int,
+    image: Path,
+    volume: Fat32Volume,
+    first_cluster: int,
+    size_bytes: int,
 ) -> Iterator[bytes]:
     """Stream exactly the candidate's bounded content from a read-only image."""
     with image.open("rb") as source:
@@ -196,7 +222,11 @@ def iter_deleted_candidate(
 
 
 def verified_active_file(
-    image: Path, *, first_cluster: int, size_bytes: int, expected_sha256: str,
+    image: Path,
+    *,
+    first_cluster: int,
+    size_bytes: int,
+    expected_sha256: str,
 ) -> Fat32Volume:
     """Check an active FAT chain and content hash before exporting it."""
     volume = probe_fat32(image)
@@ -211,7 +241,10 @@ def verified_active_file(
 
 
 def iter_active_file(
-    image: Path, volume: Fat32Volume, first_cluster: int, size_bytes: int,
+    image: Path,
+    volume: Fat32Volume,
+    first_cluster: int,
+    size_bytes: int,
 ) -> Iterator[bytes]:
     """Read the current FAT chain on demand, including non-contiguous files."""
     if size_bytes == 0:
@@ -232,8 +265,13 @@ def iter_active_file(
 
 
 class _Fat32Scanner:
-    def __init__(self, source: BinaryIO, volume: Fat32Volume,
-                 artifacts: list[ParsedArtifact], issues: list[str]) -> None:
+    def __init__(
+        self,
+        source: BinaryIO,
+        volume: Fat32Volume,
+        artifacts: list[ParsedArtifact],
+        issues: list[str],
+    ) -> None:
         self.source = source
         self.volume = volume
         self.artifacts = artifacts
@@ -280,7 +318,7 @@ class _Fat32Scanner:
                     if len(self.artifacts) >= MAX_ENTRIES:
                         self.issues.append("Directory-entry limit reached")
                         return
-                    entry = directory[index:index + 32]
+                    entry = directory[index : index + 32]
                     if len(entry) < 32 or entry[0] == 0:
                         return
                     attr = entry[11]
@@ -299,13 +337,16 @@ class _Fat32Scanner:
                     if not name or name in {".", ".."}:
                         continue
                     logical_path = f"{prefix}/{name}" if prefix else name
-                    first_cluster = (int.from_bytes(entry[20:22], "little") << 16) | int.from_bytes(entry[26:28], "little")
+                    first_cluster = (int.from_bytes(entry[20:22], "little") << 16) | int.from_bytes(
+                        entry[26:28], "little"
+                    )
                     size = int.from_bytes(entry[28:32], "little")
                     is_directory = bool(attr & 0x10)
                     metadata: dict[str, object] = {
-                        "path": logical_path, "first_cluster": first_cluster,
-                        "size_bytes": size, "directory_entry_offset":
-                            self.volume.cluster_offset(cluster) + index,
+                        "path": logical_path,
+                        "first_cluster": first_cluster,
+                        "size_bytes": size,
+                        "directory_entry_offset": self.volume.cluster_offset(cluster) + index,
                         "partition_offset_bytes": self.volume.offset,
                         "fat_attributes": attr,
                         "modified_local_dos_date": int.from_bytes(entry[24:26], "little"),
@@ -314,10 +355,15 @@ class _Fat32Scanner:
                     if deleted:
                         self._deleted(logical_path, first_cluster, size, is_directory, metadata)
                     elif is_directory:
-                        self.artifacts.append(_artifact(
-                            "memory_card_directory", logical_path, metadata,
-                            status="active", confidence="high"
-                        ))
+                        self.artifacts.append(
+                            _artifact(
+                                "memory_card_directory",
+                                logical_path,
+                                metadata,
+                                status="active",
+                                confidence="high",
+                            )
+                        )
                         if first_cluster >= 2:
                             self.walk(first_cluster, logical_path, depth=depth + 1)
                     else:
@@ -357,18 +403,27 @@ class _Fat32Scanner:
                 metadata["sha256"] = None
                 metadata["hash_status"] = "unreadable"
                 self.issues.append(f"{name}: {error}")
-        self.artifacts.append(_artifact(
-            "memory_card_file", name, metadata,
-            status="active" if metadata["hash_status"] == "complete" else "partial",
-            confidence="high" if metadata["hash_status"] == "complete" else "medium",
-        ))
+        self.artifacts.append(
+            _artifact(
+                "memory_card_file",
+                name,
+                metadata,
+                status="active" if metadata["hash_status"] == "complete" else "partial",
+                confidence="high" if metadata["hash_status"] == "complete" else "medium",
+            )
+        )
 
-    def _deleted(self, name: str, cluster: int, size: int, is_directory: bool,
-                 metadata: dict[str, object]) -> None:
+    def _deleted(
+        self, name: str, cluster: int, size: int, is_directory: bool, metadata: dict[str, object]
+    ) -> None:
         metadata["recovery_status"] = "directory_entry_only"
         metadata["candidate_sha256"] = None
-        if (not is_directory and 0 < size <= MAX_HASH_BYTES
-                and size <= self.hash_bytes_remaining and cluster >= 2):
+        if (
+            not is_directory
+            and 0 < size <= MAX_HASH_BYTES
+            and size <= self.hash_bytes_remaining
+            and cluster >= 2
+        ):
             needed = math.ceil(size / self.volume.cluster_bytes)
             if cluster + needed <= self.volume.cluster_count + 2:
                 try:
@@ -389,19 +444,35 @@ class _Fat32Scanner:
                             metadata["candidate_byte_count"] = size
                 except ValueError as error:
                     self.issues.append(f"{name}: {error}")
-        self.artifacts.append(_artifact(
-            "memory_card_deleted_candidate", name, metadata,
-            status="deleted", confidence="medium" if metadata["candidate_sha256"] else "low",
-        ))
+        self.artifacts.append(
+            _artifact(
+                "memory_card_deleted_candidate",
+                name,
+                metadata,
+                status="deleted",
+                confidence="medium" if metadata["candidate_sha256"] else "low",
+            )
+        )
 
 
-def _artifact(subtype: str, name: str, metadata: dict[str, object], *,
-              status: Literal["active", "deleted", "partial"],
-              confidence: Literal["high", "medium", "low"]) -> ParsedArtifact:
+def _artifact(
+    subtype: str,
+    name: str,
+    metadata: dict[str, object],
+    *,
+    status: Literal["active", "deleted", "partial"],
+    confidence: Literal["high", "medium", "low"],
+) -> ParsedArtifact:
     return ParsedArtifact(
-        category="file", subtype=subtype, title=Path(name).name[:500],
-        summary=name[:2000], event_time=None, source_locator=name[:2000],
-        status=status, confidence=confidence, metadata=metadata,
+        category="file",
+        subtype=subtype,
+        title=Path(name).name[:500],
+        summary=name[:2000],
+        event_time=None,
+        source_locator=name[:2000],
+        status=status,
+        confidence=confidence,
+        metadata=metadata,
     )
 
 

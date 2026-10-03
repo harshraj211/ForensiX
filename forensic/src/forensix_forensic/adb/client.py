@@ -470,9 +470,7 @@ class SystemAdbClient:
 
     async def install_package_no_downgrade(self, serial: str, apk_path: str) -> bool:
         """Install an APK through ADB without the downgrade flag."""
-        result = await self._run(
-            AdbCommandPolicy.install_package_no_downgrade(serial, apk_path)
-        )
+        result = await self._run(AdbCommandPolicy.install_package_no_downgrade(serial, apk_path))
         return result.exit_code == 0
 
     async def install_packages(self, serial: str, apk_paths: tuple[str, ...]) -> bool:

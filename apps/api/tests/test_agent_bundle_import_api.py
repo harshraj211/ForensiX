@@ -118,7 +118,9 @@ def test_agent_bundle_is_sealed_as_logical_source(tmp_path: Path) -> None:
             auth = AuthService(settings)
             auth.ensure_roles(session)
             issued = auth.bootstrap_administrator(
-                session, username="agent_admin", display_name="Agent Admin",
+                session,
+                username="agent_admin",
+                display_name="Agent Admin",
                 password="StrongPassword123!",
             )
             case_id = CaseService().create(session, issued.principal, title="Agent Case").id
@@ -177,7 +179,9 @@ def test_device_backup_import_inspects_and_seals_original_bytes(tmp_path: Path) 
             auth = AuthService(settings)
             auth.ensure_roles(session)
             issued = auth.bootstrap_administrator(
-                session, username="backup_admin", display_name="Backup Admin",
+                session,
+                username="backup_admin",
+                display_name="Backup Admin",
                 password="StrongPassword123!",
             )
             case_id = CaseService().create(session, issued.principal, title="Backup Case").id
@@ -212,7 +216,9 @@ def test_device_backup_import_inspects_and_seals_original_bytes(tmp_path: Path) 
                 )
             ).all()
             assert {artifact.subtype for artifact in artifacts} == {
-                "smart_switch_summary", "smart_switch_member", "smart_switch_contact"
+                "smart_switch_summary",
+                "smart_switch_member",
+                "smart_switch_contact",
             }
             contact = next(item for item in artifacts if item.subtype == "smart_switch_contact")
             assert "Alice" in contact.title
@@ -227,7 +233,9 @@ def test_smart_switch_pc_folder_upload_preserves_member_hashes(tmp_path: Path) -
             auth = AuthService(settings)
             auth.ensure_roles(session)
             issued = auth.bootstrap_administrator(
-                session, username="folder_admin", display_name="Folder Admin",
+                session,
+                username="folder_admin",
+                display_name="Folder Admin",
                 password="StrongPassword123!",
             )
             case_id = CaseService().create(session, issued.principal, title="PC Folder").id
@@ -238,7 +246,10 @@ def test_smart_switch_pc_folder_upload_preserves_member_hashes(tmp_path: Path) -
         response = client.post(
             f"/api/v1/cases/{case_id}/evidence-sources/import/smart-switch-folder",
             files=[
-                ("files", ("contacts.spbm", b"opaque-vendor-contact-data", "application/octet-stream")),
+                (
+                    "files",
+                    ("contacts.spbm", b"opaque-vendor-contact-data", "application/octet-stream"),
+                ),
                 ("files", ("contacts.csv", b"name,phone\nAlice,12345\n", "text/csv")),
             ],
             data={"relative_paths": paths},
@@ -258,7 +269,8 @@ def test_smart_switch_pc_folder_upload_preserves_member_hashes(tmp_path: Path) -
             metadata = json.loads(manifest.read_text())["acquisition_metadata"]["backup_inspection"]
             members = metadata["source_assembly"]["members"]
             assert members[0] == {
-                "path": paths[0], "sha256": sha256(b"opaque-vendor-contact-data").hexdigest(),
+                "path": paths[0],
+                "sha256": sha256(b"opaque-vendor-contact-data").hexdigest(),
                 "size_bytes": len(b"opaque-vendor-contact-data"),
             }
             artifacts = session.scalars(
@@ -266,8 +278,14 @@ def test_smart_switch_pc_folder_upload_preserves_member_hashes(tmp_path: Path) -
                     EvidenceSourceArtifactRecord.parser_run_id == body["parser_run_id"]
                 )
             ).all()
-            assert any(item.subtype == "smart_switch_contact" and item.title == "Alice" for item in artifacts)
-            assert any(item.subtype == "smart_switch_member" and item.title == "contacts.spbm" for item in artifacts)
+            assert any(
+                item.subtype == "smart_switch_contact" and item.title == "Alice"
+                for item in artifacts
+            )
+            assert any(
+                item.subtype == "smart_switch_member" and item.title == "contacts.spbm"
+                for item in artifacts
+            )
 
 
 def test_smart_switch_pc_folder_rejects_traversal(tmp_path: Path) -> None:
@@ -279,7 +297,9 @@ def test_smart_switch_pc_folder_rejects_traversal(tmp_path: Path) -> None:
             auth = AuthService(settings)
             auth.ensure_roles(session)
             issued = auth.bootstrap_administrator(
-                session, username="path_admin", display_name="Path Admin",
+                session,
+                username="path_admin",
+                display_name="Path Admin",
                 password="StrongPassword123!",
             )
             case_id = CaseService().create(session, issued.principal, title="Path Check").id
@@ -320,7 +340,9 @@ def test_legacy_android_backup_import_indexes_verified_tar_members(tmp_path: Pat
             auth = AuthService(settings)
             auth.ensure_roles(session)
             issued = auth.bootstrap_administrator(
-                session, username="legacy_admin", display_name="Legacy Admin",
+                session,
+                username="legacy_admin",
+                display_name="Legacy Admin",
                 password="StrongPassword123!",
             )
             case_id = CaseService().create(session, issued.principal, title="Legacy Backup").id
@@ -343,7 +365,8 @@ def test_legacy_android_backup_import_indexes_verified_tar_members(tmp_path: Pat
                 )
             ).all()
             assert {item.subtype for item in artifacts} == {
-                "android_backup_summary", "android_backup_file"
+                "android_backup_summary",
+                "android_backup_file",
             }
 
 
@@ -357,7 +380,9 @@ def test_encrypted_android_backup_is_sealed_without_parser_run(tmp_path: Path) -
             auth = AuthService(settings)
             auth.ensure_roles(session)
             issued = auth.bootstrap_administrator(
-                session, username="encrypted_admin", display_name="Encrypted Admin",
+                session,
+                username="encrypted_admin",
+                display_name="Encrypted Admin",
                 password="StrongPassword123!",
             )
             case_id = CaseService().create(session, issued.principal, title="Encrypted Backup").id
@@ -390,7 +415,7 @@ def test_fat32_card_image_import_indexes_deleted_candidate(tmp_path: Path) -> No
     image[82:90] = b"FAT32   "
     image[510:512] = b"\x55\xaa"
     for cluster in (0, 1, 2, 3):
-        image[512 + cluster * 4:516 + cluster * 4] = (0x0FFFFFFF).to_bytes(4, "little")
+        image[512 + cluster * 4 : 516 + cluster * 4] = (0x0FFFFFFF).to_bytes(4, "little")
     image[1024:1035] = b"HELLO   TXT"
     image[1035] = 0x20
     image[1050:1052] = (3).to_bytes(2, "little")
@@ -408,7 +433,9 @@ def test_fat32_card_image_import_indexes_deleted_candidate(tmp_path: Path) -> No
             auth = AuthService(settings)
             auth.ensure_roles(session)
             issued = auth.bootstrap_administrator(
-                session, username="card_admin", display_name="Card Admin",
+                session,
+                username="card_admin",
+                display_name="Card Admin",
                 password="StrongPassword123!",
             )
             case_id = CaseService().create(session, issued.principal, title="Card Case").id
@@ -433,9 +460,13 @@ def test_fat32_card_image_import_indexes_deleted_candidate(tmp_path: Path) -> No
                 )
             ).all()
             assert {item.subtype for item in artifacts} == {
-                "memory_card_summary", "memory_card_file", "memory_card_deleted_candidate"
+                "memory_card_summary",
+                "memory_card_file",
+                "memory_card_deleted_candidate",
             }
-            deleted = next(item for item in artifacts if item.subtype == "memory_card_deleted_candidate")
+            deleted = next(
+                item for item in artifacts if item.subtype == "memory_card_deleted_candidate"
+            )
             assert deleted.status == "deleted"
             deleted_id = deleted.id
             live_id = next(item.id for item in artifacts if item.subtype == "memory_card_file")
@@ -445,7 +476,10 @@ def test_fat32_card_image_import_indexes_deleted_candidate(tmp_path: Path) -> No
         )
         assert recovered.status_code == 200, recovered.text
         assert recovered.content == b"\xff\xd8\xff\xd9"
-        assert recovered.headers["X-ForensiX-Candidate-SHA256"] == sha256(recovered.content).hexdigest()
+        assert (
+            recovered.headers["X-ForensiX-Candidate-SHA256"]
+            == sha256(recovered.content).hexdigest()
+        )
         live_file = client.get(
             f"/api/v1/cases/{case_id}/evidence-sources/{body['evidence_source']['id']}"
             f"/artifacts/{live_id}/file-content"

@@ -36,9 +36,10 @@ def test_smart_switch_archive_normalizes_members_and_preserves_provenance(tmp_pa
             "2024-01-01T00:00:00Z,+15550003,Photo attached,media/photo.jpg\n",
         )
         bundle.writestr("media/photo.jpg", image_bytes)
-        bundle.writestr("calls/calls.json", json.dumps({
-            "calls": [{"number": "+15550004", "duration": 42, "date": 1704067200000}]
-        }))
+        bundle.writestr(
+            "calls/calls.json",
+            json.dumps({"calls": [{"number": "+15550004", "duration": 42, "date": 1704067200000}]}),
+        )
         bundle.writestr(
             "settings/device.xml",
             '<settings><entry key="theme" value="dark"/>'
@@ -48,14 +49,24 @@ def test_smart_switch_archive_normalizes_members_and_preserves_provenance(tmp_pa
         bundle.writestr("settings/broken.xml", b"<settings><entry")
 
     context = ParserContext(
-        case_id="CASE-1", evidence_source_id="SOURCE-1", working_copy_id="COPY-1",
-        source_sha256="0" * 64, source_label="SmartSwitch.sbu",
+        case_id="CASE-1",
+        evidence_source_id="SOURCE-1",
+        working_copy_id="COPY-1",
+        source_sha256="0" * 64,
+        source_label="SmartSwitch.sbu",
     )
     artifacts = SmartSwitchArchiveParser().parse(archive, context)
     subtypes = {item.subtype for item in artifacts}
 
-    assert {"smart_switch_summary", "smart_switch_contact", "smart_switch_message",
-            "smart_switch_call", "smart_switch_setting", "smart_switch_media", "sms"} <= subtypes
+    assert {
+        "smart_switch_summary",
+        "smart_switch_contact",
+        "smart_switch_message",
+        "smart_switch_call",
+        "smart_switch_setting",
+        "smart_switch_media",
+        "sms",
+    } <= subtypes
     message = next(item for item in artifacts if item.summary == "Photo attached")
     assert message.metadata["linked_media_member"] == "media/photo.jpg"
     assert message.source_locator.startswith("messages/export.csv#row:2")
@@ -77,13 +88,27 @@ def test_pc_folder_readable_exports_cover_sms_json_and_utf16_contacts(tmp_path: 
     contact_csv = "First Name;Last Name;Mobile Phone;Home Phone;E-mail Address\nAda;Lovelace;+44111;+44222;ada@example.test\n"
     with ZipFile(archive, "w") as bundle:
         bundle.writestr("Backup/CONTACT/contacts.csv", contact_csv.encode("utf-16"))
-        bundle.writestr("Backup/MESSAGE/sms_restore.json", json.dumps([
-            {"_id": "1", "thread_id": "7", "address": "+44111",
-             "date": "1713701392808", "type": "1", "body": "Readable SMS"}
-        ]))
+        bundle.writestr(
+            "Backup/MESSAGE/sms_restore.json",
+            json.dumps(
+                [
+                    {
+                        "_id": "1",
+                        "thread_id": "7",
+                        "address": "+44111",
+                        "date": "1713701392808",
+                        "type": "1",
+                        "body": "Readable SMS",
+                    }
+                ]
+            ),
+        )
     context = ParserContext(
-        case_id="CASE", evidence_source_id="SOURCE", working_copy_id="COPY",
-        source_sha256="0" * 64, source_label="SmartSwitch-PC-Folder.zip",
+        case_id="CASE",
+        evidence_source_id="SOURCE",
+        working_copy_id="COPY",
+        source_sha256="0" * 64,
+        source_label="SmartSwitch-PC-Folder.zip",
     )
 
     artifacts = SmartSwitchArchiveParser().parse(archive, context)

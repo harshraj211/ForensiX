@@ -49,10 +49,14 @@ class LegacyAndroidBackupParser:
             tar_path = temp_root / "payload.tar"
             compression = _unpack_ab(path, tar_path)
             store = EvidenceStore(temp_root / "members")
-            members = SafeArchiveExtractor(ArchivePolicy(
-                max_members=10_000, max_member_bytes=512 * 1024 * 1024,
-                max_total_bytes=MAX_UNCOMPRESSED_BYTES, max_path_depth=20,
-            )).extract(tar_path, store, "files")
+            members = SafeArchiveExtractor(
+                ArchivePolicy(
+                    max_members=10_000,
+                    max_member_bytes=512 * 1024 * 1024,
+                    max_total_bytes=MAX_UNCOMPRESSED_BYTES,
+                    max_path_depth=20,
+                )
+            ).extract(tar_path, store, "files")
             artifacts: list[ParsedArtifact] = []
             issues: list[str] = []
             for member in members:
@@ -63,36 +67,55 @@ class LegacyAndroidBackupParser:
                 parts = name.split("/")
                 package_name = parts[1] if len(parts) > 1 and parts[0] == "apps" else None
                 common = {
-                    "archive_member": name, "member_sha256": member.sha256,
-                    "member_size_bytes": member.size_bytes, "package_name": package_name,
+                    "archive_member": name,
+                    "member_sha256": member.sha256,
+                    "member_size_bytes": member.size_bytes,
+                    "package_name": package_name,
                 }
-                artifacts.append(ParsedArtifact(
-                    category="file", subtype="android_backup_file", title=Path(name).name,
-                    summary=name, event_time=None, source_locator=name,
-                    status="active", confidence="high", metadata=common,
-                ))
+                artifacts.append(
+                    ParsedArtifact(
+                        category="file",
+                        subtype="android_backup_file",
+                        title=Path(name).name,
+                        summary=name,
+                        event_time=None,
+                        source_locator=name,
+                        status="active",
+                        confidence="high",
+                        metadata=common,
+                    )
+                )
                 if Path(name).suffix.casefold() not in {".db", ".sqlite", ".sqlite3"}:
                     continue
                 try:
                     parsed = _sqlite_artifacts(
                         store.resolve(member.storage_key, require_file=True), name, context
                     )
-                    for item in parsed[:MAX_ARTIFACTS - len(artifacts)]:
-                        artifacts.append(replace(
-                            item, source_locator=f"{name}#{item.source_locator}",
-                            metadata={**item.metadata, **common},
-                        ))
+                    for item in parsed[: MAX_ARTIFACTS - len(artifacts)]:
+                        artifacts.append(
+                            replace(
+                                item,
+                                source_locator=f"{name}#{item.source_locator}",
+                                metadata={**item.metadata, **common},
+                            )
+                        )
                 except (ValueError, SafeSQLiteError) as error:
                     issues.append(f"{name}: {type(error).__name__}")
             summary = ParsedArtifact(
-                category="system", subtype="android_backup_summary",
+                category="system",
+                subtype="android_backup_summary",
                 title="Legacy Android Backup examination",
                 summary=f"{len(members)} files; {len(artifacts)} indexed artifacts; {len(issues)} issues",
-                event_time=None, source_locator="backup#summary",
-                status="partial" if issues else "active", confidence="high",
-                metadata={"member_count": len(members), "compression": compression,
-                          "record_counts": dict(Counter(item.subtype for item in artifacts)),
-                          "issues": issues[:200]},
+                event_time=None,
+                source_locator="backup#summary",
+                status="partial" if issues else "active",
+                confidence="high",
+                metadata={
+                    "member_count": len(members),
+                    "compression": compression,
+                    "record_counts": dict(Counter(item.subtype for item in artifacts)),
+                    "issues": issues[:200],
+                },
             )
             return [summary, *artifacts]
 
@@ -109,7 +132,11 @@ def _unpack_ab(source: Path, destination: Path) -> str:
         total = 0
         with destination.open("wb") as output:
             while chunk := stream.read(1024 * 1024):
-                decoded = decoder.decompress(chunk, MAX_UNCOMPRESSED_BYTES - total + 1) if decoder else chunk
+                decoded = (
+                    decoder.decompress(chunk, MAX_UNCOMPRESSED_BYTES - total + 1)
+                    if decoder
+                    else chunk
+                )
                 total += len(decoded)
                 if total > MAX_UNCOMPRESSED_BYTES:
                     raise ValueError("Android Backup payload exceeds the unpacked size limit")

@@ -68,9 +68,13 @@ def _inspect_android_backup(path: Path) -> BackupImportInspection:
         raise InvalidBackupImport("The Android Backup encryption field is missing.")
     encrypted = encryption.casefold() != "none"
     warnings: tuple[str, ...] = (
-        "Encrypted Android Backup payload; a user-supplied passphrase is required before parsing.",
-    ) if encrypted else (
-        "Legacy Android Backup TAR inventory is structural; application payloads are not restored or modified.",
+        (
+            "Encrypted Android Backup payload; a user-supplied passphrase is required before parsing.",
+        )
+        if encrypted
+        else (
+            "Legacy Android Backup TAR inventory is structural; application payloads are not restored or modified.",
+        )
     )
     member_count: int | None = None
     member_bytes: int | None = None
@@ -91,7 +95,9 @@ def _inspect_android_backup(path: Path) -> BackupImportInspection:
     )
 
 
-def _inspect_unencrypted_ab_payload(path: Path, *, compressed: bool) -> tuple[int, int, tuple[str, ...]]:
+def _inspect_unencrypted_ab_payload(
+    path: Path, *, compressed: bool
+) -> tuple[int, int, tuple[str, ...]]:
     """Boundedly decompress and inventory an unencrypted Android Backup TAR stream."""
     with path.open("rb") as source:
         for _ in range(4):
@@ -101,29 +107,39 @@ def _inspect_unencrypted_ab_payload(path: Path, *, compressed: bool) -> tuple[in
                 decompressor = zlib.decompressobj()
                 total = 0
                 while chunk := source.read(1024 * 1024):
-                    data = decompressor.decompress(chunk, MAX_ARCHIVE_UNCOMPRESSED_BYTES - total + 1)
+                    data = decompressor.decompress(
+                        chunk, MAX_ARCHIVE_UNCOMPRESSED_BYTES - total + 1
+                    )
                     total += len(data)
                     if total > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
-                        raise InvalidBackupImport("Android Backup payload exceeds the uncompressed size limit.")
+                        raise InvalidBackupImport(
+                            "Android Backup payload exceeds the uncompressed size limit."
+                        )
                     payload.write(data)
                 tail = decompressor.flush(MAX_ARCHIVE_UNCOMPRESSED_BYTES - total + 1)
                 total += len(tail)
                 if total > MAX_ARCHIVE_UNCOMPRESSED_BYTES or not decompressor.eof:
-                    raise InvalidBackupImport("Android Backup payload is malformed or exceeds the size limit.")
+                    raise InvalidBackupImport(
+                        "Android Backup payload is malformed or exceeds the size limit."
+                    )
                 payload.write(tail)
             else:
                 total = 0
                 while chunk := source.read(1024 * 1024):
                     total += len(chunk)
                     if total > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
-                        raise InvalidBackupImport("Android Backup payload exceeds the uncompressed size limit.")
+                        raise InvalidBackupImport(
+                            "Android Backup payload exceeds the uncompressed size limit."
+                        )
                     payload.write(chunk)
             payload.seek(0)
             try:
                 with tarfile.open(fileobj=payload, mode="r:") as archive:
                     members = archive.getmembers()
             except tarfile.TarError as error:
-                raise InvalidBackupImport("Unencrypted Android Backup payload is not a valid TAR archive.") from error
+                raise InvalidBackupImport(
+                    "Unencrypted Android Backup payload is not a valid TAR archive."
+                ) from error
     if len(members) > MAX_ARCHIVE_MEMBERS:
         raise InvalidBackupImport("Android Backup contains too many archive members.")
     names = [member.name for member in members]
@@ -131,12 +147,22 @@ def _inspect_unencrypted_ab_payload(path: Path, *, compressed: bool) -> tuple[in
         raise InvalidBackupImport("Android Backup contains an unsafe member path.")
     member_bytes = sum(member.size for member in members)
     if member_bytes > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
-        raise InvalidBackupImport("Android Backup archive members exceed the uncompressed size limit.")
-    packages = sorted({parts[1] for name in names if (parts := name.split("/"))[:1] == ["apps"] and len(parts) > 1})
+        raise InvalidBackupImport(
+            "Android Backup archive members exceed the uncompressed size limit."
+        )
+    packages = sorted(
+        {
+            parts[1]
+            for name in names
+            if (parts := name.split("/"))[:1] == ["apps"] and len(parts) > 1
+        }
+    )
     return len(members), member_bytes, tuple(packages[:200])
 
 
-def _inspect_vendor_archive(path: Path, *, source_name: str | None = None) -> BackupImportInspection:
+def _inspect_vendor_archive(
+    path: Path, *, source_name: str | None = None
+) -> BackupImportInspection:
     try:
         with ZipFile(path) as archive:
             members = archive.infolist()
@@ -149,23 +175,38 @@ def _inspect_vendor_archive(path: Path, *, source_name: str | None = None) -> Ba
             if total > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
                 raise InvalidBackupImport("Backup archive exceeds the uncompressed size limit.")
     except BadZipFile as error:
-        raise InvalidBackupImport("Vendor backup must be a readable ZIP-compatible archive.") from error
+        raise InvalidBackupImport(
+            "Vendor backup must be a readable ZIP-compatible archive."
+        ) from error
     lower = "\n".join(names).casefold()
     hints = tuple(
-        name for name, marker in (
-            ("contacts", "contact"), ("messages", "message"), ("call_logs", "call"),
-            ("media", "media"), ("settings", "setting"),
-        ) if marker in lower
+        name
+        for name, marker in (
+            ("contacts", "contact"),
+            ("messages", "message"),
+            ("call_logs", "call"),
+            ("media", "media"),
+            ("settings", "setting"),
+        )
+        if marker in lower
     )
     declared_stem = Path((source_name or path.name).replace("\\", "/")).stem
-    smart_switch_marker = path.suffix.casefold() == ".sbu" or "smartswitch" in declared_stem.casefold().replace(" ", "") or any(
-        "smartswitch" in name.casefold().replace(" ", "") for name in names
+    smart_switch_marker = (
+        path.suffix.casefold() == ".sbu"
+        or "smartswitch" in declared_stem.casefold().replace(" ", "")
+        or any("smartswitch" in name.casefold().replace(" ", "") for name in names)
     )
-    backup_kind = "samsung_smart_switch_archive" if smart_switch_marker else "generic_backup_archive"
+    backup_kind = (
+        "samsung_smart_switch_archive" if smart_switch_marker else "generic_backup_archive"
+    )
     warnings = (
-        "Archive inventory is structural only; source application versions and encrypted members require parser review.",
-    ) if smart_switch_marker else (
-        "ZIP format alone does not establish a Smart Switch origin; no Samsung parser was run.",
+        (
+            "Archive inventory is structural only; source application versions and encrypted members require parser review.",
+        )
+        if smart_switch_marker
+        else (
+            "ZIP format alone does not establish a Smart Switch origin; no Samsung parser was run.",
+        )
     )
     return BackupImportInspection(
         backup_kind=backup_kind,
@@ -184,13 +225,18 @@ def _inspect_memory_card_image(path: Path) -> BackupImportInspection:
     fat32 = probe_fat32(path)
     if fat32 is not None:
         return BackupImportInspection(
-            backup_kind="memory_card_image", format_version=None,
-            compression="none", encrypted=False, member_count=None,
-            member_bytes=path.stat().st_size, package_hints=(),
+            backup_kind="memory_card_image",
+            format_version=None,
+            compression="none",
+            encrypted=False,
+            member_count=None,
+            member_bytes=path.stat().st_size,
+            package_hints=(),
             warnings=(
                 "FAT32 image detected; read-only file and deleted-entry examination requires a verified working copy.",
             ),
-            filesystem_type="fat32", filesystem_block_size=fat32.cluster_bytes,
+            filesystem_type="fat32",
+            filesystem_block_size=fat32.cluster_bytes,
         )
     with path.open("rb") as source:
         source.seek(0x400)

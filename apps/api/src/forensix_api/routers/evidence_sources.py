@@ -108,27 +108,41 @@ def import_cloud_export(
 ) -> CloudExportImportResponse:
     try:
         record, run, summary = CloudExportService().import_stream(
-            database, authenticated.principal, case_id, source.file,
-            source_name=source.filename or "export.zip", provider=provider,
-            source_timezone=source_timezone, date_order=date_order,
+            database,
+            authenticated.principal,
+            case_id,
+            source.file,
+            source_name=source.filename or "export.zip",
+            provider=provider,
+            source_timezone=source_timezone,
+            date_order=date_order,
         )
     except CloudExportError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         source.file.close()
-    return CloudExportImportResponse(evidence_source=source_response(record),
-                                    parser_run=EvidenceParserRunResponse.model_validate(run), summary=summary)
+    return CloudExportImportResponse(
+        evidence_source=source_response(record),
+        parser_run=EvidenceParserRunResponse.model_validate(run),
+        summary=summary,
+    )
 
 
 @router.get("/{source_id}/cloud-export-summary", response_model=CloudExportImportResponse)
 def cloud_export_summary(
-    case_id: str, source_id: str,
+    case_id: str,
+    source_id: str,
     authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
     database: Annotated[Database, Depends(get_database)],
 ) -> CloudExportImportResponse:
-    record, run, summary = CloudExportService().summary(database, authenticated.principal, case_id, source_id)
-    return CloudExportImportResponse(evidence_source=source_response(record),
-                                    parser_run=EvidenceParserRunResponse.model_validate(run) if run else None, summary=summary)
+    record, run, summary = CloudExportService().summary(
+        database, authenticated.principal, case_id, source_id
+    )
+    return CloudExportImportResponse(
+        evidence_source=source_response(record),
+        parser_run=EvidenceParserRunResponse.model_validate(run) if run else None,
+        summary=summary,
+    )
 
 
 @router.get("", response_model=list[EvidenceSourceResponse])
@@ -204,8 +218,7 @@ def import_android_agent_bundle(
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             manifest = json.loads((Path(result.output_dir) / "manifest.json").read_text())
             source_statuses = {
-                name: entry.get("status", "ok")
-                for name, entry in manifest["files"].items()
+                name: entry.get("status", "ok") for name, entry in manifest["files"].items()
             }
             record_counts = {
                 "contacts": len(result.contacts),
@@ -255,7 +268,9 @@ def import_android_device_backup(
     source_name = source.filename or "android-backup.bin"
     suffix = Path(source_name.replace("\\", "/")).suffix.casefold()
     if suffix not in {".ab", ".zip", ".sbu", ".img", ".dd", ".raw"}:
-        raise HTTPException(status_code=422, detail="Expected a .ab, .zip, .sbu, .img, .dd, or .raw input")
+        raise HTTPException(
+            status_code=422, detail="Expected a .ab, .zip, .sbu, .img, .dd, or .raw input"
+        )
     work_parent = database.data_dir / "work"
     work_parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -269,7 +284,11 @@ def import_android_device_backup(
                         raise HTTPException(status_code=413, detail="Backup exceeds 2 GiB")
                     destination.write(chunk)
             return _seal_staged_backup(
-                case_id, authenticated, database, backup_path, source_name=source_name,
+                case_id,
+                authenticated,
+                database,
+                backup_path,
+                source_name=source_name,
             )
     finally:
         source.file.close()
@@ -284,12 +303,16 @@ def import_smart_switch_folder(
     case_id: str,
     authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
     database: Annotated[Database, Depends(get_database)],
-    files: Annotated[list[UploadFile], File(description="Files selected from one Smart Switch PC backup folder")],
+    files: Annotated[
+        list[UploadFile], File(description="Files selected from one Smart Switch PC backup folder")
+    ],
     relative_paths: Annotated[list[str], Form(description="Matching browser relative paths")],
 ) -> BackupImportResponse:
     """Package a browser-selected PC backup folder without reading host paths."""
     if not files or len(files) != len(relative_paths) or len(files) > 10_000:
-        raise HTTPException(status_code=422, detail="Provide matching files and relative paths (maximum 10,000)")
+        raise HTTPException(
+            status_code=422, detail="Provide matching files and relative paths (maximum 10,000)"
+        )
     work_parent = database.data_dir / "work"
     work_parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -303,7 +326,9 @@ def import_smart_switch_folder(
                     for source, relative_path in zip(files, relative_paths, strict=True):
                         normalized = validate_archive_member_name(relative_path, 20)
                         if normalized in seen:
-                            raise HTTPException(status_code=422, detail="Duplicate folder member path")
+                            raise HTTPException(
+                                status_code=422, detail="Duplicate folder member path"
+                            )
                         seen.add(normalized)
                         digest = sha256()
                         size = 0
@@ -311,17 +336,34 @@ def import_smart_switch_folder(
                             while chunk := source.file.read(1024 * 1024):
                                 size += len(chunk)
                                 total_bytes += len(chunk)
-                                if size > 512 * 1024 * 1024 or total_bytes > _MAX_BACKUP_IMPORT_BYTES:
-                                    raise HTTPException(status_code=413, detail="Smart Switch folder exceeds the import limits")
+                                if (
+                                    size > 512 * 1024 * 1024
+                                    or total_bytes > _MAX_BACKUP_IMPORT_BYTES
+                                ):
+                                    raise HTTPException(
+                                        status_code=413,
+                                        detail="Smart Switch folder exceeds the import limits",
+                                    )
                                 digest.update(chunk)
                                 destination.write(chunk)
-                        member_manifest.append({"path": relative_path, "sha256": digest.hexdigest(), "size_bytes": size})
+                        member_manifest.append(
+                            {
+                                "path": relative_path,
+                                "sha256": digest.hexdigest(),
+                                "size_bytes": size,
+                            }
+                        )
             except ArchiveExtractionError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             if archive_path.stat().st_size > _MAX_BACKUP_IMPORT_BYTES:
-                raise HTTPException(status_code=413, detail="Packaged Smart Switch folder exceeds 2 GiB")
+                raise HTTPException(
+                    status_code=413, detail="Packaged Smart Switch folder exceeds 2 GiB"
+                )
             return _seal_staged_backup(
-                case_id, authenticated, database, archive_path,
+                case_id,
+                authenticated,
+                database,
+                archive_path,
                 source_name="SmartSwitch-PC-Folder.zip",
                 source_assembly={"kind": "browser_selected_folder", "members": member_manifest},
             )
@@ -359,8 +401,12 @@ def _seal_staged_backup(
         inspection["source_assembly"] = source_assembly
     with backup_path.open("rb") as stream:
         record = EvidenceTwinService().seal_backup_import_stream(
-            database, authenticated.principal, case_id, stream,
-            source_name=source_name, declared_size_bytes=backup_path.stat().st_size,
+            database,
+            authenticated.principal,
+            case_id,
+            stream,
+            source_name=source_name,
+            declared_size_bytes=backup_path.stat().st_size,
             inspection=inspection,
         )
     parser_run_id = None
@@ -368,7 +414,10 @@ def _seal_staged_backup(
     parser_status = None
     parser_error = None
     parse_card = result.backup_kind == "memory_card_image" and result.filesystem_type == "fat32"
-    if (result.backup_kind in {"samsung_smart_switch_archive", "legacy_android_backup"} or parse_card) and not result.encrypted:
+    if (
+        result.backup_kind in {"samsung_smart_switch_archive", "legacy_android_backup"}
+        or parse_card
+    ) and not result.encrypted:
         twin = EvidenceTwinService()
         copy = twin.create_working_copy(database, authenticated.principal, case_id, record.id)
         runs = EvidenceExaminationService().run_native_parsers(
@@ -380,9 +429,12 @@ def _seal_staged_backup(
             parser_status = runs[0].run.status
             parser_error = runs[0].run.error_message
     return BackupImportResponse(
-        evidence_source=source_response(record), parser_run_id=parser_run_id,
-        parsed_artifact_count=parsed_artifact_count, parser_status=parser_status,
-        parser_error=parser_error, **{key: value for key, value in inspection.items() if key != "source_assembly"},
+        evidence_source=source_response(record),
+        parser_run_id=parser_run_id,
+        parsed_artifact_count=parsed_artifact_count,
+        parser_status=parser_status,
+        parser_error=parser_error,
+        **{key: value for key, value in inspection.items() if key != "source_assembly"},
     )
 
 
@@ -394,9 +446,7 @@ def get_android_agent_bundle_summary(
     database: Annotated[Database, Depends(get_database)],
 ) -> AgentBundleImportResponse:
     """Read persistent collection status from the sealed case manifest."""
-    record = EvidenceTwinService().get_source(
-        database, authenticated.principal, case_id, source_id
-    )
+    record = EvidenceTwinService().get_source(database, authenticated.principal, case_id, source_id)
     if record.status != "sealed" or not record.manifest_storage_key:
         raise EvidenceTwinError("The agent bundle source is not sealed.")
     path = EvidenceStore(database.data_dir / "evidence").resolve(
@@ -857,7 +907,8 @@ def download_deleted_card_candidate(
     with database.session() as session:
         artifact = session.get(EvidenceSourceArtifactRecord, artifact_id)
         if (
-            artifact is None or artifact.case_id != case_id
+            artifact is None
+            or artifact.case_id != case_id
             or artifact.evidence_source_id != source_id
             or artifact.parser_id != "memory_card.fat32.image"
             or artifact.subtype != "memory_card_deleted_candidate"
@@ -870,7 +921,9 @@ def download_deleted_card_candidate(
         storage_key = working_copy.storage_key
         copy_id = working_copy.id
     if metadata.get("recovery_status") != "contiguous_unallocated_candidate":
-        raise HTTPException(status_code=409, detail="This deleted entry has no extractable candidate content")
+        raise HTTPException(
+            status_code=409, detail="This deleted entry has no extractable candidate content"
+        )
     cluster = metadata.get("first_cluster")
     size = metadata.get("candidate_byte_count")
     digest = metadata.get("candidate_sha256")
@@ -880,7 +933,9 @@ def download_deleted_card_candidate(
         database, authenticated.principal, case_id, source_id, copy_id
     )
     if verification.status != "verified":
-        raise EvidenceTwinIntegrityError("The candidate working copy failed integrity verification.")
+        raise EvidenceTwinIntegrityError(
+            "The candidate working copy failed integrity verification."
+        )
     image = EvidenceStore(database.data_dir / "evidence").resolve(storage_key, require_file=True)
     try:
         verified_deleted_candidate(
@@ -917,7 +972,8 @@ def download_active_card_file(
     with database.session() as session:
         artifact = session.get(EvidenceSourceArtifactRecord, artifact_id)
         if (
-            artifact is None or artifact.case_id != case_id
+            artifact is None
+            or artifact.case_id != case_id
             or artifact.evidence_source_id != source_id
             or artifact.parser_id != "memory_card.fat32.image"
             or artifact.subtype != "memory_card_file"

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from xml.etree import ElementTree
+
+from defusedxml import ElementTree
 
 from forensix_forensic.extractors.agent_apk import (
     AgentCollector,
@@ -107,9 +108,7 @@ class TestAgentApk:
 
     def test_agent_launch_opens_ui_for_user_approval(self, tmp_path: Path) -> None:
         fake_adb = FakeAdbClient()
-        installer = AgentInstaller(
-            fake_adb, AgentInstallerConfig(apk_path=tmp_path / "agent.apk")
-        )  # type: ignore[arg-type]
+        installer = AgentInstaller(fake_adb, AgentInstallerConfig(apk_path=tmp_path / "agent.apk"))  # type: ignore[arg-type]
         assert asyncio.run(installer.start_extraction("serial123", "CASE-001"))
         assert fake_adb.commands == [
             "rm -f /sdcard/forensix_out/DONE",

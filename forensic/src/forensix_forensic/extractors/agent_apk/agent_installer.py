@@ -105,9 +105,7 @@ class AgentInstaller:
         """Open the agent UI; the device user must approve and start collection."""
         self._log("open_agent", {"serial": serial, "case_id": case_id})
         try:
-            await self._adb.shell(
-                serial, f"rm -f {self._cfg.output_staging_dir_on_device}/DONE"
-            )
+            await self._adb.shell(serial, f"rm -f {self._cfg.output_staging_dir_on_device}/DONE")
             cmd = f"am start -n {self._cfg.package_name}/.MainActivity --ez legacy_adb true"
             await self._adb.shell(serial, cmd)
             return True

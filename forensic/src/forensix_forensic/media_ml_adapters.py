@@ -386,9 +386,7 @@ def _image_embedding_onnx(image: Image.Image) -> dict[str, Any] | None:
         }
     size = _int_env(IMAGE_EMBEDDING_INPUT_SIZE_ENV, DEFAULT_IMAGE_EMBEDDING_INPUT_SIZE)
     try:
-        outputs = _run_onnx_outputs(
-            model_path, _image_embedding_input(image, size, np), np, ort
-        )
+        outputs = _run_onnx_outputs(model_path, _image_embedding_input(image, size, np), np, ort)
         vector = _embedding_vector(outputs[0], np)
     except Exception as error:
         return {

@@ -103,7 +103,7 @@ def render_html(snapshot: ReportSnapshot) -> bytes:
       <div class="card"><h2>Timeline</h2><p>{len(snapshot.timeline)} timestamp claims</p></div>
       <div class="card"><h2>Custody</h2><p>{len(snapshot.custody)} hash-linked custody events</p></div>
     </section>
-    <section><h2>Evidence Sources</h2><div class="grid">{source_cards or '<p>No imported evidence sources.</p>'}</div></section>
+    <section><h2>Evidence Sources</h2><div class="grid">{source_cards or "<p>No imported evidence sources.</p>"}</div></section>
     <section><h2>Parsed Artifacts</h2><table><thead><tr><th>Title</th><th>Category</th><th>Subtype</th><th>Status</th><th>Hash</th></tr></thead><tbody>{evidence_rows}</tbody></table></section>
     <section><h2>Timeline</h2><table><thead><tr><th>Time</th><th>Type</th><th>Confidence</th><th>Summary</th></tr></thead><tbody>{timeline_rows}</tbody></table></section>
     <section><h2>Chain of Custody</h2><table><thead><tr><th>Seq</th><th>Time</th><th>Event</th><th>Event hash</th></tr></thead><tbody>{custody_rows}</tbody></table></section>

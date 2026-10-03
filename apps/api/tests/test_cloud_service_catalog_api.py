@@ -37,8 +37,8 @@ def test_cloud_service_catalog_lists_breadth_and_deep_targets(tmp_path: Path) ->
         "microsoft",
         "telegram",
     }.issubset(by_id)
-    assert {by_id[item]["depth"] for item in ("google", "whatsapp", "icloud", "microsoft", "telegram")} == {
-        "deep_target"
-    }
+    assert {
+        by_id[item]["depth"] for item in ("google", "whatsapp", "icloud", "microsoft", "telegram")
+    } == {"deep_target"}
     assert by_id["whatsapp"]["blocker_class"] == "encryption"
     assert "Takeout import" in " ".join(by_id["google"]["auth_methods"])

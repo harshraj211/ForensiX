@@ -216,7 +216,12 @@ class ChromiumBookmarksParser:
         required_tables=frozenset({"bookmarks"}),
         access_level="filesystem",
         maturity="experimental",
-        source_path_hints=("com.android.chrome", "com.microsoft.emmx", "com.brave.browser", "bookmarks"),
+        source_path_hints=(
+            "com.android.chrome",
+            "com.microsoft.emmx",
+            "com.brave.browser",
+            "bookmarks",
+        ),
     )
 
     def can_parse(self, tables: frozenset[str]) -> bool:
@@ -260,7 +265,12 @@ class ChromiumDownloadsParser:
         required_tables=frozenset({"downloads"}),
         access_level="filesystem",
         maturity="experimental",
-        source_path_hints=("com.android.chrome", "com.microsoft.emmx", "com.brave.browser", "history"),
+        source_path_hints=(
+            "com.android.chrome",
+            "com.microsoft.emmx",
+            "com.brave.browser",
+            "history",
+        ),
     )
 
     def can_parse(self, tables: frozenset[str]) -> bool:
@@ -271,7 +281,21 @@ class ChromiumDownloadsParser:
             reader,
             "downloads",
             {"id"},
-            ("guid", "current_path", "target_path", "start_time", "end_time", "tab_url", "tab_referrer_url", "total_bytes", "state", "danger_type", "opened", "mime_type", "original_mime_type"),
+            (
+                "guid",
+                "current_path",
+                "target_path",
+                "start_time",
+                "end_time",
+                "tab_url",
+                "tab_referrer_url",
+                "total_bytes",
+                "state",
+                "danger_type",
+                "opened",
+                "mime_type",
+                "original_mime_type",
+            ),
             "id",
         )
         return [self._artifact(row, context) for row in rows]
@@ -287,7 +311,8 @@ class ChromiumDownloadsParser:
             subtype="browser_download",
             title=path.rsplit("/", 1)[-1] if path else (url or "Browser download"),
             summary=url or path or "Download source unavailable",
-            event_time=_chrome_timestamp(row.get("end_time")) or _chrome_timestamp(row.get("start_time")),
+            event_time=_chrome_timestamp(row.get("end_time"))
+            or _chrome_timestamp(row.get("start_time")),
             source_locator=f"{context.input_locator}#downloads:{identifier}",
             status="active" if state in {None, 0, 1} else "partial",
             confidence="high",

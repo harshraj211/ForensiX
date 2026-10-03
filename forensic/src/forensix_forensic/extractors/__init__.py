@@ -12,7 +12,6 @@ from .agent_apk import (
     app_artifacts_from_json,
     device_metadata_from_json,
 )
-from .backup_import import BackupImportInspection, InvalidBackupImport, inspect_backup_import
 from .apk_downgrade import (
     APK_DOWNGRADE_PROFILES,
     ApkDowngradeExtractor,
@@ -23,6 +22,7 @@ from .apk_downgrade import (
     PreservedApk,
     get_apk_downgrade_profile,
 )
+from .backup_import import BackupImportInspection, InvalidBackupImport, inspect_backup_import
 from .cloud import (
     CloudBackupRouter,
     CloudBackupRouterResult,

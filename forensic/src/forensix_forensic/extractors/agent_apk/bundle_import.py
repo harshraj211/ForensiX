@@ -20,11 +20,11 @@ from zipfile import BadZipFile, ZipFile
 from .agent_result import (
     AgentExtractionResult,
     app_artifacts_from_json,
+    bluetooth_devices_from_json,
     call_logs_from_json,
     contacts_from_json,
     device_metadata_from_json,
     installed_apps_from_json,
-    bluetooth_devices_from_json,
     sim_subscriptions_from_json,
     sms_from_json,
     wifi_states_from_json,
@@ -40,7 +40,9 @@ _V1_FILES = frozenset(
         "app_artifacts.json",
     }
 )
-_V2_FILES = _V1_FILES | frozenset({"wifi_state.json", "bluetooth_devices.json", "sim_metadata.json"})
+_V2_FILES = _V1_FILES | frozenset(
+    {"wifi_state.json", "bluetooth_devices.json", "sim_metadata.json"}
+)
 # Kept as the current desktop/Android export contract for callers and tests.
 _FILES = _V2_FILES
 _MAX_FILE_BYTES = 64 * 1024 * 1024
@@ -71,7 +73,10 @@ def import_agent_bundle(
                 raise InvalidAgentBundle("Manifest is too large")
             manifest_bytes = _bounded_read(archive, "manifest.json", 1024 * 1024)
             manifest = json.loads(manifest_bytes)
-            if not isinstance(manifest, dict) or manifest.get("format") not in {"forensix-agent-v1", "forensix-agent-v2"}:
+            if not isinstance(manifest, dict) or manifest.get("format") not in {
+                "forensix-agent-v1",
+                "forensix-agent-v2",
+            }:
                 raise InvalidAgentBundle("Unsupported agent bundle format")
             expected_files = _V2_FILES if manifest["format"] == "forensix-agent-v2" else _V1_FILES
             if len(names) != len(set(names)) or set(names) != expected_files | {"manifest.json"}:
@@ -94,8 +99,12 @@ def import_agent_bundle(
                     raise InvalidAgentBundle(f"Missing metadata for {name}")
                 status = metadata.get("status", "ok")
                 if status not in {
-                    "ok", "permission_denied", "provider_unavailable", "partial_error",
-                    "visibility_limited", "storage_limited",
+                    "ok",
+                    "permission_denied",
+                    "provider_unavailable",
+                    "partial_error",
+                    "visibility_limited",
+                    "storage_limited",
                 }:
                     raise InvalidAgentBundle(f"Invalid status for {name}")
                 if status != "ok":
@@ -104,12 +113,17 @@ def import_agent_bundle(
                 total_read += len(data)
                 if total_read > _MAX_TOTAL_BYTES:
                     raise InvalidAgentBundle("Bundle exceeds the import size limit")
-                if metadata.get("bytes") != len(data) or metadata.get("sha256") != sha256(data).hexdigest():
+                if (
+                    metadata.get("bytes") != len(data)
+                    or metadata.get("sha256") != sha256(data).hexdigest()
+                ):
                     raise InvalidAgentBundle(f"Hash or size mismatch for {name}")
                 parsed[name] = json.loads(data)
                 (staging / name).write_bytes(data)
             (staging / "manifest.json").write_bytes(manifest_bytes)
-        if not all(isinstance(parsed[name], list) for name in expected_files - {"device_metadata.json"}):
+        if not all(
+            isinstance(parsed[name], list) for name in expected_files - {"device_metadata.json"}
+        ):
             raise InvalidAgentBundle("Expected list data in collection files")
         if any(
             not isinstance(item, dict)
