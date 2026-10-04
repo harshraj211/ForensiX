@@ -572,8 +572,12 @@ class SQLiteCarver:
         if printable / max(len(stripped), 1) < 0.8:
             return False
         lower = stripped.lower()
-        return not lower.startswith(
+        if lower.startswith(
             ("sqlite format 3", "create ", "insert ", "select ", "pragma ", "<?xml")
+        ):
+            return False
+        return not (
+            (lower.startswith("table") or lower.startswith("index")) and " " not in stripped[:25]
         )
 
     @staticmethod

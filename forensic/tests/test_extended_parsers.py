@@ -249,7 +249,7 @@ def test_sqlite_carver_parser_integration(tmp_path: Path) -> None:
     with SafeSQLiteReader(db_path) as reader:
         artifacts = parser.parse(reader, _dummy_context("chat_store.db"))
         assert len(artifacts) >= 1
-        carved = artifacts[0]
-        assert carved.status == "recovered"
-        assert carved.category == "communication"
-        assert "Secret transaction" in carved.summary or "Active WhatsApp" in carved.summary
+        all_summaries = [a.summary for a in artifacts]
+        assert any("Secret transaction" in s or "Active WhatsApp" in s for s in all_summaries)
+        assert all(a.status == "recovered" for a in artifacts)
+        assert all(a.category == "communication" for a in artifacts)
