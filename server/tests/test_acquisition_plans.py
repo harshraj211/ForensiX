@@ -27,7 +27,15 @@ from forensix_server.acquisitions import (
 from forensix_server.auth.domain import ROLE_PERMISSIONS, Principal, RoleName
 from forensix_server.case_devices import CaseDeviceService
 from forensix_server.cases import CaseAccessDeniedError, CaseAccessLevel, CaseService
-from forensix_server.db import CaseEventRecord, Database, JobRecord, UserRecord
+from forensix_server.db import (
+    CaseDeviceAssessmentRecord,
+    CaseDeviceRecord,
+    CaseEventRecord,
+    CaseRecord,
+    Database,
+    JobRecord,
+    UserRecord,
+)
 from forensix_server.jobs import JobState
 
 
@@ -109,7 +117,7 @@ def _case_device(
     assessed_at: datetime,
     *,
     storage_supported: bool = True,
-):
+) -> tuple[CaseRecord, CaseDeviceRecord, CaseDeviceAssessmentRecord]:
     case = CaseService().create(session, principal, title="Acquisition planning case")
     device, assessment = CaseDeviceService().register_assessment(
         session,

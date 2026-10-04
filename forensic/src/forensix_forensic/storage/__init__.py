@@ -7,11 +7,24 @@ from .errors import (
     StorageBoundaryError,
     StorageError,
 )
-from .hashing import HashResult, sha256_file
-from .store import AtomicEvidenceWriter, EvidenceStore, ExternalEvidenceReservation, StoredEvidence
+from .hashing import (
+    DualHashResult,
+    HashResult,
+    StreamHasher,
+    dual_hash_bytes,
+    dual_hash_file,
+    sha256_file,
+)
+from .store import (
+    AtomicEvidenceWriter,
+    EvidenceStore,
+    ExternalEvidenceReservation,
+    StoredEvidence,
+)
 
 __all__ = [
     "AtomicEvidenceWriter",
+    "DualHashResult",
     "EvidenceAlreadyExistsError",
     "EvidenceNotFoundError",
     "EvidenceStore",
@@ -21,5 +34,8 @@ __all__ = [
     "StorageBoundaryError",
     "StorageError",
     "StoredEvidence",
+    "StreamHasher",
+    "dual_hash_bytes",
+    "dual_hash_file",
     "sha256_file",
 ]

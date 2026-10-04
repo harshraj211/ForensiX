@@ -28,6 +28,25 @@ class AndroidDocumentParserError(ValueError):
     """Raised when a configuration file violates parser policy or schema."""
 
 
+def _safe_bytes(path: Path) -> bytes:
+    if path.is_symlink() or not path.is_file():
+        raise AndroidDocumentParserError("The document source must be a regular non-link file.")
+    size = path.stat().st_size
+    if size < 1 or size > MAX_DOCUMENT_BYTES:
+        raise AndroidDocumentParserError("The document source violates the size limit.")
+    return path.read_bytes()
+
+
+def _safe_text(path: Path) -> str:
+    payload = _safe_bytes(path)
+    if b"\x00" in payload:
+        raise AndroidDocumentParserError("The configuration is not bounded UTF-8 text.")
+    try:
+        return payload.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise AndroidDocumentParserError("The configuration is not valid UTF-8 text.") from error
+
+
 class AndroidWifiConfigParser:
     metadata = ParserMetadata(
         parser_id="android.wifi.config_store",
@@ -136,29 +155,13 @@ class AndroidBluetoothConfigParser:
 
 
 def android_document_parser_registry() -> DocumentParserRegistry:
+    from .dumpsys_parser import AndroidDumpsysUsageStatsParser
+
     registry = DocumentParserRegistry()
     registry.register(AndroidWifiConfigParser())
     registry.register(AndroidBluetoothConfigParser())
+    registry.register(AndroidDumpsysUsageStatsParser())
     return registry
-
-
-def _safe_bytes(path: Path) -> bytes:
-    if path.is_symlink() or not path.is_file():
-        raise AndroidDocumentParserError("The document source must be a regular non-link file.")
-    size = path.stat().st_size
-    if size < 1 or size > MAX_DOCUMENT_BYTES:
-        raise AndroidDocumentParserError("The document source violates the size limit.")
-    return path.read_bytes()
-
-
-def _safe_text(path: Path) -> str:
-    payload = _safe_bytes(path)
-    if b"\x00" in payload:
-        raise AndroidDocumentParserError("The configuration is not bounded UTF-8 text.")
-    try:
-        return payload.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise AndroidDocumentParserError("The configuration is not valid UTF-8 text.") from error
 
 
 def _safe_xml_root(path: Path) -> Element:

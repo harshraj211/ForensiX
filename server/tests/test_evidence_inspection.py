@@ -8,7 +8,7 @@ import pytest
 from forensix_server.auth import Principal, RoleName
 from forensix_server.auth.domain import ROLE_PERMISSIONS
 from forensix_server.cases import CaseService
-from forensix_server.db import Database, UserRecord
+from forensix_server.db import Database, EvidenceSourceInspectionRecord, UserRecord
 from forensix_server.evidence_twin import EvidenceInspectionService, EvidenceTwinService
 
 
@@ -40,7 +40,7 @@ def _principal_and_case(database: Database) -> tuple[Principal, str]:
         return principal, case_id
 
 
-def _inspect(database: Database, payload: bytes, filename: str):
+def _inspect(database: Database, payload: bytes, filename: str) -> EvidenceSourceInspectionRecord:
     principal, case_id = _principal_and_case(database)
     source = EvidenceTwinService().import_stream(
         database, principal, case_id, BytesIO(payload), source_name=filename

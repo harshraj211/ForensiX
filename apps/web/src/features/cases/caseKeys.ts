@@ -27,4 +27,7 @@ export const caseKeys = {
   mediaFaceClusters: (caseId: string) => ["cases", caseId, "media-face-clusters"] as const,
   artifactSearch: (caseId: string, filters: Record<string, string>) =>
     ["cases", caseId, "artifact-search", filters] as const,
+  entityGraph: (caseId: string) => ["cases", caseId, "entity-graph"] as const,
+  geolocation: (caseId: string) => ["cases", caseId, "geolocation"] as const,
 };
+

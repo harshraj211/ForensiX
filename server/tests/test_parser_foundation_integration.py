@@ -105,14 +105,24 @@ class RichTestParser(BaseEvidenceParser):
         )
         artifacts = []
         for row in rows:
+            sender = (
+                row["sender"].decode("utf-8")
+                if isinstance(row["sender"], bytes)
+                else str(row["sender"])
+            )
+            item_id = (
+                row["id"].decode("utf-8")
+                if isinstance(row["id"], bytes)
+                else str(row["id"])
+            )
             artifacts.append(
                 ParsedArtifact(
                     category="communication",
                     subtype="chat_message",
-                    title=f"Message from {row['sender']}",
+                    title=f"Message from {sender}",
                     summary="Confidential project kickoff discussion",
                     event_time=datetime.fromisoformat(str(row["sent_at"])),
-                    source_locator=f"chat_messages:{row['id']}",
+                    source_locator=f"chat_messages:{item_id}",
                     status="active",
                     confidence="high",
                     content=str(row["body"]),

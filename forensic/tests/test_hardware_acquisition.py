@@ -445,7 +445,7 @@ class TestScreenLockAssessment:
         assert profile.biometric_enrolled is True
 
     def test_wipe_risk_classification(self) -> None:
-        assert _estimate_search_space(LockType.PIN, 6, 0) == 1000000
+        assert _estimate_search_space(LockType.PIN, 6, None) == 1000000
 
     def test_max_attempts_constant(self) -> None:
         assert MAX_ATTEMPTS == 5

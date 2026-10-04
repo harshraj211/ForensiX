@@ -6,7 +6,11 @@ import pytest
 from sqlalchemy import select
 
 from forensix_forensic.capabilities import DeviceCapabilitySnapshot
-from forensix_forensic.integrations import ScrcpyLaunchResult, ScrcpyRecordingStopResult
+from forensix_forensic.integrations import (
+    ScrcpyController,
+    ScrcpyLaunchResult,
+    ScrcpyRecordingStopResult,
+)
 from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import Principal, RoleName
 from forensix_server.auth.domain import ROLE_PERMISSIONS
@@ -22,8 +26,9 @@ from forensix_server.db import (
 from forensix_server.screen_recordings import ScreenRecordingService
 
 
-class FakeScrcpyController:
+class FakeScrcpyController(ScrcpyController):
     def __init__(self) -> None:
+        super().__init__()
         self.destination: Path | None = None
 
     def start_recording(
@@ -109,12 +114,12 @@ def test_recording_session_stops_and_seals_as_case_evidence(database: Database) 
         controller,
         case_id,
         device_id,
-        "FX-REC-001",  # type: ignore[arg-type]
+        "FX-REC-001",
     )
     sealed = service.stop_and_seal(
         database,
         principal,
-        controller,  # type: ignore[arg-type]
+        controller,
         started.id,
         case_id,
         device_id,
@@ -155,14 +160,14 @@ def test_second_active_recording_is_rejected(database: Database) -> None:
         controller,
         case_id,
         device_id,
-        "FX-REC-001",  # type: ignore[arg-type]
+        "FX-REC-001",
     )
 
     with pytest.raises(CaseInvalidStateError, match="already active"):
         service.start(
             database,
             principal,
-            controller,  # type: ignore[arg-type]
+            controller,
             case_id,
             device_id,
             "FX-REC-001",

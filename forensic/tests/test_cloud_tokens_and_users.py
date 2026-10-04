@@ -19,7 +19,7 @@ def _context(locator: str = "test.db") -> ParserContext:
     )
 
 
-def test_android_cloud_tokens_parser(tmp_path: Path):
+def test_android_cloud_tokens_parser(tmp_path: Path) -> None:
     db_path = tmp_path / "accounts_ce.db"
     conn = sqlite3.connect(str(db_path))
     conn.execute(
@@ -72,7 +72,7 @@ def test_android_cloud_tokens_parser(tmp_path: Path):
     assert art.metadata["service_label"] == "Google Account / Drive"
 
 
-def test_android_users_parser(tmp_path: Path):
+def test_android_users_parser(tmp_path: Path) -> None:
     db_path = tmp_path / "users.db"
     conn = sqlite3.connect(str(db_path))
     conn.execute(

@@ -23,5 +23,17 @@ warn_unreachable = true
 mypy_path = ["forensic/src", "server/src", "apps/api/src"]
 
 [[tool.mypy.overrides]]
-module = ["reportlab.*", "sqlalchemy.*"]
+module = [
+    "reportlab.*",
+    "sqlalchemy.*",
+    "pytesseract.*",
+    "pytesseract",
+    "numpy.*",
+    "numpy",
+    "onnxruntime.*",
+    "onnxruntime",
+    "cv2.*",
+    "cv2",
+]
 ignore_missing_imports = true
+

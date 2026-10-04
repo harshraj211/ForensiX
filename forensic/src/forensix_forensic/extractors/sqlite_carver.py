@@ -142,6 +142,11 @@ class SQLiteCarver:
                 fragments.extend(fl_frags)
                 freelist_count += len(fl_frags)
 
+                # Phase 2.5: B-Tree leaf freeblock & unallocated cell carving
+                bt_frags = self._carve_btree_freeblocks(path, max_fragments - len(fragments))
+                fragments.extend(bt_frags)
+                unallocated_count += len(bt_frags)
+
             # Phase 3: Unallocated-region carving
             unalloc_frags = self._carve_unallocated(path, max_fragments - len(fragments))
             fragments.extend(unalloc_frags)
@@ -230,38 +235,65 @@ class SQLiteCarver:
         if page_size is None or page_size < 512:
             return fragments
 
+        first_trunk_page = struct.unpack(">I", header[32:36])[0]
         freelist_pages = struct.unpack(">I", header[36:40])[0]
-        if freelist_pages == 0:
+        if first_trunk_page == 0 or freelist_pages == 0:
             return fragments
 
         try:
             with db_path.open("rb") as fh:
-                for page_idx in range(min(freelist_pages, 1000)):
-                    if len(fragments) >= budget:
+                fh.seek(0, 2)
+                file_size = fh.tell()
+                total_db_pages = file_size // page_size
+
+                curr_trunk = first_trunk_page
+                visited_trunks: set[int] = set()
+
+                while (
+                    curr_trunk > 0
+                    and curr_trunk <= total_db_pages
+                    and len(visited_trunks) < 1000
+                ):
+                    if curr_trunk in visited_trunks or len(fragments) >= budget:
                         break
-                    # Freelist trunk page contains pointers to leaf pages.
-                    trunk_offset = 100 + (page_idx * page_size) if page_idx == 0 else None
-                    if trunk_offset is None:
-                        break
+                    visited_trunks.add(curr_trunk)
+
+                    trunk_offset = (curr_trunk - 1) * page_size
                     fh.seek(trunk_offset)
                     trunk_data = fh.read(page_size)
                     if len(trunk_data) < 8:
                         break
 
-                    leaf_count = struct.unpack(">I", trunk_data[0:4])[0]
-                    if leaf_count > 100_000:
-                        break  # Sanity check
+                    next_trunk = struct.unpack(">I", trunk_data[0:4])[0]
+                    leaf_count = struct.unpack(">I", trunk_data[4:8])[0]
 
-                    for leaf_idx in range(min(leaf_count, 100)):
+                    # Scan remaining trunk page space for unallocated fragments
+                    trunk_slack_offset = 8 + leaf_count * 4
+                    if trunk_slack_offset < len(trunk_data):
+                        t_frags = self._extract_text_fragments(
+                            trunk_data[trunk_slack_offset:],
+                            str(db_path),
+                            trunk_offset + trunk_slack_offset,
+                            "freelist",
+                        )
+                        for frag in t_frags:
+                            if len(fragments) < budget:
+                                fragments.append(frag)
+
+                    if leaf_count > 100_000:
+                        break  # Corrupted leaf count check
+
+                    for leaf_idx in range(min(leaf_count, 1000)):
                         if len(fragments) >= budget:
                             break
-                        if 4 + leaf_idx * 4 + 4 > len(trunk_data):
+                        ptr_offset = 8 + leaf_idx * 4
+                        if ptr_offset + 4 > len(trunk_data):
                             break
                         leaf_page_no = struct.unpack(
-                            ">I", trunk_data[4 + leaf_idx * 4 : 8 + leaf_idx * 4]
+                            ">I", trunk_data[ptr_offset : ptr_offset + 4]
                         )[0]
-                        if leaf_page_no < 1:
-                            break
+                        if leaf_page_no < 1 or leaf_page_no > total_db_pages:
+                            continue
 
                         leaf_offset = (leaf_page_no - 1) * page_size
                         fh.seek(leaf_offset)
@@ -276,6 +308,101 @@ class SQLiteCarver:
                             if len(fragments) < budget:
                                 fragments.append(frag)
 
+                    curr_trunk = next_trunk
+
+        except OSError:
+            pass
+
+        return fragments
+
+    # ------------------------------------------------------------------
+    # Phase 2.5: B-Tree leaf freeblock & unallocated cell carving
+    # ------------------------------------------------------------------
+
+    def _carve_btree_freeblocks(self, db_path: Path, budget: int) -> list[CarvedFragment]:
+        """Scan Table B-Tree leaf pages for freeblocks and unallocated cell gaps."""
+        fragments: list[CarvedFragment] = []
+        try:
+            with db_path.open("rb") as fh:
+                header = fh.read(100)
+                if not header.startswith(SQLITE_MAGIC) or len(header) < 100:
+                    return fragments
+                page_size = self._sqlite_page_size(header)
+                if page_size is None or page_size < 512:
+                    return fragments
+
+                fh.seek(0, 2)
+                file_size = fh.tell()
+                total_pages = file_size // page_size
+                fh.seek(0)
+
+                for page_idx in range(min(total_pages, 20_000)):
+                    if len(fragments) >= budget:
+                        break
+                    page_offset = page_idx * page_size
+                    fh.seek(page_offset)
+                    page_data = fh.read(page_size)
+                    if len(page_data) < page_size:
+                        break
+
+                    hdr_offset = 100 if page_idx == 0 else 0
+                    if hdr_offset + 8 > len(page_data):
+                        continue
+                    page_type = page_data[hdr_offset]
+                    # 0x0D is Table B-Tree Leaf Page
+                    if page_type != 0x0D:
+                        continue
+
+                    first_freeblock = struct.unpack(
+                        ">H", page_data[hdr_offset + 1 : hdr_offset + 3]
+                    )[0]
+                    cell_count = struct.unpack(
+                        ">H", page_data[hdr_offset + 3 : hdr_offset + 5]
+                    )[0]
+                    content_offset = struct.unpack(
+                        ">H", page_data[hdr_offset + 5 : hdr_offset + 7]
+                    )[0]
+                    if content_offset == 0:
+                        content_offset = 65536
+
+                    # 1. Follow freeblock linked list
+                    fb_ptr = first_freeblock
+                    visited_fb: set[int] = set()
+                    while fb_ptr > 0 and fb_ptr < page_size - 4 and len(visited_fb) < 200:
+                        if fb_ptr in visited_fb:
+                            break
+                        visited_fb.add(fb_ptr)
+                        next_fb = struct.unpack(">H", page_data[fb_ptr : fb_ptr + 2])[0]
+                        fb_size = struct.unpack(">H", page_data[fb_ptr + 2 : fb_ptr + 4])[0]
+                        if fb_size >= 4 and fb_ptr + fb_size <= page_size:
+                            fb_content = page_data[fb_ptr + 4 : fb_ptr + fb_size]
+                            frags = self._extract_text_fragments(
+                                fb_content,
+                                str(db_path),
+                                page_offset + fb_ptr + 4,
+                                "btree_freeblock",
+                            )
+                            for f in frags:
+                                if len(fragments) < budget:
+                                    fragments.append(f)
+                        if next_fb <= fb_ptr:
+                            break
+                        fb_ptr = next_fb
+
+                    # 2. Carve gap between cell pointer array and cell content start
+                    ptr_array_end = hdr_offset + 8 + (cell_count * 2)
+                    if ptr_array_end < content_offset <= page_size:
+                        gap_bytes = page_data[ptr_array_end:content_offset]
+                        if len(gap_bytes) >= 16:
+                            frags = self._extract_text_fragments(
+                                gap_bytes,
+                                str(db_path),
+                                page_offset + ptr_array_end,
+                                "btree_unallocated_gap",
+                            )
+                            for f in frags:
+                                if len(fragments) < budget:
+                                    fragments.append(f)
         except OSError:
             pass
 

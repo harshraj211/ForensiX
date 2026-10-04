@@ -160,7 +160,7 @@ def attempt_ocr(image: Image.Image) -> dict[str, Any]:
     and no text is produced. This keeps the pipeline honest about its capabilities.
     """
     try:
-        import pytesseract  # type: ignore[import-not-found]
+        import pytesseract
     except Exception:
         return {"ocr_status": "unavailable", "ocr_engine": None, "ocr_text": None}
     try:

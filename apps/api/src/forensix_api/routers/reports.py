@@ -103,13 +103,18 @@ def download_report(
     content = ReportService().content(
         database, authenticated.principal, case_id, report_id, output_format
     )
+    csp = (
+        "sandbox allow-scripts; default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:"
+        if output_format == "html"
+        else "sandbox; default-src 'none'"
+    )
     return FileResponse(
         content.path,
         media_type=content.output.media_type,
         filename=content.output.filename,
         headers={
             "Cache-Control": "no-store, private",
-            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "Content-Security-Policy": csp,
             "Cross-Origin-Resource-Policy": "same-origin",
             "X-Content-Type-Options": "nosniff",
             "X-ForensiX-Output-SHA256": content.output.sha256,

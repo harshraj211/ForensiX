@@ -76,11 +76,11 @@ def test_scrcpy_recording_is_scoped_and_stopped_by_registered_process(
             [], 0, stdout="scrcpy 4.1\n", stderr=""
         ),
     )
-    monkeypatch.setattr(
-        subprocess,
-        "Popen",
-        lambda arguments, **kwargs: calls.append(arguments) or process,
-    )
+    def fake_popen(arguments: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(arguments)
+        return process
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
     recording_id = str(uuid4())
     controller = ScrcpyController(executable)
 

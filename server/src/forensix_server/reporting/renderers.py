@@ -3,6 +3,7 @@
 import csv
 import io
 from collections.abc import Callable
+from typing import Any
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -20,97 +21,20 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from .html_report import render_html
 from .snapshot import ReportSnapshot
+
+__all__ = [
+    "neutralize_csv",
+    "render_csv",
+    "render_html",
+    "render_json",
+    "render_pdf",
+]
 
 
 def render_json(snapshot: ReportSnapshot) -> bytes:
     return snapshot.model_dump_json(indent=2).encode("utf-8")
-
-
-def render_html(snapshot: ReportSnapshot) -> bytes:
-    """Render a portable, static review view with no external assets or scripts."""
-    evidence_rows = "\n".join(
-        "<tr>"
-        f"<td>{escape(item.title)}</td>"
-        f"<td>{escape(item.category)}</td>"
-        f"<td>{escape(item.subtype)}</td>"
-        f"<td>{escape(item.status)}</td>"
-        f"<td><code>{escape(item.artifact_hash)}</code></td>"
-        "</tr>"
-        for item in snapshot.imported_artifacts[:1000]
-    )
-    timeline_rows = "\n".join(
-        "<tr>"
-        f"<td>{escape(item.event_time.isoformat())}</td>"
-        f"<td>{escape(item.timestamp_type)}</td>"
-        f"<td>{escape(item.confidence)}</td>"
-        f"<td>{escape(item.summary)}</td>"
-        "</tr>"
-        for item in snapshot.timeline[:1000]
-    )
-    custody_rows = "\n".join(
-        "<tr>"
-        f"<td>{item.sequence}</td>"
-        f"<td>{escape(item.created_at.isoformat())}</td>"
-        f"<td>{escape(item.event_type)}</td>"
-        f"<td><code>{escape(item.event_hash)}</code></td>"
-        "</tr>"
-        for item in snapshot.custody
-    )
-    source_cards = "\n".join(
-        "<section class='card'>"
-        f"<h3>{escape(source.display_name)}</h3>"
-        f"<p>{escape(source.source_type)} · {escape(source.acquisition_level)} · "
-        f"{escape(source.container_format)}</p>"
-        f"<p><strong>SHA-256</strong> <code>{escape(source.sha256 or 'not available')}</code></p>"
-        f"<p><strong>Parser runs</strong> {len(source.parser_runs)} · "
-        f"<strong>Working copies</strong> {len(source.working_copies)}</p>"
-        "</section>"
-        for source in snapshot.evidence_sources
-    )
-    html = f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ForensiX Portable Report {escape(snapshot.case.case_number)}</title>
-  <style>
-    body {{ font-family: Arial, sans-serif; margin: 0; color: #111827; background: #f8fafc; }}
-    header {{ background: #0f172a; color: white; padding: 28px 36px; }}
-    main {{ padding: 28px 36px; max-width: 1180px; margin: 0 auto; }}
-    h1, h2, h3 {{ margin: 0 0 10px; }}
-    section {{ margin: 24px 0; }}
-    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }}
-    .card {{ background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }}
-    table {{ width: 100%; border-collapse: collapse; background: white; border: 1px solid #e5e7eb; }}
-    th, td {{ border-bottom: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }}
-    th {{ background: #f1f5f9; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }}
-    code {{ overflow-wrap: anywhere; font-size: 12px; }}
-    .warning {{ background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px; }}
-  </style>
-</head>
-<body>
-  <header>
-    <p>FORENSIX PORTABLE REVIEW</p>
-    <h1>{escape(snapshot.case.case_number)} · {escape(snapshot.case.title)}</h1>
-    <p>Generated {escape(snapshot.report.generated_at.isoformat())} · Report {escape(snapshot.report.report_id)}</p>
-  </header>
-  <main>
-    <section class="warning">{escape(snapshot.report.preliminary_warning)}</section>
-    <section class="grid">
-      <div class="card"><h2>Evidence</h2><p>{sum(snapshot.evidence_summary.values())} selected artifacts</p></div>
-      <div class="card"><h2>Imported Artifacts</h2><p>{len(snapshot.imported_artifacts)} parsed artifacts</p></div>
-      <div class="card"><h2>Timeline</h2><p>{len(snapshot.timeline)} timestamp claims</p></div>
-      <div class="card"><h2>Custody</h2><p>{len(snapshot.custody)} hash-linked custody events</p></div>
-    </section>
-    <section><h2>Evidence Sources</h2><div class="grid">{source_cards or "<p>No imported evidence sources.</p>"}</div></section>
-    <section><h2>Parsed Artifacts</h2><table><thead><tr><th>Title</th><th>Category</th><th>Subtype</th><th>Status</th><th>Hash</th></tr></thead><tbody>{evidence_rows}</tbody></table></section>
-    <section><h2>Timeline</h2><table><thead><tr><th>Time</th><th>Type</th><th>Confidence</th><th>Summary</th></tr></thead><tbody>{timeline_rows}</tbody></table></section>
-    <section><h2>Chain of Custody</h2><table><thead><tr><th>Seq</th><th>Time</th><th>Event</th><th>Event hash</th></tr></thead><tbody>{custody_rows}</tbody></table></section>
-  </main>
-</body>
-</html>"""
-    return html.encode("utf-8")
 
 
 def render_csv(snapshot: ReportSnapshot) -> bytes:
@@ -273,7 +197,7 @@ def _readable_messages(snapshot: ReportSnapshot) -> list[tuple[str, str, str, st
 
 
 class _InvariantCanvas(canvas.Canvas):  # type: ignore[misc]
-    def __init__(self, *args: object, **kwargs: object) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         kwargs["invariant"] = 1
         super().__init__(*args, **kwargs)
 

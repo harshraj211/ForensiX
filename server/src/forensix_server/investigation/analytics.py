@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from forensix_server.auth import Principal
 from forensix_server.cases import CaseService
-from forensix_server.db import EvidenceSourceArtifactRecord
+from forensix_server.db import EvidenceSourceArtifactRecord, MediaAnalysisRecord
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +155,54 @@ class GeoLocationAnalyticsService:
                 )
             )
 
+        # Query Media EXIF GPS records
+        media_stmt = (
+            select(MediaAnalysisRecord)
+            .where(
+                MediaAnalysisRecord.case_id == case_id,
+                MediaAnalysisRecord.gps_latitude.is_not(None),
+                MediaAnalysisRecord.gps_longitude.is_not(None),
+            )
+            .order_by(MediaAnalysisRecord.analyzed_at.asc())
+        )
+        media_records = list(self._session.scalars(media_stmt).all())
+        for m in media_records:
+            if m.gps_latitude is None or m.gps_longitude is None:
+                continue
+            lat = float(m.gps_latitude)
+            lng = float(m.gps_longitude)
+            if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
+                continue
+            if lat == 0.0 and lng == 0.0:
+                continue
+            app = "camera_exif"
+            providers_count[app] = providers_count.get(app, 0) + 1
+            ts = m.analyzed_at.isoformat() if isinstance(m.analyzed_at, datetime) else None
+            meta_exif: dict[str, Any] = {}
+            if m.camera_make:
+                meta_exif["camera_make"] = m.camera_make
+            if m.camera_model:
+                meta_exif["camera_model"] = m.camera_model
+            points.append(
+                GeoPoint(
+                    id=f"media:{m.artifact_id}",
+                    latitude=lat,
+                    longitude=lng,
+                    timestamp=ts,
+                    title=f"Media EXIF ({m.camera_make or 'Camera'} {m.camera_model or ''})".strip(),
+                    summary="EXIF GPS coordinate from media file",
+                    source_type="media_exif",
+                    application=app,
+                    confidence="high",
+                    metadata=meta_exif,
+                )
+            )
+
+        # Sort points chronologically
+        points.sort(key=lambda p: (p.timestamp is None, p.timestamp or ""))
+
         bounding_box = None
+
         if points:
             lats = [p.latitude for p in points]
             lngs = [p.longitude for p in points]

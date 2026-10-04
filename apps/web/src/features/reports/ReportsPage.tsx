@@ -36,7 +36,7 @@ export function ReportsCasesPage() {
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Versioned exports</p>
       <h1 className="mt-2 text-3xl font-semibold text-white">Preliminary reports</h1>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-        Choose a case to generate reproducible PDF, JSON, and spreadsheet-safe CSV outputs.
+        Choose a case to generate reproducible PDF, standalone HTML, JSON, and spreadsheet-safe CSV outputs.
       </p>
       {casesQuery.isPending && <p role="status" className="mt-8 text-sm text-slate-500">Loading accessible cases...</p>}
       {casesQuery.isError && <div className="mt-6"><CaseError error={casesQuery.error} /></div>}

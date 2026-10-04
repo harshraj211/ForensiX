@@ -196,7 +196,7 @@ def transcribe_media(source: Path, media_kind: str, detected_mime: str | None) -
 
 def _detect_faces_opencv(image: Image.Image) -> list[dict[str, Any]]:
     try:
-        import cv2  # type: ignore[import-not-found]
+        import cv2
         import numpy as np
     except Exception:
         return [
@@ -307,7 +307,7 @@ def _classify_objects_onnx(image: Image.Image) -> list[dict[str, Any]]:
         ]
     try:
         import numpy as np
-        import onnxruntime as ort  # type: ignore[import-untyped]
+        import onnxruntime as ort
     except Exception:
         return [
             {

@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from forensix_forensic.adb import AdbClient
 from forensix_forensic.adb.models import BackupResult, PulledFileResult
 from forensix_forensic.extractors.apk_downgrade import (
     APK_DOWNGRADE_PROFILES,
@@ -112,7 +114,7 @@ async def test_downgrade_supports_legacy_android_5_through_11_and_restores_split
     apk_path, apk_hash = _staged_apk(tmp_path)
     adb = FakeAdbClient(api=api)
 
-    result = await ApkDowngradeExtractor(adb, tmp_path).extract(
+    result = await ApkDowngradeExtractor(cast(AdbClient, adb), tmp_path).extract(
         "FX-DEMO-001",
         profile_id="whatsapp",
         downgrade_apk_paths=(apk_path,),
@@ -137,6 +139,26 @@ async def test_downgrade_supports_legacy_android_5_through_11_and_restores_split
 
 
 @pytest.mark.asyncio
+async def test_backup_failure_still_restores_original_package(tmp_path: Path) -> None:
+    apk_path, apk_hash = _staged_apk(tmp_path)
+    adb = FakeAdbClient(api=30, fail_backup=True)
+
+    result = await ApkDowngradeExtractor(cast(AdbClient, adb), tmp_path).extract(
+        "FX-DEMO-001",
+        profile_id="whatsapp",
+        downgrade_apk_paths=(apk_path,),
+        expected_sha256=(apk_hash,),
+        case_id="CASE-001",
+        operator_id="operator",
+    )
+
+    assert result.success is False
+    assert result.restored is True
+    assert result.error_message == "simulated backup failure"
+    assert len(adb.installs) == 2
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("api", [31, 33, 34])
 async def test_modern_android_12_plus_is_rejected_without_adb_mutation(
     tmp_path: Path, api: int
@@ -144,7 +166,7 @@ async def test_modern_android_12_plus_is_rejected_without_adb_mutation(
     apk_path, apk_hash = _staged_apk(tmp_path)
     adb = FakeAdbClient(api=api)
 
-    result = await ApkDowngradeExtractor(adb, tmp_path).extract(
+    result = await ApkDowngradeExtractor(cast(AdbClient, adb), tmp_path).extract(
         "FX-DEMO-001",
         profile_id="whatsapp",
         downgrade_apk_paths=(apk_path,),
@@ -166,7 +188,7 @@ async def test_unknown_api_level_fails_closed_without_adb_mutation(tmp_path: Pat
     apk_path, apk_hash = _staged_apk(tmp_path)
     adb = FakeAdbClient(raw_api_prop="invalid")
 
-    result = await ApkDowngradeExtractor(adb, tmp_path).extract(
+    result = await ApkDowngradeExtractor(cast(AdbClient, adb), tmp_path).extract(
         "FX-DEMO-001",
         profile_id="whatsapp",
         downgrade_apk_paths=(apk_path,),
@@ -190,7 +212,7 @@ async def test_hash_mismatch_is_classified_as_unsafe_without_adb_mutation(
     apk_path, _ = _staged_apk(tmp_path)
     adb = FakeAdbClient(api=28)
 
-    result = await ApkDowngradeExtractor(adb, tmp_path).extract(
+    result = await ApkDowngradeExtractor(cast(AdbClient, adb), tmp_path).extract(
         "FX-DEMO-001",
         profile_id="whatsapp",
         downgrade_apk_paths=(apk_path,),
@@ -213,7 +235,7 @@ async def test_missing_package_is_classified_as_unsafe_without_adb_mutation(
     apk_path, apk_hash = _staged_apk(tmp_path)
     adb = FakeAdbClient(api=28, missing_package=True)
 
-    result = await ApkDowngradeExtractor(adb, tmp_path).extract(
+    result = await ApkDowngradeExtractor(cast(AdbClient, adb), tmp_path).extract(
         "FX-DEMO-001",
         profile_id="whatsapp",
         downgrade_apk_paths=(apk_path,),
@@ -236,7 +258,7 @@ async def test_backup_failure_on_supported_device_still_restores_original_packag
     apk_path, apk_hash = _staged_apk(tmp_path)
     adb = FakeAdbClient(api=28, fail_backup=True)
 
-    result = await ApkDowngradeExtractor(adb, tmp_path).extract(
+    result = await ApkDowngradeExtractor(cast(AdbClient, adb), tmp_path).extract(
         "FX-DEMO-001",
         profile_id="whatsapp",
         downgrade_apk_paths=(apk_path,),
@@ -260,7 +282,7 @@ async def test_assess_capability_direct_evaluation(tmp_path: Path) -> None:
     # API 28 -> LEGACY_SUPPORTED
     adb = FakeAdbClient(api=28)
     status, reason, api, release, version = await ApkDowngradeExtractor(
-        adb, tmp_path
+        cast(AdbClient, adb), tmp_path
     ).assess_capability(
         "FX-DEMO-001", profile, downgrade_apk_paths=(apk_path,), expected_sha256=(apk_hash,)
     )
@@ -271,21 +293,21 @@ async def test_assess_capability_direct_evaluation(tmp_path: Path) -> None:
     # API 31 -> UNSUPPORTED
     adb = FakeAdbClient(api=31)
     status, reason, api, release, version = await ApkDowngradeExtractor(
-        adb, tmp_path
+        cast(AdbClient, adb), tmp_path
     ).assess_capability("FX-DEMO-001", profile)
     assert status == DowngradeCapabilityStatus.UNSUPPORTED
 
     # Unknown property -> UNKNOWN
     adb = FakeAdbClient(raw_api_prop="invalid")
     status, reason, api, release, version = await ApkDowngradeExtractor(
-        adb, tmp_path
+        cast(AdbClient, adb), tmp_path
     ).assess_capability("FX-DEMO-001", profile)
     assert status == DowngradeCapabilityStatus.UNKNOWN
 
     # Missing package -> UNSAFE
     adb = FakeAdbClient(api=28, missing_package=True)
     status, reason, api, release, version = await ApkDowngradeExtractor(
-        adb, tmp_path
+        cast(AdbClient, adb), tmp_path
     ).assess_capability("FX-DEMO-001", profile)
     assert status == DowngradeCapabilityStatus.UNSAFE
 

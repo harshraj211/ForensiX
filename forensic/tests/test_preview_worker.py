@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 from PIL import Image
@@ -109,7 +110,7 @@ def test_generate_rejects_decompression_bomb_before_pixel_allocation(
     assert not (tmp_path / "preview.png").exists()
 
 
-def _metadata():
+def _metadata() -> Any:
     from PIL.PngImagePlugin import PngInfo
 
     metadata = PngInfo()

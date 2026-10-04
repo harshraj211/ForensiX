@@ -1203,6 +1203,71 @@ export interface CorrelationGraph {
   warnings: string[];
 }
 
+export interface EntityGraphNode {
+  id: string;
+  label: string;
+  node_type: "person" | "phone" | "email" | "account" | "wifi" | (string & {});
+  count: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface EntityGraphEdge {
+  source: string;
+  target: string;
+  relation: string;
+  weight: number;
+  channel: string;
+  channels?: string[];
+  first_seen?: string | null;
+  last_seen?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface EntityGraphResponse {
+  case_id: string;
+  nodes: EntityGraphNode[];
+  edges: EntityGraphEdge[];
+  total_nodes: number;
+  total_edges: number;
+}
+
+export interface GeoLocationPoint {
+  id: string;
+  latitude: number;
+  longitude: number;
+  timestamp: string | null;
+  title: string;
+  summary: string;
+  source_type: string;
+  application: string;
+  confidence: string;
+  metadata: Record<string, any>;
+}
+
+export interface GeoLocationCluster {
+  cluster_center: { latitude: number; longitude: number };
+  point_count: number;
+  earliest_time: string | null;
+  latest_time: string | null;
+}
+
+export interface GeoLocationResponse {
+  case_id: string;
+  total_points: number;
+  bounding_box: {
+    min_lat: number;
+    max_lat: number;
+    min_lng: number;
+    max_lng: number;
+  } | null;
+  points: GeoLocationPoint[];
+  clusters_summary: GeoLocationCluster[];
+  providers_summary: Record<string, number>;
+}
+
+
+
+
 export interface ValidationCheck {
   check_id: string;
   status: "pass" | "warning" | "fail" | "skipped";
@@ -2790,6 +2855,20 @@ export function getTimeline(caseId: string): Promise<TimelineSearchResult> {
 export function getCorrelationGraph(caseId: string): Promise<CorrelationGraph> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/correlations`);
 }
+
+export function getEntityGraph(caseId: string): Promise<EntityGraphResponse> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/entity-graph`);
+}
+
+export function entityGraphExportUrl(caseId: string, format: "json" | "graphml"): string {
+  return `/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/entity-graph/export/${format}`;
+}
+
+export function getCaseGeolocation(caseId: string): Promise<GeoLocationResponse> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/analytics/geolocation`);
+}
+
+
 
 export function getLatestEvidenceTwinValidation(): Promise<EvidenceTwinValidation | null> {
   return apiRequest("/api/v1/validation/evidence-twin/latest");

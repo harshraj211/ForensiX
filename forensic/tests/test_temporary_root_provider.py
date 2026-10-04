@@ -176,7 +176,9 @@ async def test_workflow_rejects_kernel_mismatch_before_provider_activation(
 ) -> None:
     provider = _FakeProvider()
 
-    def match_profile(_: dict[str, str], *, kernel_build_id: str | None = None):
+    def match_profile(
+        _: dict[str, str], *, kernel_build_id: str | None = None
+    ) -> TemporaryRootProfile | None:
         return provider.profile if kernel_build_id is None else None
 
     monkeypatch.setattr(temporary_root_workflow, "find_temporary_root_profile", match_profile)

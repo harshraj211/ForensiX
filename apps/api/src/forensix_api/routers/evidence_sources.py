@@ -4,7 +4,7 @@ import json
 import tempfile
 from hashlib import sha256
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from zipfile import ZIP_STORED, ZipFile
 
 from fastapi import (
@@ -14,6 +14,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Response,
     UploadFile,
     status,
 )
@@ -29,6 +30,7 @@ from forensix_api.schemas import (
     AgentBundleImportResponse,
     BackupImportResponse,
     CloudExportImportResponse,
+    EntityGraphResponse,
     EvidenceInspectionResponse,
     EvidenceParserRunRequest,
     EvidenceParserRunResponse,
@@ -885,6 +887,46 @@ def search_source_artifacts(
         offset=result.offset,
         limit=result.limit,
         category_facets=result.category_facets,
+    )
+
+
+@router.get("/entity-graph", response_model=EntityGraphResponse)
+def get_case_entity_graph(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> EntityGraphResponse:
+    from forensix_server.evidence_twin.entity_graph import EntityGraphService
+
+    graph_data = EntityGraphService().build_graph(database, authenticated.principal, case_id)
+    return EntityGraphResponse(**graph_data)
+
+
+@router.get("/entity-graph/export/{export_format}")
+def export_case_entity_graph(
+    case_id: str,
+    export_format: Literal["json", "graphml"],
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> Response:
+    from forensix_server.evidence_twin.entity_graph import EntityGraphService
+
+    service = EntityGraphService()
+    graph_data = service.build_graph(database, authenticated.principal, case_id)
+
+    if export_format == "graphml":
+        xml_content = service.to_graphml(graph_data)
+        return Response(
+            content=xml_content,
+            media_type="application/xml; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="entity_graph_{case_id[:8]}.graphml"'},
+        )
+
+    json_content = json.dumps(graph_data, indent=2)
+    return Response(
+        content=json_content,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="entity_graph_{case_id[:8]}.json"'},
     )
 
 

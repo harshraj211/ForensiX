@@ -896,6 +896,34 @@ class CorrelationGraphResponse(BaseModel):
     warnings: list[str]
 
 
+class GeoPointResponse(BaseModel):
+    id: str
+    source_type: str
+    title: str
+    latitude: float
+    longitude: float
+    timestamp: str | None = None
+    provider: str | None = None
+    accuracy: float | None = None
+    source_locator: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class GeospatialBounds(BaseModel):
+    min_lat: float | None = None
+    max_lat: float | None = None
+    min_lon: float | None = None
+    max_lon: float | None = None
+
+
+class CaseGeospatialResponse(BaseModel):
+    case_id: str
+    points: list[GeoPointResponse]
+    total: int
+    bounds: GeospatialBounds
+
+
+
 class BookmarkRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 
@@ -1291,6 +1319,34 @@ class CloudServiceCapabilityResponse(BaseModel):
         "oauth", "user_export", "api_cost", "vendor_policy", "encryption", "not_started"
     ]
     implementation_note: str
+
+
+class EntityGraphNode(BaseModel):
+    id: str
+    label: str
+    node_type: Literal["person", "phone", "email", "account", "location", "wifi", "unknown"]
+    count: int = 1
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EntityGraphEdge(BaseModel):
+    source: str
+    target: str
+    relation: str
+    weight: int = 1
+    channel: str | None = None
+    channels: list[str] = Field(default_factory=list)
+    first_seen: str | None = None
+    last_seen: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class EntityGraphResponse(BaseModel):
+    case_id: str
+    nodes: list[EntityGraphNode]
+    edges: list[EntityGraphEdge]
+    total_nodes: int
+    total_edges: int
 
 
 class EvidenceToolOutputResponse(BaseModel):

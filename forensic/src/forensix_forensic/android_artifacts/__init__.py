@@ -12,6 +12,7 @@ from .applications import (
     WhatsAppBackupArtifactParser,
     WhatsAppMessageParser,
 )
+from .carver_parser import SQLiteCarverParser
 from .cloud_tokens import AndroidCloudTokensParser
 from .common import AndroidArtifactParserError
 from .communications import AndroidCallLogParser, AndroidMmsParser, AndroidSmsParser
@@ -22,6 +23,7 @@ from .documents import (
     AndroidWifiConfigParser,
     android_document_parser_registry,
 )
+from .dumpsys_parser import AndroidDumpsysUsageStatsParser
 from .registry import android_parser_registry
 from .support import ApplicationArtifactSupport, application_artifact_support
 from .system import (
@@ -56,6 +58,7 @@ __all__ = [
     "AndroidContactsParser",
     "AndroidDocumentParserError",
     "AndroidDownloadsParser",
+    "AndroidDumpsysUsageStatsParser",
     "AndroidLocationParser",
     "AndroidMmsParser",
     "AndroidNotesParser",
@@ -77,6 +80,7 @@ __all__ = [
     "MetaMessageParser",
     "SamsungBrowserHistoryParser",
     "SnapchatMessageParser",
+    "SQLiteCarverParser",
     "TelegramMessageParser",
     "TikTokMessageParser",
     "WeChatMessageParser",

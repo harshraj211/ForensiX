@@ -1,13 +1,11 @@
-"""Contained, append-oriented storage for acquired evidence."""
-
 import os
 import re
 import stat
 from dataclasses import dataclass
-from hashlib import sha256
+from hashlib import blake2b, sha256
 from pathlib import Path
 from types import TracebackType
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from .errors import (
     EvidenceAlreadyExistsError,
@@ -15,7 +13,7 @@ from .errors import (
     InvalidStorageKeyError,
     StorageBoundaryError,
 )
-from .hashing import HashResult, sha256_file
+from .hashing import DualHashResult, HashResult, dual_hash_file, sha256_file
 
 _SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _WINDOWS_RESERVED_NAMES = {
@@ -33,6 +31,7 @@ class StoredEvidence:
     storage_key: str
     size_bytes: int
     sha256: str
+    blake2b: str | None = None
 
 
 class EvidenceStore:
@@ -96,10 +95,32 @@ class EvidenceStore:
         path = self.resolve(storage_key, require_file=True)
         return sha256_file(path)
 
+    def dual_hash(
+        self,
+        storage_key: str,
+        *,
+        secondary_algo: Literal["blake3", "blake2b", "sha3_256"] = "blake2b",
+    ) -> DualHashResult:
+        path = self.resolve(storage_key, require_file=True)
+        return dual_hash_file(path, secondary_algo=secondary_algo)
+
     def verify(self, storage_key: str, expected_sha256: str) -> bool:
         if not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
             raise ValueError("expected_sha256 must be 64 lowercase hexadecimal characters")
         return self.hash(storage_key).hexdigest == expected_sha256
+
+    def verify_dual(
+        self,
+        storage_key: str,
+        *,
+        expected_sha256: str,
+        expected_secondary: str | None = None,
+        secondary_algo: Literal["blake3", "blake2b", "sha3_256"] = "blake2b",
+    ) -> bool:
+        res = self.dual_hash(storage_key, secondary_algo=secondary_algo)
+        return res.primary_hexdigest == expected_sha256 and (
+            expected_secondary is None or res.secondary_hexdigest == expected_secondary
+        )
 
     def _create_safe_directories(self, directory: Path) -> None:
         relative = directory.relative_to(self._root)
@@ -143,6 +164,7 @@ class AtomicEvidenceWriter:
         self._stream = self._partial.open("xb")
         _restrict_permissions(self._partial, directory=False)
         self._digest = sha256()
+        self._secondary_digest = blake2b(digest_size=32)
         self._size_bytes = 0
         self._sealed = False
         self._closed = False
@@ -158,6 +180,7 @@ class AtomicEvidenceWriter:
         if written != len(data):
             raise OSError("evidence write was shorter than the supplied byte buffer")
         self._digest.update(data)
+        self._secondary_digest.update(data)
         self._size_bytes += written
         return written
 
@@ -189,6 +212,7 @@ class AtomicEvidenceWriter:
             storage_key=self.storage_key,
             size_bytes=self._size_bytes,
             sha256=self._digest.hexdigest(),
+            blake2b=self._secondary_digest.hexdigest(),
         )
 
     def close(self, *, preserve_partial: bool = True) -> None:
@@ -247,7 +271,7 @@ class ExternalEvidenceReservation:
         ):
             raise StorageBoundaryError("the external evidence partial is not a regular file")
         _restrict_permissions(self._partial, directory=False)
-        hash_result = sha256_file(self._partial)
+        hash_result = dual_hash_file(self._partial)
         lock_descriptor: int | None = None
         try:
             lock_descriptor = os.open(self._lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -265,7 +289,8 @@ class ExternalEvidenceReservation:
         return StoredEvidence(
             storage_key=self.storage_key,
             size_bytes=hash_result.size_bytes,
-            sha256=hash_result.hexdigest,
+            sha256=hash_result.primary_hexdigest,
+            blake2b=hash_result.secondary_hexdigest,
         )
 
     def close(self, *, preserve_partial: bool = True) -> None:

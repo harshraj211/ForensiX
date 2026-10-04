@@ -7,3 +7,4 @@ httpx>=0.28,<1
 ruff>=0.15,<0.16
 mypy>=1.19,<2
 types-defusedxml>=0.7,<0.8
+tzdata>=2024.1

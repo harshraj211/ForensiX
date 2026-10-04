@@ -18,7 +18,7 @@ from forensix_forensic.media_ml_adapters import (
 )
 
 
-def test_luhn_validate():
+def test_luhn_validate() -> None:
     # Valid Visa test number
     assert luhn_validate("4532015112830366") is True
     # Invalid card number
@@ -27,7 +27,7 @@ def test_luhn_validate():
     assert luhn_validate("12345") is False
 
 
-def test_detect_sensitive_patterns_crypto_seed():
+def test_detect_sensitive_patterns_crypto_seed() -> None:
     # 12-word BIP-39 mnemonic phrase
     mnemonic = (
         "abandon ability able about above absent absorb abstract absurd abuse access accident"
@@ -39,7 +39,7 @@ def test_detect_sensitive_patterns_crypto_seed():
     assert findings[0]["confidence"] >= 0.90
 
 
-def test_detect_sensitive_patterns_payment_card():
+def test_detect_sensitive_patterns_payment_card() -> None:
     text = "Payment details: Card 4532-0151-1283-0366 Exp 12/28 CVV 123"
     findings = detect_sensitive_patterns(text)
     assert len(findings) >= 1
@@ -48,7 +48,7 @@ def test_detect_sensitive_patterns_payment_card():
     assert "4532 **** **** 0366" in card_findings[0]["summary"]
 
 
-def test_detect_sensitive_patterns_private_key():
+def test_detect_sensitive_patterns_private_key() -> None:
     pem = (
         "-----BEGIN PRIVATE KEY-----\n"
         "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg...\n"
@@ -59,7 +59,7 @@ def test_detect_sensitive_patterns_private_key():
     assert any(f["type"] == "cryptographic_private_key" for f in findings)
 
 
-def test_detect_sensitive_patterns_empty():
+def test_detect_sensitive_patterns_empty() -> None:
     assert detect_sensitive_patterns(None) == []
     assert detect_sensitive_patterns("Just a normal photo of a cat in the park") == []
 
@@ -282,7 +282,9 @@ def test_image_embedding_adapter_emits_clip_style_detection(monkeypatch, tmp_pat
 
 
 def test_clip_image_embedding_preprocessing_matches_exported_model_metadata():
-    import numpy as np
+    import pytest
+
+    np = pytest.importorskip("numpy")
 
     tensor = media_ml_adapters._image_to_clip_nchw(
         Image.new("RGB", (100, 200), color=(255, 0, 0)), 224, np

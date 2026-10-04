@@ -15,6 +15,7 @@ from .applications import (
     WhatsAppBackupArtifactParser,
     meta_message_parsers,
 )
+from .carver_parser import SQLiteCarverParser
 from .cloud_tokens import AndroidCloudTokensParser
 from .communications import (
     AndroidCallLogAdapter,
@@ -88,4 +89,5 @@ def android_parser_registry() -> ApplicationAdapterRegistry:
     registry.register(AndroidCellTowerParser())
     registry.register(AndroidUsersParser())
     registry.register(AndroidCloudTokensParser())
+    registry.register(SQLiteCarverParser())
     return registry

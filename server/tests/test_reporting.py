@@ -62,8 +62,8 @@ def test_report_renderers_emit_stable_outputs() -> None:
     assert render_csv(snapshot).startswith(
         b"record_origin,artifact_id,evidence_reference_id,storage_key,manifest_storage_key"
     )
-    assert render_html(snapshot).startswith(b"<!doctype html>")
-    assert b"ForensiX Portable Report" in render_html(snapshot)
+    assert render_html(snapshot).startswith(b"<!DOCTYPE html>")
+    assert b"ForensiX" in render_html(snapshot)
 
 
 def test_csv_formula_prefixes_are_neutralized() -> None:
@@ -134,3 +134,80 @@ def test_pdf_places_plaintext_chat_content_before_technical_sections() -> None:
         )
     ]
     assert render_pdf(snapshot).startswith(b"%PDF-")
+
+
+def test_html_report_rendering_is_deterministic_and_air_gapped() -> None:
+    snapshot = _snapshot().model_copy(
+        update={
+            "case": CaseSnapshot(
+                id="33333333-3333-3333-3333-333333333333",
+                case_number="CASE-2026-0001",
+                title="Test Case <script>alert(1)</script>",
+                description="Rendering test with special chars & quotes \"bold\".",
+                legal_authority="Court Warrant #1234",
+                status="active",
+                created_at=datetime(2026, 7, 17, 8, 0, tzinfo=UTC),
+            )
+        }
+    )
+
+    first = render_html(snapshot)
+    second = render_html(snapshot)
+
+    # Determinism
+    assert first == second
+    assert first.startswith(b"<!DOCTYPE html>")
+    assert b"</html>" in first
+
+    # Zero remote dependencies (air-gapped)
+    assert b"http://" not in first
+    assert b"https://" not in first
+    assert b"<link" not in first
+
+    # Proper HTML escaping for XSS prevention
+    assert b"&lt;script&gt;alert(1)&lt;/script&gt;" in first
+    assert b"<script>alert(1)</script>" not in first
+
+    # Embedded CSS & JS
+    assert b"<style>" in first
+    assert b"<script>" in first
+    assert b"filterArtifacts()" in first
+
+    # Key forensic metadata
+    assert b"CASE-2026-0001" in first
+    assert b"PRELIMINARY: examiner review required." in first
+    assert b"Test Investigator" in first
+
+
+def test_html_report_displays_recovered_carved_artifacts() -> None:
+    snapshot = _snapshot().model_copy(
+        update={
+            "imported_artifacts": [
+                ImportedArtifactSnapshot(
+                    id="rec-1111-1111",
+                    evidence_source_id="src-1111-1111",
+                    parser_run_id="run-1111-1111",
+                    category="communication",
+                    subtype="carved_chat_fragment",
+                    title="Carved WhatsApp Message",
+                    summary="Meet at warehouse 9 at midnight.",
+                    event_time=datetime(2026, 7, 17, 9, 15, tzinfo=UTC),
+                    source_locator="msgstore.db@page:42:offset:0x120",
+                    status="recovered",
+                    confidence="medium",
+                    parser_id="forensic.sqlite_carver",
+                    parser_version="1.0.0",
+                    artifact_hash="b" * 64,
+                )
+            ]
+        }
+    )
+
+    rendered = render_html(snapshot)
+    assert b"Carved WhatsApp Message" in rendered
+    assert b"badge-purple" in rendered
+    assert b"Recovered" in rendered
+    assert b"forensic.sqlite_carver" in rendered
+    assert b"msgstore.db@page:42:offset:0x120" in rendered
+    assert b"Deep Forensic Carved &amp; Recovered Records" in rendered
+

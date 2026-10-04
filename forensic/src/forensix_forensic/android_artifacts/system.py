@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 
 from forensix_forensic.evidence_io import (
+    BaseEvidenceParser,
     ParsedArtifact,
     ParserContext,
     ParserMetadata,
@@ -158,7 +159,7 @@ class AndroidDownloadsParser:
         )
 
 
-class ChromeHistoryParser:
+class ChromeHistoryParser(BaseEvidenceParser):
     metadata = ParserMetadata(
         parser_id="android.chrome.history",
         name="Chrome visit history",
@@ -166,12 +167,10 @@ class ChromeHistoryParser:
         artifact_categories=("browser",),
         required_tables=frozenset({"urls", "visits"}),
         access_level="filesystem",
-        maturity="experimental",
-        source_path_hints=("com.android.chrome", "app_chrome", "chrome/history"),
+        maturity="validated",
+        source_path_hints=("com.android.chrome", "app_chrome", "chrome/history", "History"),
+        description="Extracts visited web pages, URLs, titles, and timestamps from Chrome History database",
     )
-
-    def can_parse(self, tables: frozenset[str]) -> bool:
-        return self.metadata.required_tables.issubset(tables)
 
     def parse(self, reader: SafeSQLiteReader, context: ParserContext) -> list[ParsedArtifact]:
         require_columns(reader, "urls", {"id", "url"})
