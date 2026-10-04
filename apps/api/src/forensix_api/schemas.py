@@ -923,7 +923,6 @@ class CaseGeospatialResponse(BaseModel):
     bounds: GeospatialBounds
 
 
-
 class BookmarkRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=1000)
 

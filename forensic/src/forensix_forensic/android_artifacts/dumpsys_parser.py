@@ -18,11 +18,11 @@ from .documents import AndroidDocumentParserError, _safe_text
 # or:      time="2026-03-01 14:22:10" type=1 package=com.whatsapp
 _EVENT_LINE_RE = re.compile(
     r'time="(?P<time>[^"]+)"\s+type=(?P<type>[A-Za-z0-9_]+)\s+package=(?P<package>[A-Za-z0-9_.]+)'
-    r'(?:\s+class=(?P<class>[^\s]+))?'
-    r'(?:\s+flags=(?P<flags>[^\s]+))?'
-    r'(?:\s+standbyBucket=(?P<bucket>[^\s]+))?'
-    r'(?:\s+reason=(?P<reason>[^\s]+))?'
-    r'(?:\s+shortcutId=(?P<shortcut>[^\s]+))?'
+    r"(?:\s+class=(?P<class>[^\s]+))?"
+    r"(?:\s+flags=(?P<flags>[^\s]+))?"
+    r"(?:\s+standbyBucket=(?P<bucket>[^\s]+))?"
+    r"(?:\s+reason=(?P<reason>[^\s]+))?"
+    r"(?:\s+shortcutId=(?P<shortcut>[^\s]+))?"
 )
 
 # Numeric event type mapping according to Android UsageEvents
@@ -189,7 +189,9 @@ class AndroidDumpsysUsageStatsParser:
                     metadata = {
                         "package": pkg_name,
                         "total_time": total_time,
-                        "launch_count": int(launch_count) if launch_count and launch_count.isdigit() else launch_count,
+                        "launch_count": int(launch_count)
+                        if launch_count and launch_count.isdigit()
+                        else launch_count,
                         "last_time": last_time_str,
                         "raw_line": line_str,
                     }

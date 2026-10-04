@@ -53,7 +53,9 @@ User 0
 
     # Verify event artifacts
     whatsapp_fg = next(
-        a for a in artifacts if a.subtype == "app_usage_event" and a.metadata.get("package") == "com.whatsapp"
+        a
+        for a in artifacts
+        if a.subtype == "app_usage_event" and a.metadata.get("package") == "com.whatsapp"
     )
     assert whatsapp_fg.title == "com.whatsapp: Move To Foreground"
     assert whatsapp_fg.event_time is not None
@@ -65,7 +67,11 @@ User 0
 
     # Verify numeric event code mapping (type=1 -> MOVE_TO_FOREGROUND)
     telegram_num_fg = [
-        a for a in artifacts if a.subtype == "app_usage_event" and a.metadata.get("package") == "org.telegram.messenger" and a.metadata.get("event_type") == "MOVE_TO_FOREGROUND"
+        a
+        for a in artifacts
+        if a.subtype == "app_usage_event"
+        and a.metadata.get("package") == "org.telegram.messenger"
+        and a.metadata.get("event_type") == "MOVE_TO_FOREGROUND"
     ]
     assert len(telegram_num_fg) == 1
     assert telegram_num_fg[0].title == "org.telegram.messenger: Move To Foreground"
@@ -91,8 +97,13 @@ def test_dumpsys_usagestats_registry_integration() -> None:
 
 def test_dumpsys_usagestats_rejects_unrelated_text(tmp_path: Path) -> None:
     path = tmp_path / "usagestats.txt"
-    path.write_text("This is an unrelated arbitrary log file with no android usage data.\nNothing here.", encoding="utf-8")
+    path.write_text(
+        "This is an unrelated arbitrary log file with no android usage data.\nNothing here.",
+        encoding="utf-8",
+    )
 
     parser = AndroidDumpsysUsageStatsParser()
-    with pytest.raises(AndroidDocumentParserError, match="not contain recognized Android dumpsys usagestats"):
+    with pytest.raises(
+        AndroidDocumentParserError, match="not contain recognized Android dumpsys usagestats"
+    ):
         parser.parse(path, _context(path.name))

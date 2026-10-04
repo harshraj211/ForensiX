@@ -876,7 +876,7 @@ table.forensic-table tbody tr.row-recovered:hover {{
             doc += f"""<tr>
             <td class="mono"><strong>#{item.sequence}</strong></td>
             <td class="mono" style="white-space: nowrap;">{_esc(item.created_at.isoformat())}</td>
-            <td><strong>{_esc(item.event_type.replace('_', ' '))}</strong></td>
+            <td><strong>{_esc(item.event_type.replace("_", " "))}</strong></td>
             <td class="mono" style="font-size: 10px;">{_esc(item.actor_id)}</td>
             <td class="mono" style="font-size: 10px;">{_esc(evidence_ref)}</td>
             <td>{hash_disp}</td>

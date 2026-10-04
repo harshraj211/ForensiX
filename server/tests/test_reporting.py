@@ -143,7 +143,7 @@ def test_html_report_rendering_is_deterministic_and_air_gapped() -> None:
                 id="33333333-3333-3333-3333-333333333333",
                 case_number="CASE-2026-0001",
                 title="Test Case <script>alert(1)</script>",
-                description="Rendering test with special chars & quotes \"bold\".",
+                description='Rendering test with special chars & quotes "bold".',
                 legal_authority="Court Warrant #1234",
                 status="active",
                 created_at=datetime(2026, 7, 17, 8, 0, tzinfo=UTC),
@@ -210,4 +210,3 @@ def test_html_report_displays_recovered_carved_artifacts() -> None:
     assert b"forensic.sqlite_carver" in rendered
     assert b"msgstore.db@page:42:offset:0x120" in rendered
     assert b"Deep Forensic Carved &amp; Recovered Records" in rendered
-

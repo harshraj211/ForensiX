@@ -919,7 +919,9 @@ def export_case_entity_graph(
         return Response(
             content=xml_content,
             media_type="application/xml; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="entity_graph_{case_id[:8]}.graphml"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="entity_graph_{case_id[:8]}.graphml"'
+            },
         )
 
     json_content = json.dumps(graph_data, indent=2)

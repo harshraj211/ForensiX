@@ -355,9 +355,7 @@ class SQLiteCarver:
         if flag != LEAF_TABLE_PAGE:
             return []
 
-        first_freeblock = int.from_bytes(
-            page_data[header_offset + 1 : header_offset + 3], "big"
-        )
+        first_freeblock = int.from_bytes(page_data[header_offset + 1 : header_offset + 3], "big")
         cell_count = int.from_bytes(page_data[header_offset + 3 : header_offset + 5], "big")
         content_start = int.from_bytes(page_data[header_offset + 5 : header_offset + 7], "big")
         if content_start == 0:
@@ -374,12 +372,8 @@ class SQLiteCarver:
             visited_freeblocks.add(curr_freeblock)
             if curr_freeblock + 4 > len(page_data):
                 break
-            next_freeblock = int.from_bytes(
-                page_data[curr_freeblock : curr_freeblock + 2], "big"
-            )
-            block_size = int.from_bytes(
-                page_data[curr_freeblock + 2 : curr_freeblock + 4], "big"
-            )
+            next_freeblock = int.from_bytes(page_data[curr_freeblock : curr_freeblock + 2], "big")
+            block_size = int.from_bytes(page_data[curr_freeblock + 2 : curr_freeblock + 4], "big")
             if block_size > 4 and curr_freeblock + block_size <= len(page_data):
                 fb_data = page_data[curr_freeblock + 4 : curr_freeblock + block_size]
                 records = self._scan_block_for_records(

@@ -187,4 +187,3 @@ def test_store_dual_hash_and_verify(tmp_path: Path) -> None:
         expected_sha256=sealed.sha256,
         expected_secondary=sealed.blake2b,
     )
-

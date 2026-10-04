@@ -112,7 +112,9 @@ def test_sqlite_carver_wal_frames(tmp_path: Path) -> None:
         )
         """
     )
-    conn.execute("INSERT INTO chat VALUES (10, 'Suspect', 'Hidden stash coordinates at 45.12, 9.18')")
+    conn.execute(
+        "INSERT INTO chat VALUES (10, 'Suspect', 'Hidden stash coordinates at 45.12, 9.18')"
+    )
     conn.execute("INSERT INTO chat VALUES (20, 'Accomplice', 'Keycode is BravoSierra7788')")
     conn.commit()
 
@@ -132,7 +134,9 @@ def test_sqlite_carver_wal_frames(tmp_path: Path) -> None:
 
     # Test carve_file with include_wal=True recovers both
     combined_carved = carver.carve_file(db_path, include_wal=True)
-    combined_texts = [str(col) for r in combined_carved for col in r.columns if isinstance(col, str)]
+    combined_texts = [
+        str(col) for r in combined_carved for col in r.columns if isinstance(col, str)
+    ]
     assert any("BravoSierra7788" in t or "stash coordinates" in t for t in combined_texts)
 
     conn.close()

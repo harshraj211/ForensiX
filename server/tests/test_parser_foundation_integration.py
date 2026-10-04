@@ -110,11 +110,7 @@ class RichTestParser(BaseEvidenceParser):
                 if isinstance(row["sender"], bytes)
                 else str(row["sender"])
             )
-            item_id = (
-                row["id"].decode("utf-8")
-                if isinstance(row["id"], bytes)
-                else str(row["id"])
-            )
+            item_id = row["id"].decode("utf-8") if isinstance(row["id"], bytes) else str(row["id"])
             artifacts.append(
                 ParsedArtifact(
                     category="communication",

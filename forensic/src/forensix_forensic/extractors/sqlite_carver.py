@@ -250,9 +250,7 @@ class SQLiteCarver:
                 visited_trunks: set[int] = set()
 
                 while (
-                    curr_trunk > 0
-                    and curr_trunk <= total_db_pages
-                    and len(visited_trunks) < 1000
+                    curr_trunk > 0 and curr_trunk <= total_db_pages and len(visited_trunks) < 1000
                 ):
                     if curr_trunk in visited_trunks or len(fragments) >= budget:
                         break
@@ -289,9 +287,9 @@ class SQLiteCarver:
                         ptr_offset = 8 + leaf_idx * 4
                         if ptr_offset + 4 > len(trunk_data):
                             break
-                        leaf_page_no = struct.unpack(
-                            ">I", trunk_data[ptr_offset : ptr_offset + 4]
-                        )[0]
+                        leaf_page_no = struct.unpack(">I", trunk_data[ptr_offset : ptr_offset + 4])[
+                            0
+                        ]
                         if leaf_page_no < 1 or leaf_page_no > total_db_pages:
                             continue
 
@@ -356,9 +354,7 @@ class SQLiteCarver:
                     first_freeblock = struct.unpack(
                         ">H", page_data[hdr_offset + 1 : hdr_offset + 3]
                     )[0]
-                    cell_count = struct.unpack(
-                        ">H", page_data[hdr_offset + 3 : hdr_offset + 5]
-                    )[0]
+                    cell_count = struct.unpack(">H", page_data[hdr_offset + 3 : hdr_offset + 5])[0]
                     content_offset = struct.unpack(
                         ">H", page_data[hdr_offset + 5 : hdr_offset + 7]
                     )[0]

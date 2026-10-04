@@ -30,7 +30,6 @@ __all__ = [
     "CorrelationGraph",
     "CorrelationNode",
     "CorrelationService",
-
     "KeyEvidenceItem",
     "KeyEvidenceList",
     "KeyEvidencePriority",

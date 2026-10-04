@@ -57,7 +57,6 @@ class StreamHasher:
         else:
             self._secondary_hasher = hashlib.blake2b(digest_size=32)
 
-
         self._size_bytes = 0
 
     def update(self, chunk: bytes) -> None:

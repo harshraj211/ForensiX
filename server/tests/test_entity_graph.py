@@ -99,7 +99,6 @@ def _sms_database(path: Path) -> bytes:
     return path.read_bytes()
 
 
-
 def test_entity_graph_service_correlation(database: Database, tmp_path: Path) -> None:
     principal, case_id = _principal_and_case(database)
 
