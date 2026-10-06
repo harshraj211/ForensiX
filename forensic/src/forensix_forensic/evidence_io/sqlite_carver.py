@@ -255,6 +255,7 @@ class SQLiteCarver:
                 page_num=page_num,
                 source_locator=f"{loc}:frame_{offset}",
                 is_page_one=(page_num == 1),
+                scan_cell_slack=True,
             )
             carved.extend(frame_records)
             offset += frame_size
@@ -345,6 +346,7 @@ class SQLiteCarver:
         page_num: int,
         source_locator: str,
         is_page_one: bool,
+        scan_cell_slack: bool = False,
     ) -> list[CarvedSQLiteRecord]:
         """Carve freeblocks, gaps, and slack from a single SQLite leaf page."""
         header_offset = 100 if is_page_one else 0
@@ -402,6 +404,25 @@ class SQLiteCarver:
                 confidence="medium",
             )
             carved_records.extend(records)
+
+        # WAL frames represent historical page images. Their cell slack can
+        # contain deleted rows even when SQLite has already removed the
+        # freeblock chain; ordinary database pages keep this scan disabled to
+        # avoid labelling live cells as deleted evidence.
+        if scan_cell_slack:
+            page_slack = page_data[header_offset + 8 :]
+            records = self._scan_block_for_records(
+                page_slack,
+                page_num=page_num,
+                base_offset=header_offset + 8,
+                source_locator=source_locator,
+                confidence="low",
+            )
+            seen_offsets = {r.offset_in_page for r in carved_records if r.page_number == page_num}
+            for rec in records:
+                if rec.offset_in_page not in seen_offsets:
+                    seen_offsets.add(rec.offset_in_page)
+                    carved_records.append(rec)
 
         return carved_records
 
