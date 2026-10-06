@@ -189,7 +189,8 @@ def test_social_graph_analytics_service(database: Database) -> None:
             event_time=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
             metadata_json=json.dumps(
                 {
-                    "resolved_sender": "suspect_bob",
+                    "resolved_sender": "User (Self)",
+                    "resolved_chat": "suspect_bob",
                     "from_me": 1,
                     "direction": "outgoing",
                     "application": "whatsapp",
@@ -233,6 +234,7 @@ def test_social_graph_analytics_service(database: Database) -> None:
     assert result.total_nodes >= 3  # Device Owner, suspect_bob, +15550001111
     assert result.total_edges >= 2
     assert any(n["id"] == "suspect_bob" for n in result.nodes)
+    assert not any(n["id"] == "User (Self)" for n in result.nodes)
     assert any(n["id"] == "+15550001111" for n in result.nodes)
     assert result.channels_summary["whatsapp"] == 1
     assert result.channels_summary["signal"] == 1

@@ -10,19 +10,29 @@ Provides REST endpoints for:
 
 from __future__ import annotations
 
+import json
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from forensix_api.dependencies import get_adb_client, require_device_operator
+from forensix_api.dependencies import (
+    get_adb_client,
+    get_database,
+    require_csrf_session,
+    require_device_operator,
+)
 from forensix_forensic.adb.client import AdbClient
 from forensix_forensic.extractors.ai_vision_ocr_recorder import AiVisionOcrRecorder
 from forensix_forensic.extractors.fbe_state_matrix import FbeStateMatrix
 from forensix_forensic.extractors.identity_persona_correlator import IdentityPersonaCorrelator
 from forensix_forensic.extractors.keystore_vault_decrypter import KeystoreVaultDecrypter
-from forensix_forensic.extractors.raw_disk_carver import RawDiskCarver
+from forensix_forensic.extractors.raw_disk_carver import RAW_IMAGE_SIGNATURE_PARSER_ID
+from forensix_server.auth import AuthenticatedSession, Permission
+from forensix_server.cases import CaseAccessDeniedError
 from forensix_server.config import Settings
+from forensix_server.db import Database
+from forensix_server.evidence_twin import EvidenceExaminationService, EvidenceTwinService
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/deep", tags=["deep_forensics"])
 
@@ -61,17 +71,22 @@ class KeystoreVaultDecryptResponse(BaseModel):
 
 
 class RawDiskCarveResponse(BaseModel):
-    extraction_id: str
-    serial: str
+    source_id: str
+    working_copy_id: str
+    source_sha256: str
     case_id: str
-    operator_id: str
     carved_media_items: list[dict[str, Any]]
     total_carved_files: int
     total_bytes_carved: int
     gps_locations_plotted_count: int
     duration_seconds: float
-    success: bool
-    error_message: str | None = None
+    scanned_bytes: int
+    truncated: bool
+
+
+class RawDiskCarveRequest(BaseModel):
+    source_id: str
+    working_copy_id: str
 
 
 class IdentityPersonaCorrelateResponse(BaseModel):
@@ -160,41 +175,54 @@ async def decrypt_keystore_vaults(
     "/raw-disk-carve",
     response_model=RawDiskCarveResponse,
     status_code=status.HTTP_200_OK,
-    summary="Carve unallocated disk blocks for media & EXIF GPS locations",
+    summary="Scan a verified raw image working copy for JPEG/PNG signatures",
 )
-async def carve_raw_disk(
+def carve_raw_disk(
     case_id: str,
-    request: BaseDeepRequest,
-    adb_client: Annotated[AdbClient, Depends(get_adb_client)],
-    _authenticated: Annotated[object, Depends(require_device_operator)],
+    request: RawDiskCarveRequest,
+    authenticated: Annotated[AuthenticatedSession, Depends(require_csrf_session)],
+    database: Annotated[Database, Depends(get_database)],
 ) -> RawDiskCarveResponse:
-    adapter = HardwareAdbAdapter(adb_client)
-    carver = RawDiskCarver(adb=adapter)
-    res = await carver.carve_raw_disk(request.serial, request.case_id, request.operator_id)
+    twin = EvidenceTwinService()
+    source = twin.get_source(database, authenticated.principal, case_id, request.source_id)
+    if not authenticated.principal.can(Permission.EVIDENCE_ANALYZE):
+        raise CaseAccessDeniedError("The current user cannot analyze the case image.")
+    if source.status != "sealed" or source.container_format not in {"raw", "img", "dd"}:
+        raise HTTPException(status_code=422, detail="A sealed raw/img/dd source is required")
+    runs = EvidenceExaminationService().run_native_parsers(
+        database,
+        authenticated.principal,
+        case_id,
+        request.source_id,
+        request.working_copy_id,
+        parser_ids=(RAW_IMAGE_SIGNATURE_PARSER_ID,),
+    )
+    run = runs[0]
+    if run.run.status != "completed":
+        raise HTTPException(status_code=422, detail=run.run.error_message or "Image scan failed")
+    summary_record = next(
+        (item for item in run.artifacts if item.subtype == "raw_image_scan_summary"), None
+    )
+    if summary_record is None:
+        raise HTTPException(status_code=500, detail="Image scan summary is missing")
+    summary = json.loads(summary_record.metadata_json)
+    items = [
+        json.loads(item.metadata_json)
+        for item in run.artifacts
+        if item.subtype == "raw_image_media_candidate"
+    ]
     return RawDiskCarveResponse(
-        extraction_id=res.extraction_id,
-        serial=res.serial,
-        case_id=res.case_id,
-        operator_id=res.operator_id,
-        carved_media_items=[
-            {
-                "file_type": i.file_type,
-                "offset_bytes": i.offset_bytes,
-                "size_bytes": i.size_bytes,
-                "sha256_hash": i.sha256_hash,
-                "has_gps": i.has_gps,
-                "latitude": i.latitude,
-                "longitude": i.longitude,
-                "camera_model": i.camera_model,
-            }
-            for i in res.carved_media_items
-        ],
-        total_carved_files=res.total_carved_files,
-        total_bytes_carved=res.total_bytes_carved,
-        gps_locations_plotted_count=res.gps_locations_plotted_count,
-        duration_seconds=res.duration_seconds,
-        success=res.success,
-        error_message=res.error_message,
+        source_id=request.source_id,
+        working_copy_id=request.working_copy_id,
+        source_sha256=run.run.source_sha256,
+        case_id=case_id,
+        carved_media_items=items,
+        total_carved_files=len(items),
+        total_bytes_carved=sum(item["size_bytes"] for item in items),
+        gps_locations_plotted_count=sum(item["has_gps"] for item in items),
+        duration_seconds=summary["duration_seconds"],
+        scanned_bytes=summary["scanned_bytes"],
+        truncated=summary["truncated"],
     )
 
 

@@ -354,6 +354,10 @@ class SQLiteCarver:
         flag = page_data[header_offset]
         if flag != LEAF_TABLE_PAGE:
             return []
+        # Page one is the sqlite_schema table. Its live schema rows are not
+        # deleted user evidence and scanning its slack produces false positives.
+        if is_page_one:
+            return []
 
         first_freeblock = int.from_bytes(page_data[header_offset + 1 : header_offset + 3], "big")
         cell_count = int.from_bytes(page_data[header_offset + 3 : header_offset + 5], "big")
@@ -398,21 +402,6 @@ class SQLiteCarver:
                 confidence="medium",
             )
             carved_records.extend(records)
-
-        # 3. Scan cell slack spaces across the page
-        page_slack = page_data[header_offset + 8 :]
-        records = self._scan_block_for_records(
-            page_slack,
-            page_num=page_num,
-            base_offset=header_offset + 8,
-            source_locator=source_locator,
-            confidence="low",
-        )
-        seen_offsets = {r.offset_in_page for r in carved_records if r.page_number == page_num}
-        for rec in records:
-            if rec.offset_in_page not in seen_offsets:
-                seen_offsets.add(rec.offset_in_page)
-                carved_records.append(rec)
 
         return carved_records
 
@@ -503,5 +492,14 @@ class SQLiteCarver:
             val, consumed = decoded
             values.append(val)
             curr_offset += consumed
+
+        if not any(
+            isinstance(value, str)
+            and len(value.strip()) >= 4
+            and "\x00" not in value
+            and any(character.isalnum() for character in value)
+            for value in values
+        ):
+            return None
 
         return tuple(values)

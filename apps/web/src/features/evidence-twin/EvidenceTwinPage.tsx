@@ -1250,6 +1250,7 @@ function RecoveryAssessmentPanel({ assessment }: { assessment: RecoveryAssessmen
 
 function ParsedArtifactCard({ artifact, caseId }: { artifact: EvidenceSourceArtifact; caseId: string }) {
   const cardCandidate = artifact.subtype === "memory_card_deleted_candidate";
+  const imageCandidate = artifact.subtype === "raw_image_media_candidate";
   const extractable = cardCandidate && artifact.metadata.recovery_status === "contiguous_unallocated_candidate";
   const readableCardFile = artifact.subtype === "memory_card_file" && artifact.metadata.hash_status === "complete";
   return (
@@ -1285,6 +1286,14 @@ function ParsedArtifactCard({ artifact, caseId }: { artifact: EvidenceSourceArti
           href={`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(artifact.evidence_source_id)}/artifacts/${encodeURIComponent(artifact.id)}/file-content`}
         >
           Download verified file bytes
+        </a>
+      )}
+      {imageCandidate && (
+        <a
+          className="mt-2 inline-block text-xs font-medium text-cyan-200 underline underline-offset-2"
+          href={`/api/v1/cases/${encodeURIComponent(caseId)}/evidence-sources/${encodeURIComponent(artifact.evidence_source_id)}/artifacts/${encodeURIComponent(artifact.id)}/carved-content`}
+        >
+          Download hash-verified candidate bytes
         </a>
       )}
       {typeof artifact.metadata.attachment_resolution === "string" && (

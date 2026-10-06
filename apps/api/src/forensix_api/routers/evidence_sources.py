@@ -59,8 +59,14 @@ from forensix_forensic.extractors.memory_card import (
     verified_active_file,
     verified_deleted_candidate,
 )
+from forensix_forensic.extractors.raw_disk_carver import (
+    RAW_IMAGE_SIGNATURE_PARSER_ID,
+    iter_candidate,
+    verified_candidate,
+)
 from forensix_forensic.storage import EvidenceStore
-from forensix_server.auth import AuthenticatedSession
+from forensix_server.auth import AuthenticatedSession, Permission
+from forensix_server.cases import CaseAccessDeniedError
 from forensix_server.config import Settings
 from forensix_server.db import (
     Database,
@@ -1066,6 +1072,62 @@ def download_active_card_file(
             "Cache-Control": "no-store, private",
             "X-Content-Type-Options": "nosniff",
             "X-ForensiX-File-SHA256": digest,
+        },
+    )
+
+
+@router.get("/{source_id}/artifacts/{artifact_id}/carved-content")
+def download_raw_image_candidate(
+    case_id: str,
+    source_id: str,
+    artifact_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> StreamingResponse:
+    """Download only bytes that still match a recorded raw-image signature finding."""
+    EvidenceTwinService().get_source(database, authenticated.principal, case_id, source_id)
+    if not authenticated.principal.can(Permission.EVIDENCE_ANALYZE):
+        raise CaseAccessDeniedError("The current user cannot analyze the case image.")
+    with database.session() as session:
+        artifact = session.get(EvidenceSourceArtifactRecord, artifact_id)
+        if (
+            artifact is None
+            or artifact.case_id != case_id
+            or artifact.evidence_source_id != source_id
+            or artifact.parser_id != RAW_IMAGE_SIGNATURE_PARSER_ID
+            or artifact.subtype != "raw_image_media_candidate"
+        ):
+            raise HTTPException(status_code=404, detail="Image candidate artifact not found")
+        working_copy = session.get(EvidenceWorkingCopyRecord, artifact.working_copy_id)
+        if working_copy is None or working_copy.case_id != case_id:
+            raise HTTPException(status_code=404, detail="Verified working copy not found")
+        metadata = json.loads(artifact.metadata_json)
+        copy_id = working_copy.id
+        storage_key = working_copy.storage_key
+    offset = metadata.get("offset_bytes")
+    size = metadata.get("size_bytes")
+    digest = metadata.get("sha256_hash")
+    if type(offset) is not int or type(size) is not int or not isinstance(digest, str):
+        raise EvidenceTwinIntegrityError("The candidate byte provenance is incomplete.")
+    verification = EvidenceTwinService().verify_working_copy(
+        database, authenticated.principal, case_id, source_id, copy_id
+    )
+    if verification.status != "verified":
+        raise EvidenceTwinIntegrityError("The image working copy failed integrity verification.")
+    image = EvidenceStore(database.data_dir / "evidence").resolve(storage_key, require_file=True)
+    try:
+        verified_candidate(image, offset=offset, size=size, expected_sha256=digest)
+    except ValueError as exc:
+        raise EvidenceTwinIntegrityError(str(exc)) from exc
+    return StreamingResponse(
+        iter_candidate(image, offset=offset, size=size),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Length": str(size),
+            "Content-Disposition": f'attachment; filename="image-candidate-{artifact_id}.bin"',
+            "Cache-Control": "no-store, private",
+            "X-Content-Type-Options": "nosniff",
+            "X-ForensiX-Candidate-SHA256": digest,
         },
     )
 

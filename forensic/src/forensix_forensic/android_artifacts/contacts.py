@@ -4,6 +4,7 @@
 
 from collections import defaultdict
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
 
 from forensix_forensic.evidence_io import (
@@ -14,7 +15,14 @@ from forensix_forensic.evidence_io import (
 )
 
 from .adapter import AdapterMetadata, AdapterParseResult, AdapterParseStatus, BaseApplicationAdapter
-from .common import compact_metadata, integer, parser_error, require_columns, text
+from .common import (
+    android_timestamp,
+    compact_metadata,
+    integer,
+    parser_error,
+    require_columns,
+    text,
+)
 
 _NAME = "vnd.android.cursor.item/name"
 _PHONE = "vnd.android.cursor.item/phone_v2"
@@ -61,6 +69,7 @@ class AndroidContactsAdapter(BaseApplicationAdapter):
         )
         require_columns(reader, "mimetypes", {"_id", "mimetype"})
         raw_columns = require_columns(reader, "raw_contacts", {"_id"})
+        tables = reader.table_names()
         deleted = 'r."deleted" AS "deleted"' if "deleted" in raw_columns else '0 AS "deleted"'
         account_name = (
             'r."account_name" AS "account_name"'
@@ -73,12 +82,28 @@ class AndroidContactsAdapter(BaseApplicationAdapter):
             else 'NULL AS "account_type"'
         )
         data4 = 'd."data4" AS "data4"' if "data4" in data_columns else 'NULL AS "data4"'
+        aggregate_contact_id = (
+            'r."contact_id" AS "contact_id"'
+            if "contact_id" in raw_columns
+            else 'r."_id" AS "contact_id"'
+        )
+        has_contacts = "contacts" in tables and "contact_id" in raw_columns
+        contact_join = 'LEFT JOIN contacts AS c ON c."_id" = r."contact_id"' if has_contacts else ""
+        contact_fields = (
+            'c."times_contacted" AS "times_contacted", '
+            'c."last_time_contacted" AS "last_time_contacted", '
+            'c."starred" AS "starred", c."photo_id" AS "photo_id"'
+            if has_contacts
+            else 'NULL AS "times_contacted", NULL AS "last_time_contacted", '
+            'NULL AS "starred", NULL AS "photo_id"'
+        )
         query = f"""
-            SELECT d.raw_contact_id, m.mimetype, d.data1, d.data2, d.data3,
-                   {data4}, {deleted}, {account_name}, {account_type}
+            SELECT d.raw_contact_id, {aggregate_contact_id}, m.mimetype, d.data1, d.data2, d.data3,
+                   {data4}, {deleted}, {account_name}, {account_type}, {contact_fields}
             FROM data AS d
             JOIN mimetypes AS m ON m._id = d.mimetype_id
             JOIN raw_contacts AS r ON r._id = d.raw_contact_id
+            {contact_join}
             ORDER BY d.raw_contact_id, d._id
         """
         try:
@@ -88,7 +113,7 @@ class AndroidContactsAdapter(BaseApplicationAdapter):
 
         grouped: dict[int, list[Mapping[str, object]]] = defaultdict(list)
         for row in rows:
-            identifier = integer(row.get("raw_contact_id"))
+            identifier = integer(row.get("contact_id"))
             if identifier is not None:
                 grouped[identifier].append(row)
 
@@ -109,12 +134,30 @@ class AndroidContactsAdapter(BaseApplicationAdapter):
         deleted = False
         account_name: str | None = None
         account_type: str | None = None
+        raw_contact_ids: set[int] = set()
+        times_contacted: int | None = None
+        last_time_contacted: datetime | None = None
+        starred = False
+        has_photo = False
         for row in rows:
             mimetype = text(row.get("mimetype"))
             value = text(row.get("data1"))
             deleted = deleted or integer(row.get("deleted")) == 1
             account_name = account_name or text(row.get("account_name"))
             account_type = account_type or text(row.get("account_type"))
+            raw_identifier = integer(row.get("raw_contact_id"))
+            if raw_identifier is not None:
+                raw_contact_ids.add(raw_identifier)
+            times_contacted = (
+                times_contacted
+                if times_contacted is not None
+                else integer(row.get("times_contacted"))
+            )
+            last_time_contacted = last_time_contacted or android_timestamp(
+                row.get("last_time_contacted")
+            )
+            starred = starred or bool(integer(row.get("starred")) or 0)
+            has_photo = has_photo or row.get("photo_id") is not None
             if mimetype == _NAME and value:
                 name = value
             elif mimetype == _PHONE and value:
@@ -149,7 +192,8 @@ class AndroidContactsAdapter(BaseApplicationAdapter):
             confidence="high",
             metadata=compact_metadata(
                 {
-                    "raw_contact_id": identifier,
+                    "contact_id": identifier,
+                    "raw_contact_ids": sorted(raw_contact_ids),
                     "display_name": name,
                     "phones": phones,
                     "emails": emails,
@@ -157,6 +201,12 @@ class AndroidContactsAdapter(BaseApplicationAdapter):
                     "addresses": addresses,
                     "account_name": account_name,
                     "account_type": account_type,
+                    "times_contacted": times_contacted,
+                    "last_time_contacted": last_time_contacted.isoformat()
+                    if last_time_contacted
+                    else None,
+                    "starred": starred,
+                    "has_photo": has_photo,
                     "application": "android.contacts",
                 }
             ),

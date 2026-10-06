@@ -15,6 +15,7 @@ from forensix_forensic.evidence_io import (
     ParserContext,
     ParserMetadata,
 )
+from forensix_forensic.extractors.raw_disk_carver import RawImageSignatureParser
 
 MAX_DOCUMENT_BYTES = 10 * 1024 * 1024
 MAX_XML_ELEMENTS = 20_000
@@ -161,6 +162,7 @@ def android_document_parser_registry() -> DocumentParserRegistry:
     registry.register(AndroidWifiConfigParser())
     registry.register(AndroidBluetoothConfigParser())
     registry.register(AndroidDumpsysUsageStatsParser())
+    registry.register(RawImageSignatureParser())
     return registry
 
 

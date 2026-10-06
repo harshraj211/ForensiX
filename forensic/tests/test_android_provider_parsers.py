@@ -28,7 +28,11 @@ def test_contacts_provider_known_answer(tmp_path: Path) -> None:
         """
         CREATE TABLE mimetypes (_id INTEGER PRIMARY KEY, mimetype TEXT);
         CREATE TABLE raw_contacts (
-            _id INTEGER PRIMARY KEY, deleted INTEGER, account_name TEXT, account_type TEXT
+            _id INTEGER PRIMARY KEY, contact_id INTEGER, deleted INTEGER, account_name TEXT, account_type TEXT
+        );
+        CREATE TABLE contacts (
+            _id INTEGER PRIMARY KEY, times_contacted INTEGER, last_time_contacted INTEGER,
+            starred INTEGER, photo_id INTEGER
         );
         CREATE TABLE data (
             _id INTEGER PRIMARY KEY, raw_contact_id INTEGER, mimetype_id INTEGER,
@@ -37,7 +41,8 @@ def test_contacts_provider_known_answer(tmp_path: Path) -> None:
         INSERT INTO mimetypes VALUES (1, 'vnd.android.cursor.item/name');
         INSERT INTO mimetypes VALUES (2, 'vnd.android.cursor.item/phone_v2');
         INSERT INTO mimetypes VALUES (3, 'vnd.android.cursor.item/email_v2');
-        INSERT INTO raw_contacts VALUES (10, 0, 'local', 'com.android.local');
+        INSERT INTO contacts VALUES (5, 9, 1704067200000, 1, 77);
+        INSERT INTO raw_contacts VALUES (10, 5, 0, 'local', 'com.android.local');
         INSERT INTO data VALUES (1, 10, 1, 'Alice Example', NULL, NULL, NULL);
         INSERT INTO data VALUES (2, 10, 2, '+15551234567', '2', 'Mobile', NULL);
         INSERT INTO data VALUES (3, 10, 3, 'alice@example.test', '1', 'Home', NULL);
@@ -53,6 +58,12 @@ def test_contacts_provider_known_answer(tmp_path: Path) -> None:
     assert artifacts[0].title == "Alice Example"
     assert artifacts[0].metadata["phones"][0]["number"] == "+15551234567"
     assert artifacts[0].metadata["emails"][0]["address"] == "alice@example.test"
+    assert artifacts[0].metadata["contact_id"] == 5
+    assert artifacts[0].metadata["raw_contact_ids"] == [10]
+    assert artifacts[0].metadata["times_contacted"] == 9
+    assert artifacts[0].metadata["starred"] is True
+    assert artifacts[0].metadata["has_photo"] is True
+    assert artifacts[0].metadata["last_time_contacted"].startswith("2024-01-01")
 
 
 def test_sms_and_mms_known_answers(tmp_path: Path) -> None:

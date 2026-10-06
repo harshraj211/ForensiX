@@ -27,8 +27,10 @@ import { Link, useParams } from "react-router-dom";
 import {
   getCase,
   getCommandCenter,
+  listCaseJobs,
   type CommandCenterNextAction,
   type CommandCenterSummary,
+  type DurableCaseJob,
 } from "../../lib/api";
 import { CaseError, StatusBadge } from "./CasesPage";
 import { caseKeys } from "./caseKeys";
@@ -114,6 +116,12 @@ export function CommandCenterPage() {
     queryFn: () => getCommandCenter(caseId),
     enabled: Boolean(caseId),
     refetchInterval: 15_000,
+  });
+  const jobsQuery = useQuery({
+    queryKey: caseKeys.jobs(caseId),
+    queryFn: () => listCaseJobs(caseId),
+    enabled: Boolean(caseId),
+    refetchInterval: 5_000,
   });
 
   if (caseQuery.isPending || summaryQuery.isPending) {
@@ -252,6 +260,12 @@ export function CommandCenterPage() {
         <AttentionPanel summary={summary} />
       </section>
 
+      <JobOperationsPanel
+        jobs={jobsQuery.data?.items ?? []}
+        pending={jobsQuery.isPending}
+        error={jobsQuery.error}
+      />
+
       <section className="mt-5 rounded-2xl border border-white/8 bg-white/[0.025] p-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -275,6 +289,113 @@ export function CommandCenterPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function JobOperationsPanel({
+  jobs,
+  pending,
+  error,
+}: {
+  jobs: DurableCaseJob[];
+  pending: boolean;
+  error: Error | null;
+}) {
+  return (
+    <section className="mt-5 rounded-2xl border border-white/8 bg-white/[0.025] p-6">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
+            Durable operation ledger
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-white">All case jobs in one live view</h2>
+        </div>
+        <p className="text-xs text-slate-600">Auto refreshes every 5 seconds</p>
+      </div>
+
+      {pending && (
+        <div className="mt-5 flex items-center gap-2 text-sm text-slate-500" role="status">
+          <LoaderCircle size={15} className="animate-spin" aria-hidden="true" /> Loading job ledger…
+        </div>
+      )}
+      {error && <p className="mt-5 text-sm text-rose-300">{error.message}</p>}
+      {!pending && !error && jobs.length === 0 && (
+        <p className="mt-5 text-sm text-slate-500">
+          No durable operation has been recorded for this case yet.
+        </p>
+      )}
+      {jobs.length > 0 && (
+        <div className="mt-5 overflow-x-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-b border-white/8 text-[11px] uppercase tracking-[0.14em] text-slate-600">
+              <tr>
+                <th className="pb-3 pr-4 font-medium">Operation</th>
+                <th className="pb-3 pr-4 font-medium">State</th>
+                <th className="pb-3 pr-4 font-medium">Progress</th>
+                <th className="pb-3 pr-4 font-medium">Current checkpoint</th>
+                <th className="pb-3 font-medium">Updated</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/6">
+              {jobs.map((job) => (
+                <tr key={job.id}>
+                  <td className="py-4 pr-4">
+                    <p className="font-medium capitalize text-slate-200">
+                      {job.job_type.replaceAll("_", " ")}
+                    </p>
+                    <p className="mt-1 font-mono text-[10px] text-slate-700">{job.id.slice(0, 12)}</p>
+                  </td>
+                  <td className="py-4 pr-4">
+                    <JobStatePill state={job.state} />
+                  </td>
+                  <td className="py-4 pr-4">
+                    <div className="flex w-36 items-center gap-3">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/7">
+                        <div
+                          className="h-full rounded-full bg-cyan-300"
+                          style={{ width: `${String(job.progress_percent)}%` }}
+                        />
+                      </div>
+                      <span className="w-8 text-right font-mono text-[11px] text-slate-500">
+                        {job.progress_percent}%
+                      </span>
+                    </div>
+                  </td>
+                  <td className="max-w-md py-4 pr-4 text-xs text-slate-400">
+                    {job.current_step ?? "Awaiting next state transition"}
+                    {job.current_module && (
+                      <span className="mt-1 block font-mono text-[10px] text-cyan-300/55">
+                        {job.current_module}
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-4 font-mono text-[11px] text-slate-600">
+                    {new Date(job.updated_at).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function JobStatePill({ state }: { state: DurableCaseJob["state"] }) {
+  const active = new Set(["validating", "ready", "running", "verifying", "cancelling"]);
+  const successful = new Set(["completed", "verified"]);
+  const className = successful.has(state)
+    ? "border-emerald-300/20 bg-emerald-300/8 text-emerald-300"
+    : active.has(state)
+      ? "border-cyan-300/20 bg-cyan-300/8 text-cyan-300"
+      : state === "failed"
+        ? "border-rose-300/20 bg-rose-300/8 text-rose-300"
+        : "border-slate-300/15 bg-slate-300/5 text-slate-400";
+  return (
+    <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-wide ${className}`}>
+      {state}
+    </span>
   );
 }
 

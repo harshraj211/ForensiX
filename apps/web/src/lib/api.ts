@@ -1399,6 +1399,48 @@ export interface SimilarMediaResult {
   max_distance: number;
 }
 
+export type DurableJobType =
+  | "device_assessment"
+  | "acquisition"
+  | "parsing"
+  | "indexing"
+  | "hashing"
+  | "timeline"
+  | "report"
+  | "export"
+  | "hash_verification";
+
+export interface DurableCaseJob {
+  id: string;
+  case_id: string;
+  owner_id: string | null;
+  plan_id: string | null;
+  job_type: DurableJobType;
+  state: AcquisitionJobState;
+  progress_percent: number;
+  current_step: string | null;
+  current_module: string | null;
+  cancellation_requested: boolean;
+  resume_supported: boolean;
+  checkpoint: Record<string, unknown> | null;
+  error_code: string | null;
+  error_message: string | null;
+  result_reference: string | null;
+  last_event_sequence: number;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface DurableCaseJobList {
+  items: DurableCaseJob[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export interface BackupImport {
   evidence_source: EvidenceSource;
   backup_kind: string;
@@ -1578,6 +1620,10 @@ export function getCase(caseId: string): Promise<CaseRecord> {
 
 export function getCommandCenter(caseId: string): Promise<CommandCenterSummary> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/command-center`);
+}
+
+export function listCaseJobs(caseId: string): Promise<DurableCaseJobList> {
+  return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/jobs?offset=0&limit=50`);
 }
 
 export async function getInvestigationStoryboard(caseId: string): Promise<InvestigationStoryboard> {
@@ -2846,9 +2892,9 @@ export function addAnalystNote(
   );
 }
 
-export function getTimeline(caseId: string): Promise<TimelineSearchResult> {
+export function getTimeline(caseId: string, offset = 0, limit = 200): Promise<TimelineSearchResult> {
   return apiRequest(
-    `/api/v1/cases/${encodeURIComponent(caseId)}/timeline?offset=0&limit=200`,
+    `/api/v1/cases/${encodeURIComponent(caseId)}/timeline?offset=${String(offset)}&limit=${String(limit)}`,
   );
 }
 
@@ -3567,10 +3613,10 @@ export interface KeystoreVaultDecryptResult {
 }
 
 export interface RawDiskCarveResult {
-  extraction_id: string;
-  serial: string;
+  source_id: string;
+  working_copy_id: string;
+  source_sha256: string;
   case_id: string;
-  operator_id: string;
   carved_media_items: Array<{
     file_type: string;
     offset_bytes: number;
@@ -3585,8 +3631,8 @@ export interface RawDiskCarveResult {
   total_bytes_carved: number;
   gps_locations_plotted_count: number;
   duration_seconds: number;
-  success: boolean;
-  error_message: string | null;
+  scanned_bytes: number;
+  truncated: boolean;
 }
 
 export interface IdentityPersonaCorrelateResult {
@@ -3664,7 +3710,7 @@ export function decryptKeystoreVaults(
 
 export function carveRawDisk(
   caseId: string,
-  payload: { serial: string; case_id: string; operator_id?: string },
+  payload: { source_id: string; working_copy_id: string },
 ): Promise<RawDiskCarveResult> {
   return apiRequest(`/api/v1/cases/${encodeURIComponent(caseId)}/deep/raw-disk-carve`, {
     method: "POST",
@@ -4025,7 +4071,19 @@ async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T
   if (response.status === 204) {
     return undefined as T;
   }
-  const body = (await response.json()) as T | ErrorEnvelope;
+  let body: T | ErrorEnvelope;
+  try {
+    body = (await response.json()) as T | ErrorEnvelope;
+  } catch {
+    throw new ApiError(
+      response.ok
+        ? "ForensiX received an invalid response from the local API."
+        : `The local API failed (${String(response.status)}). Check the API log for details.`,
+      "INVALID_API_RESPONSE",
+      response.headers.get("X-Request-ID") ?? "unknown",
+      response.status,
+    );
+  }
   if (!response.ok) {
     const envelope = body as ErrorEnvelope;
     const validationDetail = Array.isArray(envelope.detail)

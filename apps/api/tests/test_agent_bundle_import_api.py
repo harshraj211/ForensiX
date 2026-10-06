@@ -565,5 +565,20 @@ def test_agent_bundle_parser_indexes_records_for_search_timeline_and_reports(
         }
         assert len(report_payload["timeline"]) == 5
 
+        timeline_export = client.get(f"/api/v1/cases/{case_id}/timeline/export.ndjson")
+        assert timeline_export.status_code == 200, timeline_export.text
+        assert timeline_export.headers["content-type"].startswith("application/x-ndjson")
+        exported_events = [json.loads(line) for line in timeline_export.text.splitlines()]
+        assert len(exported_events) == 5
+        assert {event["event_hash"] for event in exported_events} == {
+            event["event_hash"] for event in report_payload["timeline"]
+        }
+        assert all(
+            event["source_artifact_id"] and event["parser_run_id"] for event in exported_events
+        )
+        assert [event["event_time"] for event in exported_events] == sorted(
+            (event["event_time"] for event in exported_events), reverse=True
+        )
+
         with database.session() as session:
             assert len(list(session.scalars(select(EvidenceSourceTimelineEventRecord)))) == 5

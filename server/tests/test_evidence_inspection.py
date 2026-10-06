@@ -75,6 +75,12 @@ def test_sqlite_header_is_detected(database: Database) -> None:
     assert record.encryption_state == "not_detected"
 
 
+def test_zero_prefixed_raw_image_is_not_misclassified_as_empty_tar(database: Database) -> None:
+    record = _inspect(database, b"\x00" * 1024 + b"image payload", "userdata.img")
+
+    assert record.detected_type == "opaque"
+
+
 @pytest.mark.parametrize(
     ("offset", "magic", "expected"),
     [

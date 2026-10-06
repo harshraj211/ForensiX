@@ -39,6 +39,10 @@ from forensix_forensic.extractors.agent_apk import import_agent_bundle
 from forensix_forensic.extractors.agent_apk.agent_result import AgentExtractionResult
 from forensix_forensic.extractors.legacy_android_backup import LegacyAndroidBackupParser
 from forensix_forensic.extractors.memory_card import MemoryCardImageParser
+from forensix_forensic.extractors.raw_disk_carver import (
+    RAW_IMAGE_SIGNATURE_PARSER_ID,
+    RawImageSignatureParser,
+)
 from forensix_forensic.extractors.smart_switch import SmartSwitchArchiveParser
 from forensix_forensic.storage import EvidenceStore
 from forensix_server.auth import Permission, Principal
@@ -286,6 +290,19 @@ class EvidenceExaminationService:
                     context,
                     path,
                     job_id=job_id,
+                )
+            ]
+        if parser_ids is not None and set(parser_ids) == {RAW_IMAGE_SIGNATURE_PARSER_ID}:
+            image_parser = RawImageSignatureParser()
+            if source.container_format not in {"raw", "img", "dd"} or not image_parser.can_parse(
+                source.source_name
+            ):
+                raise EvidenceTwinError(
+                    "The raw-image signature parser requires a raw/img/dd source."
+                )
+            return [
+                self._execute_document_parser(
+                    database, principal, inspection.id, context, image_parser, path
                 )
             ]
         active_registry = registry or android_parser_registry()

@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   Brain,
   CheckCircle2,
@@ -16,6 +18,8 @@ import {
   correlateIdentityPersonas,
   evaluateFbeMatrix,
   recordAiVisionOcrSession,
+  listEvidenceSources,
+  listEvidenceWorkingCopies,
   KeystoreVaultDecryptResult,
   RawDiskCarveResult,
   IdentityPersonaCorrelateResult,
@@ -41,6 +45,18 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
   const [visionResult, setVisionResult] = useState<AiVisionOcrRecordResult | null>(null);
 
   const [targetApp, setTargetApp] = useState("com.whatsapp");
+  const [sourceId, setSourceId] = useState("");
+  const [workingCopyId, setWorkingCopyId] = useState("");
+  const sources = useQuery({
+    queryKey: ["raw-carve-sources", caseId],
+    queryFn: () => listEvidenceSources(caseId),
+    enabled: activeTab === "disk",
+  });
+  const copies = useQuery({
+    queryKey: ["raw-carve-copies", caseId, sourceId],
+    queryFn: () => listEvidenceWorkingCopies(caseId, sourceId),
+    enabled: activeTab === "disk" && Boolean(sourceId),
+  });
 
   async function handleRunKeystore() {
     setLoading(true);
@@ -59,7 +75,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
     setLoading(true);
     setError(null);
     try {
-      const res = await carveRawDisk(caseId, { serial, case_id: caseId });
+      const res = await carveRawDisk(caseId, { source_id: sourceId, working_copy_id: workingCopyId });
       setDiskResult(res);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed raw disk carving.");
@@ -146,7 +162,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
               activeTab === "disk" ? "bg-purple-500 text-slate-950 shadow" : "bg-slate-900/90 text-purple-200 hover:bg-slate-800"
             }`}
           >
-            <HardDrive size={15} /> Raw Disk GPS Carver
+            <HardDrive size={15} /> Verified Image Carver
           </button>
           <button
             type="button"
@@ -229,33 +245,53 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
         </div>
       )}
 
-      {/* Tab 2: Raw Disk GPS Carver */}
+      {/* Tab 2: verified image signature carver */}
       {activeTab === "disk" && (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
           <div className="flex items-start justify-between">
             <div>
-              <h3 className="text-base font-bold text-slate-900">Raw Disk Sector &amp; EXIF GPS Carver</h3>
+              <h3 className="text-base font-bold text-slate-900">Verified Image JPEG/PNG Carver</h3>
               <p className="text-xs text-slate-500">
-                Scans raw unallocated sector blocks for JPEG/PNG/MP4 magic headers, parses EXIF GPS tags, and plots coordinates.
+                Scans a verified raw image working copy for decodable JPEG and PNG files, recording offsets, hashes and available EXIF GPS. Allocation state is not inferred.
               </p>
             </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <select value={sourceId} onChange={(event) => { setSourceId(event.target.value); setWorkingCopyId(""); setDiskResult(null); }} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800">
+              <option value="">Choose raw image source</option>
+              {sources.data?.filter(source => source.status === "sealed" && ["raw", "img", "dd"].includes(source.container_format)).map(source => (
+                <option key={source.id} value={source.id}>{source.display_name}</option>
+              ))}
+            </select>
+            <select value={workingCopyId} onChange={(event) => { setWorkingCopyId(event.target.value); setDiskResult(null); }} disabled={!sourceId} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800">
+              <option value="">Choose verified working copy</option>
+              {copies.data?.filter(copy => copy.status === "ready").map(copy => (
+                <option key={copy.id} value={copy.id}>{copy.id.slice(0, 8)} · {copy.size_bytes?.toLocaleString() ?? "?"} bytes</option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={() => { void handleRunRawDisk(); }}
-              disabled={loading}
+              disabled={loading || !sourceId || !workingCopyId}
               className="inline-flex items-center gap-2 rounded-xl bg-purple-700 px-4 py-2 text-xs font-bold text-white shadow hover:bg-purple-800 disabled:opacity-50"
             >
               {loading ? <Loader2 size={14} className="animate-spin" /> : <HardDrive size={14} />}
-              Carve Raw Disk Sectors
+              Scan Working Copy
             </button>
           </div>
+          {sources.isError && <p className="text-xs text-rose-700">Could not load evidence sources.</p>}
+          {copies.isError && <p className="text-xs text-rose-700">Could not load working copies.</p>}
 
           {diskResult && (
             <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-xs space-y-3">
               <div className="flex items-center justify-between font-bold text-emerald-900">
-                <span className="flex items-center gap-1.5"><CheckCircle2 size={16} /> Carving Completed</span>
-                <span>{diskResult.gps_locations_plotted_count} EXIF GPS Coordinates Plotted</span>
+                <span className="flex items-center gap-1.5"><CheckCircle2 size={16} /> Scanned {diskResult.scanned_bytes.toLocaleString()} bytes{diskResult.truncated ? " (finding limit reached)" : ""}</span>
+                <span>{diskResult.total_carved_files} verified file(s), {diskResult.gps_locations_plotted_count} with GPS</span>
               </div>
+              <p className="font-mono text-[10px] text-slate-500">Source SHA-256: {diskResult.source_sha256}</p>
+              <Link to={`/cases/${encodeURIComponent(caseId)}/evidence-twin`} className="inline-block text-xs font-semibold text-purple-800 underline">
+                Review saved findings and download candidate bytes in Evidence Twin
+              </Link>
               <div className="grid gap-2 sm:grid-cols-2">
                 {diskResult.carved_media_items.map((item, idx) => (
                   <div key={idx} className="rounded-lg bg-white p-3 border border-slate-200">
@@ -263,6 +299,7 @@ export function DeepForensicsPanel({ caseId, serial }: DeepForensicsPanelProps) 
                       <span>{item.file_type} File</span>
                       <span>{(item.size_bytes / 1048576).toFixed(2)} MB</span>
                     </div>
+                    <p className="mt-1 font-mono text-[10px] text-slate-500">Offset {item.offset_bytes.toLocaleString()} · SHA-256 {item.sha256_hash}</p>
                     {item.has_gps && (
                       <div className="mt-2 flex items-center gap-1.5 text-emerald-700 font-semibold">
                         <MapPin size={13} /> {item.latitude}, {item.longitude} ({item.camera_model})

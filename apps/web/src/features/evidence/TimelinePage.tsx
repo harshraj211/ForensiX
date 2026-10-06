@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Clock3, LoaderCircle, Calendar as CalendarIcon, Filter } from "lucide-react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Clock3, Download, LoaderCircle, Calendar as CalendarIcon, Filter } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 
 import { getCase, getTimeline } from "../../lib/api";
@@ -29,15 +29,21 @@ export function TimelinePage() {
     enabled: Boolean(caseId),
   });
   
-  const timeline = useQuery({
+  const timeline = useInfiniteQuery({
     queryKey: caseKeys.timeline(caseId),
-    queryFn: () => getTimeline(caseId),
+    queryFn: ({ pageParam }) => getTimeline(caseId, pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (page) => page.offset + page.items.length < page.total
+      ? page.offset + page.items.length
+      : undefined,
     enabled: Boolean(caseId),
   });
+  const items = useMemo(() => timeline.data?.pages.flatMap(page => page.items) ?? [], [timeline.data]);
+  const facets = timeline.data?.pages[0]?.category_facets;
+  const total = timeline.data?.pages[0]?.total ?? 0;
 
   // Calculate heatmap data
   const heatmap = useMemo(() => {
-    const items = timeline.data?.items || [];
     const counts = new Map<string, number>();
     
     let minTime = Infinity;
@@ -89,17 +95,16 @@ export function TimelinePage() {
     }
 
     return { days, maxCount };
-  }, [timeline.data]);
+  }, [items]);
 
   // Filter items
   const filteredItems = useMemo(() => {
-    const items = timeline.data?.items || [];
     return items.filter(item => {
       if (selectedDate && toDateString(item.event_time) !== selectedDate) return false;
       if (selectedCategory && item.category !== selectedCategory) return false;
       return true;
     });
-  }, [timeline.data, selectedDate, selectedCategory]);
+  }, [items, selectedDate, selectedCategory]);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -117,6 +122,13 @@ export function TimelinePage() {
         <p className="mt-2 text-sm leading-6 text-slate-500">
           No missing device-side timestamps are inferred.
         </p>
+        <a
+          href={`/api/v1/cases/${encodeURIComponent(caseId)}/timeline/export.ndjson`}
+          download
+          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-cyan-400/30 px-3 py-2 text-xs text-cyan-200 hover:bg-cyan-400/10"
+        >
+          <Download size={14} /> Download all events (NDJSON)
+        </a>
       </header>
 
       {timeline.isPending && <p role="status" className="mt-8 flex items-center gap-2 text-sm text-slate-500"><LoaderCircle size={16} className="animate-spin" /> Building timeline view...</p>}
@@ -168,7 +180,7 @@ export function TimelinePage() {
         </section>
       )}
 
-      {timeline.data?.category_facets && Object.keys(timeline.data.category_facets).length > 0 && (
+      {facets && Object.keys(facets).length > 0 && (
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <Filter size={14} className="text-slate-500 mr-2" />
           <button
@@ -177,7 +189,7 @@ export function TimelinePage() {
           >
             All
           </button>
-          {Object.entries(timeline.data.category_facets).map(([cat, count]) => (
+          {Object.entries(facets).map(([cat, count]) => (
             <button
               key={cat}
               onClick={() => { setSelectedCategory(selectedCategory === cat ? null : cat); }}
@@ -189,11 +201,11 @@ export function TimelinePage() {
         </div>
       )}
 
-      {timeline.data?.items.length === 0 && <p className="mt-8 text-sm text-slate-500">No normalized timestamp claims are available.</p>}
+      {timeline.data && items.length === 0 && <p className="mt-8 text-sm text-slate-500">No normalized timestamp claims are available.</p>}
       
       <div className="mt-6">
         <h3 className="mb-4 text-sm font-medium text-slate-300">
-          {filteredItems.length} {filteredItems.length === 1 ? 'Event' : 'Events'}
+          {filteredItems.length} {filteredItems.length === 1 ? 'Event' : 'Events'} shown · {items.length} of {total} loaded
           {selectedDate && <span className="ml-2 font-normal text-slate-500">on {selectedDate}</span>}
         </h3>
         <ol className="space-y-3">
@@ -213,6 +225,17 @@ export function TimelinePage() {
             </li>
           ))}
         </ol>
+        {timeline.hasNextPage && (
+          <button
+            type="button"
+            onClick={() => { void timeline.fetchNextPage(); }}
+            disabled={timeline.isFetchingNextPage}
+            className="mt-5 rounded-lg border border-white/15 px-4 py-2 text-xs text-cyan-200 hover:bg-white/5 disabled:opacity-50"
+          >
+            {timeline.isFetchingNextPage ? "Loading events..." : "Load more events"}
+          </button>
+        )}
+        {timeline.isFetchNextPageError && <div className="mt-4"><CaseError error={timeline.error} /></div>}
       </div>
     </div>
   );

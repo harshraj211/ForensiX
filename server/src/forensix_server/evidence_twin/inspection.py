@@ -173,7 +173,9 @@ def detect_evidence_container(path: Path) -> InspectionDecision:
                 else "Archive members must pass safe-extraction policy before parsing.",
             ),
         )
-    if tarfile.is_tarfile(path):
+    # tarfile accepts a run of zero blocks as an empty TAR. Raw disk images often
+    # begin with zeroed sectors, so require a nonempty first header before probing.
+    if any(header[:512]) and tarfile.is_tarfile(path):
         return InspectionDecision(
             detected_type="tar",
             confidence="high",

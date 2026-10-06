@@ -14,7 +14,7 @@ from forensix_forensic.capabilities.models import (
 )
 from forensix_server.acquisitions import AcquisitionModule, AcquisitionScope
 from forensix_server.cases import CaseAccessLevel, CaseStatus
-from forensix_server.jobs import JobState
+from forensix_server.jobs import JobState, JobType
 
 
 class ApiErrorDetail(BaseModel):
@@ -1374,6 +1374,39 @@ class JobEventResponse(BaseModel):
     checkpoint: dict[str, Any] | None
     safe_detail: str | None
     created_at: datetime
+
+
+class CaseJobResponse(BaseModel):
+    """Common transport for every durable operation attached to a case."""
+
+    id: str
+    case_id: str
+    owner_id: str | None
+    plan_id: str | None
+    job_type: JobType
+    state: JobState
+    progress_percent: int
+    current_step: str | None
+    current_module: str | None
+    cancellation_requested: bool
+    resume_supported: bool
+    checkpoint: dict[str, Any] | None
+    error_code: str | None
+    error_message: str | None
+    result_reference: str | None
+    last_event_sequence: int
+    version: int
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
+class CaseJobListResponse(BaseModel):
+    items: list[CaseJobResponse]
+    total: int
+    offset: int
+    limit: int
 
 
 class AuthBootstrapStatusResponse(BaseModel):

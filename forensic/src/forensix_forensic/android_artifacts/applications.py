@@ -8,6 +8,7 @@ TikTok, Gmail, WeChat, Meta apps, and accessible Agent artifacts.
 
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -41,7 +42,7 @@ class WhatsAppAdapter(BaseApplicationAdapter):
     metadata = AdapterMetadata(
         parser_id="android.whatsapp.message",
         name="WhatsApp Application Forensic Adapter",
-        version="2.1.0",
+        version="2.2.0",
         package_name="com.whatsapp",
         application_name="WhatsApp",
         artifact_categories=("message", "attachment", "contact"),
@@ -215,8 +216,11 @@ class WhatsAppAdapter(BaseApplicationAdapter):
                     "key_remote_jid",
                     "status",
                     "starred",
+                    "forwarded",
+                    "quoted_row_id",
                     "remote_resource",
                     "media_caption",
+                    "media_mime_type",
                     "media_wa_type",
                     "media_name",
                     "media_size",
@@ -427,12 +431,15 @@ class WhatsAppAdapter(BaseApplicationAdapter):
 
         msg_id_int = identifier or 0
         media_info = media_map.get(msg_id_int, {})
-        if not media_info and (row.get("media_wa_type") or row.get("media_name")):
+        if not media_info and (
+            row.get("media_wa_type") or row.get("media_name") or row.get("media_mime_type")
+        ):
             media_info = compact_metadata(
                 {
                     "file_name": text(row.get("media_name")),
                     "file_size": integer(row.get("media_size")),
                     "media_type": text(row.get("media_wa_type")),
+                    "mime_type": text(row.get("media_mime_type")),
                     "file_path": text(row.get("file_path")),
                     "media_url": text(row.get("media_url")),
                     "caption": text(row.get("media_caption")),
@@ -440,6 +447,11 @@ class WhatsAppAdapter(BaseApplicationAdapter):
             )
 
         quoted_info = quoted_map.get(msg_id_int)
+        quoted_message_id = integer(row.get("quoted_row_id"))
+        if quoted_message_id is None and quoted_info:
+            quoted_message_id = integer(quoted_info.get("quoted_row_id"))
+        forwarded_flag = integer(row.get("forwarded"))
+        starred_flag = integer(row.get("starred"))
 
         return ParsedArtifact(
             category="communication",
@@ -466,6 +478,9 @@ class WhatsAppAdapter(BaseApplicationAdapter):
                     "timestamp_details": timestamp_details,
                     "media_attachment": media_info,
                     "quoted_message": quoted_info,
+                    "quoted_message_id": quoted_message_id,
+                    "forwarded": bool(forwarded_flag) if forwarded_flag is not None else None,
+                    "starred": bool(starred_flag) if starred_flag is not None else None,
                     "schema_family": schema_family,
                     "source_database": db_name,
                     "source_table": table_name,
@@ -1011,10 +1026,117 @@ class MetaMessageParser(BaseApplicationAdapter):
 
 def meta_message_parsers() -> tuple[MetaMessageParser, ...]:
     return (
-        MetaMessageParser("messenger", "Messenger", ("com.facebook.orca", "messenger")),
-        MetaMessageParser("facebook", "Facebook", ("com.facebook.katana", "facebook")),
-        MetaMessageParser("instagram", "Instagram", ("com.instagram.android", "instagram")),
+        MetaMessageParser("messenger", "Messenger", ("com.facebook.orca",)),
+        MetaMessageParser("facebook", "Facebook", ("com.facebook.katana",)),
+        MetaMessageParser("instagram", "Instagram", ("com.instagram.android",)),
     )
+
+
+class InstagramDirectMessageParser(BaseApplicationAdapter):
+    """Parse the plaintext Direct-message tables observed in Instagram direct.db."""
+
+    metadata = AdapterMetadata(
+        parser_id="android.instagram.direct",
+        name="Instagram Direct messages",
+        version="1.0.0",
+        package_name="com.instagram.android",
+        application_name="Instagram",
+        artifact_categories=("message", "conversation"),
+        required_tables=frozenset({"direct_v2_message_items"}),
+        access_level="filesystem",
+        maturity="experimental",
+        source_path_hints=("com.instagram.android", "direct.db"),
+        supported_schema_families=("instagram_direct_v2",),
+        limitations=(
+            "Parses plaintext message metadata only; media CDN retrieval and encrypted content are unsupported.",
+        ),
+    )
+
+    def can_parse(self, tables: frozenset[str]) -> bool:
+        return "direct_v2_message_items" in tables
+
+    def parse_adapter(
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
+    ) -> AdapterParseResult:
+        if reader is None:
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
+        columns = require_columns(reader, "direct_v2_message_items", {"item_id", "timestamp"})
+        selected = [
+            '"item_id"',
+            '"timestamp"',
+            *(
+                optional_column(columns, name)
+                for name in (
+                    "thread_id",
+                    "user_id",
+                    "item_type",
+                    "text",
+                    "is_shh_mode",
+                    "media_url",
+                    "client_context",
+                    "is_sent_by_viewer",
+                )
+            ),
+        ]
+        try:
+            rows = reader.execute_select(
+                f'SELECT {", ".join(selected)} FROM "direct_v2_message_items" '  # noqa: S608
+                'ORDER BY "timestamp", "item_id"'  # noqa: S608
+            )
+        except SafeSQLiteError as error:
+            raise parser_error(error) from error
+        artifacts = [self._message_artifact(row, context) for row in rows]
+        return AdapterParseResult(
+            status=AdapterParseStatus.SUPPORTED,
+            artifacts=artifacts,
+            detected_schema="instagram_direct_v2",
+            confidence=0.85,
+            limitations=[self.metadata.limitations[0]],
+        )
+
+    @staticmethod
+    def _message_artifact(row: Mapping[str, object], context: ParserContext) -> ParsedArtifact:
+        identifier = text(row.get("item_id")) or "unknown"
+        item_type = text(row.get("item_type")) or "text"
+        body = text(row.get("text"))
+        sender = text(row.get("user_id"))
+        unsent = bool(integer(row.get("is_shh_mode")) or 0)
+        return ParsedArtifact(
+            category="communication",
+            subtype="instagram_direct_message",
+            title=f"Instagram Direct {item_type}: {sender or 'unknown sender'}",
+            summary=body or f"Instagram Direct {item_type} message",
+            event_time=_instagram_timestamp(row.get("timestamp")),
+            source_locator=f"{context.input_locator}#direct_v2_message_items:{identifier}",
+            status="deleted" if unsent else "active",
+            confidence="medium" if body else "low",
+            metadata=compact_metadata(
+                {
+                    "application": "instagram",
+                    "message_id": identifier,
+                    "thread_id": text(row.get("thread_id")),
+                    "sender_id": sender,
+                    "item_type": item_type,
+                    "unsent_flag": unsent,
+                    "media_url": text(row.get("media_url")),
+                    "is_outgoing": bool(integer(row.get("is_sent_by_viewer")) or 0),
+                }
+            ),
+        )
+
+
+def _instagram_timestamp(value: object) -> datetime | None:
+    """Instagram Direct timestamps occur in either milliseconds or microseconds."""
+    numeric = integer(value)
+    if numeric is not None and abs(numeric) >= 100_000_000_000_000:
+        return android_timestamp(numeric // 1000)
+    return android_timestamp(value)
 
 
 class SnapchatMessageParser(BaseApplicationAdapter):
@@ -1086,6 +1208,99 @@ class SnapchatMessageParser(BaseApplicationAdapter):
             status="active",
             confidence="medium",
             metadata=compact_metadata({**row, "application": "snapchat"}),
+        )
+
+
+class SnapchatArroyoMessageParser(BaseApplicationAdapter):
+    """Parse a bounded plaintext Snapchat Arroyo message schema when it is present."""
+
+    metadata = AdapterMetadata(
+        parser_id="android.snapchat.arroyo",
+        name="Snapchat Arroyo messages",
+        version="1.0.0",
+        package_name="com.snapchat.android",
+        application_name="Snapchat",
+        artifact_categories=("message",),
+        required_tables=frozenset({"messages"}),
+        access_level="filesystem",
+        maturity="experimental",
+        source_path_hints=("com.snapchat.android", "arroyo.db"),
+        supported_schema_families=("snapchat_arroyo_messages",),
+        limitations=("Encrypted media content is not decoded.",),
+    )
+
+    def can_parse(self, tables: frozenset[str]) -> bool:
+        return "messages" in tables
+
+    def parse_adapter(
+        self,
+        reader: SafeSQLiteReader | None,
+        context: ParserContext,
+        *,
+        source_path: Path | None = None,
+    ) -> AdapterParseResult:
+        if reader is None:
+            return AdapterParseResult(
+                status=AdapterParseStatus.UNSUPPORTED, reason="Reader required"
+            )
+        columns = require_columns(reader, "messages", {"client_message_id", "sending_timestamp"})
+        selected = [
+            '"client_message_id"',
+            '"sending_timestamp"',
+            *(
+                optional_column(columns, name)
+                for name in (
+                    "conversation_id",
+                    "sender_id",
+                    "content_type",
+                    "message_content",
+                    "body",
+                    "saved_by_sender",
+                    "saved_by_recipient",
+                )
+            ),
+        ]
+        try:
+            rows = reader.execute_select(
+                f'SELECT {", ".join(selected)} FROM "messages" '  # noqa: S608
+                'ORDER BY "sending_timestamp", "client_message_id"'  # noqa: S608
+            )
+        except SafeSQLiteError as error:
+            raise parser_error(error) from error
+        artifacts = []
+        for row in rows:
+            identifier = text(row.get("client_message_id")) or "unknown"
+            content_type = text(row.get("content_type")) or "CHAT"
+            body = text(row.get("message_content")) or text(row.get("body"))
+            artifacts.append(
+                ParsedArtifact(
+                    category="communication",
+                    subtype="snapchat_arroyo_message",
+                    title=f"Snapchat {content_type}: {text(row.get('sender_id')) or 'unknown sender'}",
+                    summary=body or f"Snapchat {content_type} message",
+                    event_time=android_timestamp(row.get("sending_timestamp")),
+                    source_locator=f"{context.input_locator}#messages:{identifier}",
+                    status="active",
+                    confidence="medium" if body else "low",
+                    metadata=compact_metadata(
+                        {
+                            "application": "snapchat",
+                            "message_id": identifier,
+                            "conversation_id": text(row.get("conversation_id")),
+                            "sender_id": text(row.get("sender_id")),
+                            "content_type": content_type,
+                            "saved_by_sender": bool(integer(row.get("saved_by_sender")) or 0),
+                            "saved_by_recipient": bool(integer(row.get("saved_by_recipient")) or 0),
+                        }
+                    ),
+                )
+            )
+        return AdapterParseResult(
+            status=AdapterParseStatus.SUPPORTED,
+            artifacts=artifacts,
+            detected_schema="snapchat_arroyo_messages",
+            confidence=0.8,
+            limitations=[self.metadata.limitations[0]],
         )
 
 

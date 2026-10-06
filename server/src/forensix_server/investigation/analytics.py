@@ -325,16 +325,27 @@ class SocialGraphAnalyticsService:
                 direction.startswith("out") or meta.get("from_me") == 1 or meta.get("isSend") == 1
             )
 
-            peer = (
-                meta.get("resolved_sender")
-                or meta.get("resolved_chat")
-                or meta.get("address")
-                or meta.get("phone_number")
-                or meta.get("talker")
-                or meta.get("author_name")
-                or meta.get("sender")
-                or meta.get("fromAddress")
-                or meta.get("key_remote_jid")
+            peer_candidates = (
+                meta.get("resolved_chat") if is_outgoing else meta.get("resolved_sender"),
+                meta.get("address"),
+                meta.get("phone_number"),
+                meta.get("talker"),
+                meta.get("author_name"),
+                meta.get("sender"),
+                meta.get("fromAddress"),
+                meta.get("key_remote_jid"),
+                meta.get("resolved_chat"),
+                meta.get("resolved_sender"),
+            )
+            peer = next(
+                (
+                    value
+                    for candidate in peer_candidates
+                    if candidate is not None
+                    and (value := str(candidate).strip())
+                    and value.casefold() not in {"unresolved", "user (self)", "unknown"}
+                ),
+                None,
             )
             if not peer:
                 # Extract peer from title if possible

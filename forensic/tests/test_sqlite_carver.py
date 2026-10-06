@@ -62,6 +62,7 @@ def test_decode_record_header_and_values() -> None:
 def test_sqlite_carver_on_deleted_records(tmp_path: Path) -> None:
     db_path = tmp_path / "test_carve.db"
     conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA secure_delete=OFF")
     conn.execute(
         """
         CREATE TABLE messages (
@@ -92,11 +93,10 @@ def test_sqlite_carver_on_deleted_records(tmp_path: Path) -> None:
     carver = SQLiteCarver()
     carved = carver.carve_file(db_path, source_locator="test_carve.db")
 
-    assert len(carved) > 0
-    # Verify we carved records
+    # The freeblock retains text, but SQLite overwrote the record header. Do
+    # not present the surviving fragment or intact live cells as a full row.
     all_texts = [str(col) for r in carved for col in r.columns if isinstance(col, str)]
-    # Check that text records are recovered
-    assert any("Alice" in t or "AlphaOmega99" in t or "Charlie" in t for t in all_texts)
+    assert not any("Alice" in t or "Charlie" in t for t in all_texts)
 
 
 def test_sqlite_carver_wal_frames(tmp_path: Path) -> None:
@@ -173,3 +173,25 @@ def test_extractor_sqlite_carver_freelist_traversal(tmp_path: Path) -> None:
     result = extractor.carve([db_path])
     assert result.freelist_fragments_found >= 1
     assert any("covert payload" in f.content_preview for f in result.fragments)
+
+
+def test_sqlite_carver_does_not_label_live_cells_deleted(tmp_path: Path) -> None:
+    db_path = tmp_path / "live.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, body TEXT)")
+        connection.execute("INSERT INTO messages VALUES (1, 'Intact message content')")
+    assert SQLiteCarver().carve_file(db_path) == []
+
+
+def test_sqlite_carver_decodes_intact_candidate_cell_only() -> None:
+    cell = bytes([8, 9, 3, 1, 21, 42]) + b"ABCD"
+    records = SQLiteCarver()._scan_block_for_records(
+        cell + b"\x00" * 8,
+        page_num=2,
+        base_offset=64,
+        source_locator="candidate.db",
+        confidence="medium",
+    )
+    assert len(records) == 1
+    assert records[0].rowid == 9
+    assert records[0].columns == (42, "ABCD")

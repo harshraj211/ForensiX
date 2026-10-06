@@ -1,13 +1,19 @@
 """Case-scoped deterministic timeline endpoint."""
 
-from datetime import datetime
+import json
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from heapq import merge
 from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 
 from forensix_api.dependencies import get_authenticated_session, get_database
 from forensix_api.schemas import TimelineEventResponse, TimelineSearchResponse
-from forensix_server.auth import AuthenticatedSession
+from forensix_server.auth import AuthenticatedSession, Permission
+from forensix_server.cases import CaseAccessDeniedError, CaseService
 from forensix_server.db import (
     Database,
     EvidenceSourceTimelineEventRecord,
@@ -16,6 +22,68 @@ from forensix_server.db import (
 from forensix_server.evidence import TimelineService
 
 router = APIRouter(prefix="/api/v1/cases/{case_id}/timeline", tags=["timeline"])
+
+
+@router.get("/export.ndjson")
+def export_timeline(
+    case_id: str,
+    authenticated: Annotated[AuthenticatedSession, Depends(get_authenticated_session)],
+    database: Annotated[Database, Depends(get_database)],
+) -> StreamingResponse:
+    """Export every normalized claim with its provenance hash in stable newest-first order."""
+    # Authorize before returning a lazy response, so access errors remain normal HTTP errors.
+    with database.session() as session:
+        CaseService().get(session, authenticated.principal, case_id)
+        if not authenticated.principal.can(Permission.EVIDENCE_ANALYZE):
+            raise CaseAccessDeniedError("The current user cannot analyze the case timeline.")
+
+    def lines() -> Iterator[str]:
+        with database.session() as session:
+            native = session.scalars(
+                select(TimelineEventRecord)
+                .where(TimelineEventRecord.case_id == case_id)
+                .order_by(TimelineEventRecord.event_time.desc(), TimelineEventRecord.id.desc())
+                .execution_options(yield_per=500)
+            )
+            imported = session.scalars(
+                select(EvidenceSourceTimelineEventRecord)
+                .where(EvidenceSourceTimelineEventRecord.case_id == case_id)
+                .order_by(
+                    EvidenceSourceTimelineEventRecord.event_time.desc(),
+                    EvidenceSourceTimelineEventRecord.id.desc(),
+                )
+                .execution_options(yield_per=500)
+            )
+            native_items: Iterator[TimelineEventRecord | EvidenceSourceTimelineEventRecord] = iter(
+                native
+            )
+            imported_items: Iterator[TimelineEventRecord | EvidenceSourceTimelineEventRecord] = (
+                iter(imported)
+            )
+            for record in merge(
+                native_items,
+                imported_items,
+                key=_event_key,
+                reverse=True,
+            ):
+                yield (
+                    json.dumps(
+                        _response(record).model_dump(mode="json"),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                )
+
+    return StreamingResponse(
+        lines(),
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Disposition": f'attachment; filename="forensix-timeline-{case_id}.ndjson"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("", response_model=TimelineSearchResponse)
@@ -61,6 +129,16 @@ def search_timeline(
         limit=limit,
         category_facets=result.category_facets,
     )
+
+
+def _utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _event_key(
+    record: TimelineEventRecord | EvidenceSourceTimelineEventRecord,
+) -> tuple[datetime, str]:
+    return _utc(record.event_time), record.id
 
 
 def _response(

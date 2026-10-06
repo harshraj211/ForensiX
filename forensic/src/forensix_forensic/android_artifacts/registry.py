@@ -6,7 +6,9 @@ from .applications import (
     AccessibleAppArtifactJSONParser,
     DiscordMessageParser,
     GmailMessageParser,
+    InstagramDirectMessageParser,
     SignalAdapter,
+    SnapchatArroyoMessageParser,
     SnapchatMessageParser,
     TelegramAdapter,
     TikTokMessageParser,
@@ -65,10 +67,12 @@ def android_parser_registry() -> ApplicationAdapterRegistry:
     registry.register(TelegramAdapter())  # type: ignore[arg-type]
     registry.register(SignalAdapter())  # type: ignore[arg-type]
     registry.register(SnapchatMessageParser())  # type: ignore[arg-type]
+    registry.register(SnapchatArroyoMessageParser())  # type: ignore[arg-type]
     registry.register(DiscordMessageParser())  # type: ignore[arg-type]
     registry.register(TikTokMessageParser())  # type: ignore[arg-type]
     registry.register(GmailMessageParser())  # type: ignore[arg-type]
     registry.register(WeChatMessageParser())  # type: ignore[arg-type]
+    registry.register(InstagramDirectMessageParser())  # type: ignore[arg-type]
     for parser in meta_message_parsers():
         registry.register(parser)  # type: ignore[arg-type]
     registry.register(AndroidCalendarEventParser())
